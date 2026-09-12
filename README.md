@@ -154,10 +154,32 @@ Real hardware. CPU load via `GetSystemTimes`, SSD throughput via a direct handle
 
 ---
 
-## Team
+## Contributors
 
-**Team Doomsday** — Abhilash L, Adarsh Abhilash, Nikhil Nuguri
-Built for the Schneider Electric Hackathon, Problem Statement PS4 (Lightweight HMI Runtime).
+Team Doomsday — built together for the Schneider Electric Hackathon (PS4: Lightweight HMI Runtime).
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/frostbreath123">
+        <img src="https://github.com/frostbreath123.png" width="80px;" style="border-radius:50%" alt="Your Name"/><br />
+        <sub><b>Your Name</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/adarsh-p-abhilash">
+        <img src="https://github.com/adarsh-p-abhilash.png" width="80px;" style="border-radius:50%" alt="Adarsh Abhilash"/><br />
+        <sub><b>Adarsh Abhilash</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/n4rnikhil">
+        <img src="https://github.com/n4rnikhil.png" width="80px;" style="border-radius:50%" alt="Nikhil Nuguri"/><br />
+        <sub><b>Nikhil Nuguri</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## License
 
