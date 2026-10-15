@@ -1,0 +1,13 @@
+e2e: poll over real Modbus TCP, decode
+  poll latency last=0 ms max=0 ms (loopback)
+e2e: real Modbus exception reply -> BAD(EXCEPTION), link up
+e2e: unanswered requests -> bounded detection, reconnect, recovery
+  link declared lost after 602 ms (limit 3 x 200 ms timeout)
+e2e: server closes connection -> reconnect
+e2e: truncated / mismatching replies are never data
+e2e: nothing listening -> BACKOFF, values stay UNAVAILABLE
+e2e: write + read-back confirm over Modbus
+e2e: write applied, reply lost -> UNKNOWN, exactly one transmission
+e2e: full runtime (threads) over libmodbus, clean stop x5
+
+75 checks, 0 failed

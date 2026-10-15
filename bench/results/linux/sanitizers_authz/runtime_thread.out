@@ -1,0 +1,7 @@
+runtime: start/stop repeatedly, writes forced off without audit trail
+runtime: worker heartbeat counters advance while running
+runtime: acknowledgement is authorized in the core and audited
+runtime: concurrent readers vs live comms/supervisor threads
+  reads=271310 bad=0
+
+64 checks, 0 failed

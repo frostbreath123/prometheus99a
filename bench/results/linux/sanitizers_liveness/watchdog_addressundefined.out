@@ -1,0 +1,8 @@
+watchdog: pings at the interval while both workers beat
+watchdog: a stalled worker withholds the ping, recovery resumes it
+watchdog: stall boundary is strict
+watchdog: counter wrap and a backwards clock
+watchdog: interval 0 means disabled
+watchdog: systemd environment parsing
+
+29 checks, 0 failed

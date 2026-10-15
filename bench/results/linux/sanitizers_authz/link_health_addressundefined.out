@@ -1,0 +1,8 @@
+link health: HEALTHY / DEGRADED / NO_RESPONSE boundaries on the age of the last reply
+link health: one missed reply -> DEGRADED, valid reply -> HEALTHY
+link health: socket connects, PLC never answers -> never HEALTHY, comms alarm raised
+link health: link loss -> DOWN, reconnect + valid reply -> HEALTHY
+link health: alarm engine and predicate agree for every health value
+link health: unsigned wrap and backwards clock step
+
+38 checks, 0 failed

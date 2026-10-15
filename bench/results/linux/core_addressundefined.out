@@ -1,0 +1,39 @@
+decode: types, byte/word order, scaling, limits
+tags: validation and poll group merge
+comms: connect, poll, typed decode
+tags: implausible value is UNCERTAIN not GOOD
+comms: timeouts -> DEGRADED -> BAD -> backoff -> recovery
+comms: reconnect backoff doubles and is capped
+comms: dead-link detection time independent of group count
+comms: Modbus exception is data failure, not link failure
+tags: successful poll restores only its own tags
+tags: staleness (monotonic), per-consumer versions
+comms: phase-aligned scheduling without cumulative drift
+writes: validate, send, read-back confirm
+writes: master switch off rejects everything
+writes: PLC exception -> REJECTED, link stays up
+writes: lost reply -> UNKNOWN, never replayed after reconnect
+writes: read-back mismatch -> VERIFY_FAILED (not CONFIRMED)
+writes: accepted but read-back lost -> UNKNOWN
+writes: queued writes expire, not replayed, when link lost
+writes: link loss expires still-queued writes immediately
+writes: audit failure fails closed (reserve and pre-send)
+writes: queue overflow and exhausted audit capacity
+writes module: interface-level lifecycle, FIFO, single transmission, 32-bit verify
+link health: HEALTHY / DEGRADED / NO_RESPONSE boundaries on the age of the last reply
+link health: one missed reply -> DEGRADED, valid reply -> HEALTHY
+link health: socket connects, PLC never answers -> never HEALTHY, comms alarm raised
+link health: link loss -> DOWN, reconnect + valid reply -> HEALTHY
+link health: alarm engine and predicate agree for every health value
+link health: unsigned wrap and backwards clock step
+alarms: debounce, hysteresis, ack, escalation, RTN-unack, clear
+alarms: BAD data freezes state, ack works while disconnected, comms alarm
+alarms: persistence round trip and corruption rejection
+config: valid parse and strict rejection
+config: file load, atomic save, invalid never replaces good
+config: shipped example file is valid and writes are off
+runtime: start/stop repeatedly, writes forced off without audit trail
+runtime: concurrent readers vs live comms/supervisor threads
+  reads=3534241 bad=0
+
+535 checks, 0 failed

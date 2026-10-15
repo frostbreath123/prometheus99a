@@ -1,0 +1,11 @@
+comms: connect, poll, typed decode
+tags: implausible value is UNCERTAIN not GOOD
+comms: timeouts -> DEGRADED -> BAD -> backoff -> recovery
+comms: reconnect backoff doubles and is capped
+comms: dead-link detection time independent of group count
+comms: Modbus exception is data failure, not link failure
+tags: successful poll restores only its own tags
+tags: staleness (monotonic), per-consumer versions
+comms: phase-aligned scheduling without cumulative drift
+
+39 checks, 0 failed

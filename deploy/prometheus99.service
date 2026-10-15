@@ -1,0 +1,66 @@
+# systemd unit for the Prometheus99 HMI on Raspberry Pi OS Lite / Debian.
+#
+# Install (as root, paths are the defaults used below):
+#   install -m 0755 build-linux/prometheus99 /usr/local/bin/prometheus99
+#   install -d -o prometheus -g prometheus /etc/prometheus99 /var/lib/prometheus99
+#   install -m 0644 -o prometheus config/hmi.example.json /etc/prometheus99/hmi.json   # then edit host
+#   install -m 0644 deploy/prometheus99.service /etc/systemd/system/
+#   useradd --system --no-create-home --groups video,input prometheus
+#   systemctl daemon-reload && systemctl enable --now prometheus99
+#
+# Status: written and statically checked only (see docs/LINUX_VALIDATION.md).
+# It has not been run under real systemd, nor on a Raspberry Pi.
+#
+# Liveness: the process sends READY=1 after its first frame and WATCHDOG=1
+# every WatchdogSec/2, but only while the comms and supervisor threads are
+# also advancing. A stuck process is killed and restarted by systemd.
+
+[Unit]
+Description=Prometheus99 HMI runtime
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=prometheus
+Group=prometheus
+SupplementaryGroups=video input
+# --role is a CLAIMED role set by whoever writes this unit; it is not
+# authentication. Without it the process runs as viewer (no acknowledgements,
+# no writes). Unknown roles or options make the process exit with status 2.
+ExecStart=/usr/local/bin/prometheus99 --config /etc/prometheus99/hmi.json \
+    --audit /var/lib/prometheus99/audit.log --alarms /var/lib/prometheus99/alarms.bin \
+    --fb /dev/fb0 --touch /dev/input/event0 --role operator
+Restart=on-failure
+RestartSec=2
+# The runtime sends a ping every 5 s. A worker thread may legitimately be
+# blocked in a bounded Modbus call for several seconds; 10 s leaves margin.
+WatchdogSec=10
+TimeoutStartSec=30
+TimeoutStopSec=15
+# Exit status 2 means "framebuffer cannot be opened". The restart delay and the
+# start limit in [Unit] stop a tight restart loop until the display exists.
+
+# Hardening (docs section 10). The HMI needs the framebuffer and evdev nodes only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/prometheus99
+DeviceAllow=/dev/fb0 rw
+DeviceAllow=char-input rw
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

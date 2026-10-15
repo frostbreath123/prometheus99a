@@ -1,0 +1,5 @@
+alarms: debounce, hysteresis, ack, escalation, RTN-unack, clear
+alarms: BAD data freezes state, ack works while disconnected, comms alarm
+alarms: persistence round trip and corruption rejection
+
+36 checks, 0 failed

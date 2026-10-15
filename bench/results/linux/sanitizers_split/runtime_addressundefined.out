@@ -1,0 +1,5 @@
+runtime: start/stop repeatedly, writes forced off without audit trail
+runtime: concurrent readers vs live comms/supervisor threads
+  reads=3270662 bad=0
+
+38 checks, 0 failed

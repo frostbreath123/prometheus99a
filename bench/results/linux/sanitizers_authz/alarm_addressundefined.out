@@ -1,0 +1,8 @@
+alarms: debounce, hysteresis, ack, escalation, RTN-unack, clear
+alarms: BAD data freezes state, ack works while disconnected, comms alarm
+alarms: persistence round trip and corruption rejection
+alarms: Viewer acknowledgement is denied and changes nothing
+alarms: Operator and above may acknowledge, single and ACK ALL
+alarms: acknowledgement audit hook, ordering and fail-closed policy
+
+81 checks, 0 failed
