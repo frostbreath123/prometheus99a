@@ -1,0 +1,58 @@
+check-tagdb-access: ok
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_decode.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_decode -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_tags.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_tags -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_comms.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_comms -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_link_health.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_link_health -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_writes.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_writes -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_alarm.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_alarm -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_config.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_config -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_runtime.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_runtime -lm -lpthread
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_watchdog.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/hmi_tests/test_watchdog -lm -lpthread
+sh tests/hmi/run_core_tests.sh build-linux/hmi_tests decode tags comms link_health writes alarm config runtime watchdog
+decode: 24 checks, 0 failed
+tags: 19 checks, 0 failed
+comms: 39 checks, 0 failed
+link_health: 38 checks, 0 failed
+writes: 252 checks, 0 failed
+alarm: 36 checks, 0 failed
+config: 89 checks, 0 failed
+runtime: 44 checks, 0 failed
+watchdog: 29 checks, 0 failed
+hmi core total: 570 checks
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_notify_posix.c tests/hmi/test_support.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/test_notify -lm -lpthread
+./build-linux/test_notify
+notify: sd_notify datagrams reach the supervisor socket
+
+13 checks, 0 failed
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/test_hmi_view.c src/ui/hmi_view.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/test_view -lm -lpthread
+./build-linux/test_view
+view: decimals follow the tag scale
+view: value and quality cells
+view: alarm cell text and tone
+view: link indicator and alarm summary
+view: setpoint stepping, clamping and text
+view: write outcome wording and tone
+view: alarm journal text
+view: heartbeat mark
+84 checks, 0 failed
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -Isrc/hmi tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_tags.c \
+  src/hmi/hmi_decode.c src/hmi/hmi_platform_posix.c -o build-linux/config_golden -lm -lpthread
+./build-linux/config_golden > build-linux/config_golden.out
+diff -u tests/hmi/config_golden.txt build-linux/config_golden.out && echo "config golden: identical"
+config golden: identical
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -I/usr/include/modbus  -Isrc/hmi tests/hmi/test_modbus_e2e.c tests/hmi/fake_modbus_server_posix.c src/hmi/plc_libmodbus.c \
+  src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_platform_posix.c -o build-linux/test_e2e -lmodbus  -lm -lpthread
+./build-linux/test_e2e
+e2e: poll over real Modbus TCP, decode
+  poll latency last=0 ms max=0 ms (loopback)
+e2e: real Modbus exception reply -> BAD(EXCEPTION), link up
+e2e: unanswered requests -> bounded detection, reconnect, recovery
+  link declared lost after 601 ms (limit 3 x 200 ms timeout)
+e2e: server closes connection -> reconnect
+e2e: truncated / mismatching replies are never data
+e2e: nothing listening -> BACKOFF, values stay UNAVAILABLE
+e2e: write + read-back confirm over Modbus
+e2e: write applied, reply lost -> UNKNOWN, exactly one transmission
+e2e: full runtime (threads) over libmodbus, clean stop x5
+
+75 checks, 0 failed

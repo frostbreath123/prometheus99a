@@ -1,0 +1,13 @@
+writes: validate, send, read-back confirm
+writes: master switch off rejects everything
+writes: PLC exception -> REJECTED, link stays up
+writes: lost reply -> UNKNOWN, never replayed after reconnect
+writes: read-back mismatch -> VERIFY_FAILED (not CONFIRMED)
+writes: accepted but read-back lost -> UNKNOWN
+writes: queued writes expire, not replayed, when link lost
+writes: link loss expires still-queued writes immediately
+writes: audit failure fails closed (reserve and pre-send)
+writes: queue overflow and exhausted audit capacity
+writes module: interface-level lifecycle, FIFO, single transmission, 32-bit verify
+
+252 checks, 0 failed

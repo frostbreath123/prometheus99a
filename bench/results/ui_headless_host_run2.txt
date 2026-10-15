@@ -1,0 +1,14 @@
+[start] PrivateUsage=1688 KB  WorkingSet=3912 KB  PeakWorkingSet=3912 KB
+writes_effective=1
+LVGL heap after UI build: total=125864 free=104928 used=20 KB
+[after_ui_build] PrivateUsage=2240 KB  WorkingSet=5488 KB  PeakWorkingSet=5488 KB
+heap allocation calls (app+LVGL+libmodbus objects) in 2.0 s steady state: 0
+steady-state (nothing changing): flushes=0 px=0 in 2.0 s
+write submit -> 0 id=1
+lv_timer_handler (render+binder) samples=251: mean=24 us p50=10 p95=94 p99=355 max=667 us
+flush: calls=71 pixels=579981 total_flush_time=353 us
+binder ticks=126 labels_updated=53 labels_skipped_unchanged=502
+comms: polls_ok=122 failed=9 exceptions=0 links_lost=3 connects_ok=4 max_poll_latency=203 ms
+LVGL heap at end: used=20 KB, max_used=21 KB, frag=1%
+heap allocation calls since UI build: 1 (frees 1); counted at link level, CRT-internal allocations not included
+[end] PrivateUsage=2288 KB  WorkingSet=6472 KB  PeakWorkingSet=6472 KB

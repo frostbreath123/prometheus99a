@@ -1,0 +1,24 @@
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE tests/hmi/hang_server.c -o build-linux/hang_server
+bash tests/hmi/liveness_e2e.sh build-linux config/hmi.example.json
+  ok   READY=1 sent exactly once
+  ok   WATCHDOG=1 cadence while running (>=4 in 3 s, got 5)
+  ok   no pings while SIGSTOPped (2.5 s)
+  ok   pings resume after SIGCONT (5 -> 10)
+  ok   no pings after SIGKILL
+  ok   pings continue against a hung PLC (>=10 in 8 s, got 15)
+  ok   clean exit on SIGTERM against a hung PLC
+  ok   STOPPING=1 sent on shutdown
+--- notify log
+listening
+4 READY=1
+506 WATCHDOG=1
+1007 WATCHDOG=1
+1509 WATCHDOG=1
+2010 WATCHDOG=1
+2511 WATCHDOG=1
+5811 WATCHDOG=1
+6312 WATCHDOG=1
+6813 WATCHDOG=1
+7314 WATCHDOG=1
+7816 WATCHDOG=1
+liveness e2e: PASS

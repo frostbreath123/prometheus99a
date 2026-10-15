@@ -1,0 +1,5 @@
+config: valid parse and strict rejection
+config: file load, atomic save, invalid never replaces good
+config: shipped example file is valid and writes are off
+
+89 checks, 0 failed

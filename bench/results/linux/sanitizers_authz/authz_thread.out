@@ -1,0 +1,5 @@
+authz: role names and strict parsing
+authz: alarm acknowledgement needs Operator or above
+authz: tag write rule is role >= the tag's minimum (unchanged)
+
+41 checks, 0 failed

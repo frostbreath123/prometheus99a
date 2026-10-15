@@ -1,0 +1,14 @@
+# Build outputs (regenerate with the Makefiles)
+/build/
+/build-linux/
+*.exe
+*.o
+*.a
+*.obj
+
+# Raw framebuffer dumps; the PNG copies under bench/results are kept
+*.ppm
+
+# Local scratch
+*.tmp
+*.swp

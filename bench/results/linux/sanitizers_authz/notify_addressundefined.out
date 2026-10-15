@@ -1,0 +1,3 @@
+notify: sd_notify datagrams reach the supervisor socket
+
+13 checks, 0 failed

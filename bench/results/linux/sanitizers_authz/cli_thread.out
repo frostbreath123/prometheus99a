@@ -1,0 +1,4 @@
+cli: defaults are least privileged, valid options are accepted
+cli: unknown role, missing value, unknown flag, duplicates all fail
+
+66 checks, 0 failed

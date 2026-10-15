@@ -1,0 +1,803 @@
+case 000 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 001 ok=0 err='version, plc and tags are required'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 002 ok=0 err='out of range: version'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 003 ok=0 err='out of range: version'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 004 ok=0 err='out of range: version'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 005 ok=0 err='expected number: version'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 006 ok=0 err='duplicate key: version'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 007 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=0 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 008 ok=0 err='expected bool: writes_enabled'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 009 ok=0 err='expected bool: writes_enabled'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 010 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=0 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 011 ok=0 err='duplicate key: writes_enabled'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 012 ok=0 err='unknown top-level key'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 013 ok=0 err='plc needs host and port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 014 ok=0 err='tags must be array'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 015 ok=0 err='plc needs host and port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 016 ok=0 err='plc needs host and port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 017 ok=0 err='plc needs unit'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 018 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 019 ok=0 err='unknown key in plc'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 020 ok=0 err='host must be an IPv4 literal: plc.local'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 021 ok=0 err='host must be an IPv4 literal: 127.0.0'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 022 ok=0 err='host must be an IPv4 literal: 127.0.0.1.5'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 023 ok=0 err='host must be an IPv4 literal: 256.0.0.1'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 024 ok=0 err='host must be an IPv4 literal: 1.2.3.'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 025 ok=0 err='string length: host'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 026 ok=0 err='expected string: host'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 027 ok=0 err='host must be an IPv4 literal: 0001.0.0.1'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 028 ok=0 err='out of range: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 029 ok=1 err=''
+  host='127.0.0.1' port=65535 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 030 ok=0 err='out of range: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 031 ok=0 err='out of range: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 032 ok=0 err='out of range: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 033 ok=0 err='expected number: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 034 ok=0 err='expected number: port'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 035 ok=1 err=''
+  host='127.0.0.1' port=502 unit=0 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 036 ok=1 err=''
+  host='127.0.0.1' port=502 unit=247 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 037 ok=0 err='out of range: unit'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 038 ok=0 err='out of range: response_timeout_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 039 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=50 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 040 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=30000 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 041 ok=0 err='out of range: response_timeout_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 042 ok=0 err='out of range: connect_timeout_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 043 ok=0 err='out of range: connect_timeout_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 044 ok=0 err='duplicate key in plc'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 045 ok=0 err='unknown key in plc'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 046 ok=0 err='plc must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 047 ok=0 err='plc must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 048 ok=0 err='tag count'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 049 ok=0 err='tag must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 050 ok=0 err='tag table invalid (duplicate name or too many groups)'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 051 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=1
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+case 052 ok=0 err='tag without name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 053 ok=0 err='string length: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 054 ok=0 err='string length: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 055 ok=0 err='illegal character: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 056 ok=0 err='expected string: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 057 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 058 ok=0 err='string length: units'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 059 ok=0 err='expected string: units'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 060 ok=0 err='unknown area: coil'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 061 ok=0 err='input register not writable: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 062 ok=0 err='string length: area'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 063 ok=0 err='tag without address: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 064 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=65535 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 065 ok=0 err='out of range: address'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 066 ok=0 err='out of range: address'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 067 ok=0 err='out of range: address'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 068 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=2 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 069 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=1 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 070 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=3 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 071 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=4 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 072 ok=0 err='unknown type: f64'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 073 ok=0 err='unknown type: U16'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 074 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 075 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=0 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 076 ok=0 err='unknown word_order: middle'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 077 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=0 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 078 ok=0 err='unknown byte_order: little'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 079 ok=0 err='zero: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 080 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=-0.5 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 081 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=1000 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 082 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 083 ok=0 err='bad number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 084 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.5 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 085 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 086 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=-1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 087 ok=0 err='bad number: offset'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 088 ok=0 err='min>max: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 089 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=-5 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 090 ok=0 err='duplicate key in tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 091 ok=0 err='out of range: poll_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 092 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=50
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 093 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=3600000
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 094 ok=0 err='out of range: poll_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 095 ok=0 err='duplicate key in tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 096 ok=0 err='unknown key in tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 097 ok=0 err='address overflow: B'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 098 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=65534 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 099 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=0111 hi=0 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 100 ok=0 err='expected number: high'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 101 ok=0 err='high_high must exceed high'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 102 ok=0 err='high_high must exceed high'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 103 ok=0 err='low_low must be below low'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 104 ok=0 err='low_low must be below low'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 105 ok=0 err='high must exceed low'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 106 ok=0 err='high must exceed low'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 107 ok=0 err='negative: deadband'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 108 ok=0 err='deadband too large'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 109 ok=0 err='deadband too large'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 110 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=4.9989999999999997 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 111 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=600000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 112 ok=0 err='out of range: on_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 113 ok=0 err='out of range: on_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 114 ok=0 err='out of range: off_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 115 ok=0 err='duplicate key in alarm'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 116 ok=0 err='unknown key in alarm'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 117 ok=0 err='alarm must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 118 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 119 ok=0 err='alarm must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 120 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=0 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 121 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=0 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 122 ok=0 err='expected bool: allowed'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 123 ok=0 err='expected bool: allowed'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 124 ok=0 err='viewer cannot write: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 125 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=2 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 126 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=3 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 127 ok=0 err='unknown role: root'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 128 ok=0 err='writable tag needs role,min,max: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 129 ok=0 err='writable tag needs role,min,max: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 130 ok=0 err='writable tag needs role,min,max: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 131 ok=0 err='write min>max: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 132 ok=0 err='write range outside eng range: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 133 ok=0 err='write range outside eng range: A'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 134 ok=0 err='duplicate key in write'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 135 ok=0 err='unknown key in write'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 136 ok=0 err='unknown role: nobody'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 137 ok=0 err='unknown key in tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 138 ok=0 err='input register not writable: B'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 139 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 140 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 141 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 142 ok=0 err='trailing data'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 143 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 144 ok=0 err='malformed JSON'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 145 ok=0 err='malformed JSON'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 146 ok=0 err='tag without name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 147 ok=0 err='unknown top-level key'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 148 ok=0 err='unknown top-level key'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 149 ok=0 err='write must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 150 ok=0 err='write must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 151 ok=0 err='bad key: plc'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 152 ok=0 err='bad key: tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 153 ok=0 err='bad key: write'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 154 ok=0 err='bad key: alarm'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 155 ok=0 err='bad key'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 156 ok=0 err='number length: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 157 ok=0 err='number length: address'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 158 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 159 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 160 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 161 ok=0 err='bad number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 162 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=16 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 163 ok=0 err='zero: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 164 ok=0 err='zero: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 165 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 166 ok=0 err='expected number: scale'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 167 ok=0 err='expected string: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 168 ok=0 err='illegal character: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 169 ok=0 err='illegal character: name'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 170 ok=0 err='illegal character: units'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+case 171 ok=0 err='unknown role: Operator'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc empty ok=0 err='size'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc NULL-len0 ok=0 err='size'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc garbage ok=0 err='top level must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc array ok=0 err='top level must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc string ok=0 err='top level must be object'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc nested-empty ok=0 err='version, plc and tags are required'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc truncated ok=0 err='malformed JSON'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc exactly-max ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+doc over-max ok=0 err='size'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc tags-64 ok=1 err=''
+  host='10.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=0 n=64
+  tag[0] name='T0' units='' area=0 addr=0 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[1] name='T1' units='' area=0 addr=3 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[2] name='T2' units='' area=0 addr=6 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[3] name='T3' units='' area=0 addr=9 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[4] name='T4' units='' area=0 addr=12 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[5] name='T5' units='' area=0 addr=15 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[6] name='T6' units='' area=0 addr=18 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[7] name='T7' units='' area=0 addr=21 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[8] name='T8' units='' area=0 addr=24 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[9] name='T9' units='' area=0 addr=27 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[10] name='T10' units='' area=0 addr=30 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[11] name='T11' units='' area=0 addr=33 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[12] name='T12' units='' area=0 addr=36 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[13] name='T13' units='' area=0 addr=39 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[14] name='T14' units='' area=0 addr=42 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[15] name='T15' units='' area=0 addr=45 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[16] name='T16' units='' area=0 addr=48 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[17] name='T17' units='' area=0 addr=51 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[18] name='T18' units='' area=0 addr=54 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[19] name='T19' units='' area=0 addr=57 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[20] name='T20' units='' area=0 addr=60 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[21] name='T21' units='' area=0 addr=63 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[22] name='T22' units='' area=0 addr=66 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[23] name='T23' units='' area=0 addr=69 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[24] name='T24' units='' area=0 addr=72 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[25] name='T25' units='' area=0 addr=75 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[26] name='T26' units='' area=0 addr=78 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[27] name='T27' units='' area=0 addr=81 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[28] name='T28' units='' area=0 addr=84 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[29] name='T29' units='' area=0 addr=87 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[30] name='T30' units='' area=0 addr=90 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[31] name='T31' units='' area=0 addr=93 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[32] name='T32' units='' area=0 addr=96 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[33] name='T33' units='' area=0 addr=99 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[34] name='T34' units='' area=0 addr=102 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[35] name='T35' units='' area=0 addr=105 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[36] name='T36' units='' area=0 addr=108 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[37] name='T37' units='' area=0 addr=111 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[38] name='T38' units='' area=0 addr=114 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[39] name='T39' units='' area=0 addr=117 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[40] name='T40' units='' area=0 addr=120 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[41] name='T41' units='' area=0 addr=123 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[42] name='T42' units='' area=0 addr=126 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[43] name='T43' units='' area=0 addr=129 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[44] name='T44' units='' area=0 addr=132 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[45] name='T45' units='' area=0 addr=135 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[46] name='T46' units='' area=0 addr=138 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[47] name='T47' units='' area=0 addr=141 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[48] name='T48' units='' area=0 addr=144 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[49] name='T49' units='' area=0 addr=147 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[50] name='T50' units='' area=0 addr=150 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[51] name='T51' units='' area=0 addr=153 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[52] name='T52' units='' area=0 addr=156 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[53] name='T53' units='' area=0 addr=159 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[54] name='T54' units='' area=0 addr=162 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[55] name='T55' units='' area=0 addr=165 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[56] name='T56' units='' area=0 addr=168 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[57] name='T57' units='' area=0 addr=171 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[58] name='T58' units='' area=0 addr=174 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[59] name='T59' units='' area=0 addr=177 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[60] name='T60' units='' area=0 addr=180 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[61] name='T61' units='' area=0 addr=183 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[62] name='T62' units='' area=0 addr=186 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+  tag[63] name='T63' units='' area=0 addr=189 dt=0 wo=0 bo=0 scale=1 off=0 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+doc tags-65 ok=0 err='tag count'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
+doc tokens-60x8 ok=0 err='too many tokens'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 n=0
