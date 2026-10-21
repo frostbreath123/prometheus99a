@@ -74,4 +74,34 @@ typedef enum {
     HMI_ROLE_ADMIN
 } hmi_role_t;
 
+/* Who performed a privileged action, for the audit trail: the name of a logged-in
+ * account (hmi_auth.h). Only a valid account name (3 to 24 characters from
+ * a-z 0-9 _ . -) is kept; anything else, including NULL and a test build's
+ * unauthenticated role, becomes "-". An audit line therefore never contains a
+ * space, a newline or an '=' supplied by a caller. The rule is the same as
+ * hmi_user_name_valid() and is checked against it in the tests. */
+#define HMI_ACTOR_LEN 25
+static inline void hmi_actor_copy(char dst[HMI_ACTOR_LEN], const char *src)
+{
+    size_t n = 0;
+    if (src) {
+        while (src[n]) {
+            char c = src[n];
+            bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+            if (!ok || n >= HMI_ACTOR_LEN - 1) {
+                n = 0;
+                break;
+            }
+            n++;
+        }
+    }
+    if (n < 3) {
+        dst[0] = '-';
+        dst[1] = '\0';
+        return;
+    }
+    for (size_t i = 0; i < n; i++) dst[i] = src[i];
+    dst[n] = '\0';
+}
+
 #endif /* HMI_TYPES_H */

@@ -1,13 +1,26 @@
 # systemd unit for the Prometheus99 HMI on Raspberry Pi OS Lite / Debian.
 #
-# Install (as root, paths are the defaults used below):
-#   install -m 0755 build-linux/prometheus99 /usr/local/bin/prometheus99
-#   install -m 0755 build-linux/p99_user /usr/local/bin/p99_user   # optional offline user tool
-#   install -d -o prometheus -g prometheus /etc/prometheus99 /var/lib/prometheus99
-#   install -m 0644 -o prometheus config/hmi.example.json /etc/prometheus99/hmi.json   # then edit host
-#   install -m 0644 deploy/prometheus99.service /etc/systemd/system/
+# Install (as root, paths are the defaults used below). The service user is
+# "prometheus". The configuration, its signature and its key are owned by root
+# and only READ by the service, so a compromised service cannot rewrite what it
+# will accept. The directory /etc/prometheus99 must not be writable by the
+# service either, or it could replace the files by renaming over them.
 #   useradd --system --no-create-home --groups video,input prometheus
+#   install -m 0755 build-linux/prometheus99 /usr/local/bin/prometheus99
+#   install -m 0755 build-linux/p99_user /usr/local/bin/p99_user   # offline user tool
+#   install -m 0755 build-linux/p99_sign /usr/local/bin/p99_sign   # offline signing tool
+#   install -d -o root -g root -m 0755 /etc/prometheus99
+#   install -d -o prometheus -g prometheus -m 0750 /var/lib/prometheus99
+#   install -m 0644 -o root -g root config/hmi.example.json /etc/prometheus99/hmi.json   # edit plc.host AND plc.allowed_hosts
+#   p99_sign keygen --key /etc/prometheus99/config.key
+#   chown root:prometheus /etc/prometheus99/config.key && chmod 0440 /etc/prometheus99/config.key
+#   p99_sign sign --config /etc/prometheus99/hmi.json --key /etc/prometheus99/config.key
+#   chown root:root /etc/prometheus99/hmi.json.sig && chmod 0644 /etc/prometheus99/hmi.json.sig
+#   install -m 0644 deploy/prometheus99.service /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now prometheus99
+# Every change to hmi.json must be signed again (p99_sign sign ...) and the
+# service restarted. Without a valid signature the HMI starts in safe mode: a
+# banner on the screen, no PLC connection, writes off.
 #
 # Status: written and statically checked only (see docs/LINUX_VALIDATION.md).
 # It has not been run under real systemd, nor on a Raspberry Pi.
@@ -37,6 +50,7 @@ SupplementaryGroups=video input
 ExecStart=/usr/local/bin/prometheus99 --config /etc/prometheus99/hmi.json \
     --audit /var/lib/prometheus99/audit.log --alarms /var/lib/prometheus99/alarms.bin \
     --users /var/lib/prometheus99/users.bin \
+    --config-key /etc/prometheus99/config.key --config-state /var/lib/prometheus99/config.serial \
     --fb /dev/fb0 --touch /dev/input/event0
 Restart=on-failure
 RestartSec=2

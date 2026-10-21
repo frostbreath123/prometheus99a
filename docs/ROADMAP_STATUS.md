@@ -68,6 +68,56 @@ Still open for M1: hash time on a Raspberry Pi, typing on a real touchscreen, a
 deployed service under its own user, a power-cut test of the store write, and the
 audit lines for acknowledgements and writes carrying the user name (M2 and M3).
 
+## Update 2026-10-22: milestone M2 (configuration integrity and safe startup) is implemented
+
+Decisions given by the project owner for M2: HMAC-SHA-512 from Monocypher's
+optional files (no new dependency, matches the document's "HMAC"), and the
+configuration, signature and key owned by root and only read by the service (the
+recommended form of D2). Consequence, reported rather than hidden: the HMI cannot
+save configuration changes itself, so "configuration save restricted to Admin" is
+deferred to the settings screen in M4 and needs a privileged helper. Design,
+ownership table, limits and evidence are in
+[CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.md).
+
+Rows 32 and 33 changed from partial to complete and verified on the host. Row 26
+stays partial: the audit lines now carry the user, but still no old value, no
+wall-clock time, and the write is still synchronous. After M2 the tally is 20 CV,
+4 IU, 15 PI, 13 NI, 2 BL, 1 OF.
+
+Fresh host results after M2 (rerun them rather than trusting this list):
+
+| Item | Result |
+|---|---|
+| Core modules, Windows host (`mingw32-make test-hmi`) | 1492 checks, 0 failed |
+| Core modules, WSL2 (also runs the POSIX file-mode rules) | 1532 checks, 0 failed |
+| View-model, end to end | 163 and 75 checks, 0 failed |
+| Config corpus | identical to the golden file |
+| Headless UI scenario | 84 assertions, 0 failed |
+| Liveness, command line, authentication and configuration executable tests (WSL2) | pass |
+| ASan with UBSan, and TSan, every core module (WSL2) | 0 reports |
+| Legacy prototype suite (Windows) | 48 checks, 0 failed; no legacy source file was changed |
+
+Documentation conflicts found while doing M2:
+
+1. The roadmap says "configuration save restricted to Admin". With root-owned
+   files the service cannot write the configuration, so on-device saving needs a
+   privileged helper and moves to M4. `hmi_config_save_text` remains in the code,
+   unused by the product.
+2. The roadmap says the key must be readable only by its owner. The service
+   must read it, so it is root:prometheus mode 0440. The protection is that the
+   service cannot write the files and the directory, not that it cannot read the
+   key.
+3. The mentor's document says "HMAC"; HMAC-SHA-512 was chosen over keyed BLAKE2b
+   so no acceptance question remains.
+4. The mentor's document says to load "read-only defaults and show a banner" on a
+   rejected configuration. The code shows a banner, makes no PLC endpoint and
+   forces writes off (discrepancy 3 below), unchanged.
+5. A shared-secret MAC cannot stop anyone who holds the key or is root.
+
+Still open for M2: a run under real systemd as the `prometheus` user with the
+root-owned files, a power-cut test of the serial state write, and the
+privileged helper for on-device configuration changes (M4).
+
 ## 1. Executive summary
 
 Genuinely complete, on the development host only (Windows MSYS2, WSL2 Ubuntu
@@ -191,7 +241,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 |---|---|---|---|---|---|
 | 24 | 7.4 | Validation, role, range, queue, read-back, at-most-once, UNKNOWN | CV (H, S) | `test_writes` 252, e2e | none |
 | 25 | 7.4, 10 | Audit before send, fail closed | CV (H, S) | same | none |
-| 26 | 7.4 | Audit content: user, old value, new value, result, time; via storage worker | PI | records id, tag, claimed role, new value, raw, read-back, exception code, monotonic ms; no user, old value or wall time; synchronous, and the RESERVED record is written on the UI thread | M2, M3 |
+| 26 | 7.4 | Audit content: user, old value, new value, result, time; via storage worker | PI | records id, tag, role, user (since M2), new value, raw, read-back, exception code, monotonic ms; no old value or wall time; synchronous, and the RESERVED record is written on the UI thread | M3 |
 | 27 | 10 | Write rate limiting | PI | queue bound of 8 and a 5 s time to live only | M3 |
 | 28 | 7.4 | Re-validation in the comms thread | NI | configuration is immutable after load, so the risk is low | M3 |
 
@@ -202,8 +252,8 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | 29 | 10 | Roles enforced in the core | CV (H) | `hmi_authz`, `hmi_alarm`, `hmi_writes`; since M1 the role handed to the core is the session role (`hmi_auth_role`), and `--role` exists only in a test build | none for the host; Pi |
 | 30 | 10 | Authentication, password KDF, first-boot credentials, lockout, idle logout | CV (H) | `hmi_kdf`, `hmi_users`, `hmi_auth`, login screen in `hmi_ui.c`, `p99_user`; Argon2id RFC 9106 vector, 237 auth checks, UI scenario, executable tests; see AUTHENTICATION.md | hash time on the Pi, real touchscreen entry, power-cut test of the store write |
 | 31 | 5.4 | Strict configuration validation | CV (H) | config golden 184, `test_config` 89 | none |
-| 32 | 5.4, 10 | Configuration integrity (CRC, HMAC), safe defaults and banner | PI | banner and no PLC endpoint on an invalid config; no integrity code | M2 |
-| 33 | 10 | Allow-list of PLC addresses | PI | one IPv4 literal, no DNS | M2 |
+| 32 | 5.4, 10 | Configuration integrity (CRC, HMAC), safe defaults and banner | CV (H) | `hmi_mac`, `hmi_cfgsec`, `p99_sign`; detached HMAC-SHA-512 signature, key file, CRC to separate damage from tampering, rollback serial, safe mode with banner; 223 cfgsec checks, `config-exec`; see CONFIG_INTEGRITY.md | run under real systemd with root-owned files; on-device saving (M4) |
+| 33 | 10 | Allow-list of PLC addresses | CV (H) | `plc.allowed_hosts` in the signed configuration; the tool will not sign and the device will not run a host that is not in it | none for the host |
 | 34 | 10 | State that Modbus TCP is unauthenticated; threat model; IEC 62443 mapping | NI | README does not say it; no threat model | M8 |
 | 35 | 10 | Non-root systemd hardening | IU | `deploy/prometheus99.service`; not installed under its user; `systemd-analyze security` not run | M5 |
 | 36 | 10 | Device hardening (SSH keys, minimal image) | BL | Pi | hardware |
@@ -254,8 +304,8 @@ These are reported, not resolved. Items 1 and 2 are covered by ADR-0001.
    version counters and label-text comparison.
 6. The document says the comms thread re-checks role and range before sending;
    the code validates only at submission (configuration is immutable).
-7. The document's audit record includes user and old value; the code has
-   neither.
+7. The document's audit record includes user and old value; since M2 the code
+   has the user, and still not the old value.
 8. The document's function-code table lists coils and discrete inputs; the code
    supports holding and input registers only.
 9. The document says Windows is dropped; the repository keeps a Windows host
@@ -324,6 +374,11 @@ below are the original plan.
   refusal; regression suites and sanitizers clean.
 
 ### M2 Configuration integrity and safe startup (P0)
+
+Status 2026-10-22: implemented and verified on the host (not under real systemd,
+not on a Raspberry Pi). See [CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.md). The task
+list below is the original plan; "configuration save restricted to Admin" is
+deferred to M4 (see the update at the top).
 
 - Requirements: rows 32, 33; §5.4, §10 config integrity, §9 tampered config.
 - Tasks: CRC for accidental corruption and a keyed MAC for tampering over the

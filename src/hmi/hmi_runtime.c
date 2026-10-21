@@ -6,9 +6,9 @@ static bool file_audit(void *user, const hmi_write_rec_t *r, const char *event)
 {
     const char *path = (const char *)user;
     char line[192];
-    int n = snprintf(line, sizeof(line), "%llu %s id=%u tag=%u role=%d eng=%.6g raw=0x%08X rb=0x%08X exc=%u\n",
+    int n = snprintf(line, sizeof(line), "%llu %s id=%u tag=%u role=%d eng=%.6g raw=0x%08X rb=0x%08X exc=%u user=%s\n",
                      (unsigned long long)r->t_submit_ms, event, (unsigned)r->id, (unsigned)r->tag,
-                     (int)r->role, r->eng, (unsigned)r->raw, (unsigned)r->readback_raw, (unsigned)r->exc);
+                     (int)r->role, r->eng, (unsigned)r->raw, (unsigned)r->readback_raw, (unsigned)r->exc, r->actor);
     if (n <= 0 || n >= (int)sizeof(line)) return false;
     return hmi_fs_append_sync(path, line, (size_t)n);
 }
@@ -22,7 +22,7 @@ static bool file_audit(void *user, const hmi_write_rec_t *r, const char *event)
 static bool file_ack_audit(void *user, const hmi_ack_audit_t *rec)
 {
     const hmi_runtime_t *rt = (const hmi_runtime_t *)user;
-    char line[512];
+    char line[640];
     size_t nt = hmi_tagdb_count(&rt->db);
     int n = snprintf(line, sizeof(line), "%llu ALARM_ACK role=%s action=%s result=%s n=%u points=",
                      (unsigned long long)rec->t_ms, hmi_role_name(rec->role), rec->all ? "ACK_ALL" : "ACK",
@@ -32,12 +32,14 @@ static bool file_ack_audit(void *user, const hmi_ack_audit_t *rec)
     for (size_t i = 0; i < rec->n_points; i++) {
         const char *who = rec->points[i] < nt ? hmi_tagdb_cfg(&rt->db, rec->points[i])->name : "PLC_LINK";
         size_t need = strlen(who) + 1u;
-        if (off + need + 12u >= sizeof(line)) { /* list would not fit: say how many were left out */
+        if (off + need + 12u + 40u >= sizeof(line)) { /* list would not fit (40 bytes stay free for " user=..."): say how many were left out */
             off += (size_t)snprintf(line + off, sizeof(line) - off, ",+%u_more", (unsigned)(rec->n_points - i));
             break;
         }
         off += (size_t)snprintf(line + off, sizeof(line) - off, "%s%s", i ? "," : "", who);
     }
+    if (off + 8u + strlen(rec->actor) >= sizeof(line)) return false; /* never write a line without its user */
+    off += (size_t)snprintf(line + off, sizeof(line) - off, " user=%s", rec->actor);
     line[off++] = '\n';
     return hmi_fs_append_sync(rt->audit_path, line, off);
 }

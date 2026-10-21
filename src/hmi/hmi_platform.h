@@ -72,6 +72,11 @@ hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *l
  * cannot be examined. */
 bool hmi_fs_mode(const char *path, uint32_t *mode);
 
+/* True if the user running this process could open the file for writing (so a
+ * compromise of the process could change it). Always false where the platform
+ * cannot say (the Windows development host). */
+bool hmi_fs_writable_by_me(const char *path);
+
 /* Cryptographically secure random bytes from the operating system. Returns
  * false on any failure; the caller must then not continue (never fall back to
  * a weak source). */

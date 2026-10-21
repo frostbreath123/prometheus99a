@@ -3,6 +3,7 @@
   "writes_enabled": false,
   "plc": {
     "host": "192.168.0.10",
+    "allowed_hosts": ["192.168.0.10"],
     "port": 502,
     "unit": 1,
     "response_timeout_ms": 500,

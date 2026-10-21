@@ -145,10 +145,10 @@ account (so a password typed into the wrong field never reaches the file).
 | `USER_CREATE_FAILED` | the account file could not be saved | best effort |
 | `USER_ADD`, `USER_REMOVE`, `USER_PASSWORD` | offline tool | the change is refused |
 
-Without `--audit` logins work and are not recorded, as for acknowledgements. The
-existing acknowledgement and write lines still carry the role but not the user
-name; correlating them with the login lines is by time. Adding the user to those
-lines is planned for milestones M2 and M3.
+Without `--audit` logins work and are not recorded, as for acknowledgements. Since
+milestone M2 the acknowledgement and write lines also end with `user=<name>`
+(see `docs/CONFIG_INTEGRITY.md`), so they no longer have to be matched to the
+login lines by time.
 
 ## The login screen
 

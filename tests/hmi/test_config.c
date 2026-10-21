@@ -134,8 +134,72 @@ static void test_example_config(void)
     CHECK(c.n_tags == 4 && c.tags[2].dtype == HMI_DT_U32 && c.tags[3].dtype == HMI_DT_F32);
 }
 
+/* GOOD_CFG with an "allowed_hosts" member inserted into the plc object. */
+static void with_allowed(const char *member, char *out, size_t cap)
+{
+    const char *anchor = "\"unit\":1,";
+    const char *at = strstr(GOOD_CFG, anchor) + strlen(anchor);
+    snprintf(out, cap, "%.*s%s%s", (int)(at - GOOD_CFG), GOOD_CFG, member, at);
+}
+
+static void test_allowed_hosts(void)
+{
+    SECTION("config: plc.allowed_hosts");
+    char json[2048], err[128];
+    hmi_app_cfg_t c;
+
+    CHECK(parse(GOOD_CFG, &c, err) && c.n_allowed == 0);               /* optional for the parser */
+    CHECK(!hmi_config_host_allowed(&c));                                /* but an empty list allows nothing */
+
+    with_allowed("\"allowed_hosts\":[\"127.0.0.1\"],", json, sizeof(json));
+    CHECK(parse(json, &c, err) && c.n_allowed == 1 && strcmp(c.allowed_hosts[0], "127.0.0.1") == 0);
+    CHECK(hmi_config_host_allowed(&c));
+
+    with_allowed("\"allowed_hosts\":[\"10.0.0.5\",\"127.0.0.1\",\"192.168.1.20\"],", json, sizeof(json));
+    CHECK(parse(json, &c, err) && c.n_allowed == 3 && hmi_config_host_allowed(&c)); /* host is the second entry */
+
+    with_allowed("\"allowed_hosts\":[\"10.0.0.5\"],", json, sizeof(json));
+    CHECK(parse(json, &c, err) && c.n_allowed == 1);
+    CHECK(!hmi_config_host_allowed(&c));                                /* host 127.0.0.1 is not on the list */
+    CHECK(!hmi_config_host_allowed(NULL));
+
+    /* a prefix or look-alike is not a match */
+    with_allowed("\"allowed_hosts\":[\"127.0.0.10\",\"27.0.0.1\"],", json, sizeof(json));
+    CHECK(parse(json, &c, err) && !hmi_config_host_allowed(&c));
+
+    /* eight entries are the limit */
+    with_allowed("\"allowed_hosts\":[\"10.0.0.1\",\"10.0.0.2\",\"10.0.0.3\",\"10.0.0.4\","
+                 "\"10.0.0.5\",\"10.0.0.6\",\"10.0.0.7\",\"127.0.0.1\"],", json, sizeof(json));
+    CHECK(parse(json, &c, err) && c.n_allowed == 8 && hmi_config_host_allowed(&c));
+    with_allowed("\"allowed_hosts\":[\"10.0.0.1\",\"10.0.0.2\",\"10.0.0.3\",\"10.0.0.4\","
+                 "\"10.0.0.5\",\"10.0.0.6\",\"10.0.0.7\",\"10.0.0.8\",\"127.0.0.1\"],", json, sizeof(json));
+    CHECK(!parse(json, &c, err) && strstr(err, "allowed_hosts count") && c.n_allowed == 0);
+
+    const char *bad[] = {
+        "\"allowed_hosts\":[],",                                        /* empty */
+        "\"allowed_hosts\":\"127.0.0.1\",",                             /* not an array */
+        "\"allowed_hosts\":[127],",                                     /* not a string */
+        "\"allowed_hosts\":[\"plc.local\"],",                           /* DNS name */
+        "\"allowed_hosts\":[\"127.0.0\"],",
+        "\"allowed_hosts\":[\"127.0.0.256\"],",
+        "\"allowed_hosts\":[\"127.0.0.1\",\"127.0.0.1\"],",             /* duplicate */
+        "\"allowed_hosts\":[\"\"],",
+        "\"allowed_hosts\":[\"127.0.0.1\"],\"allowed_hosts\":[\"127.0.0.1\"],", /* repeated key */
+        "\"allowed_hosts\":[[\"127.0.0.1\"]],",
+        "\"allowed_hosts\":null,",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        with_allowed(bad[i], json, sizeof(json));
+        bool ok = parse(json, &c, err);
+        if (ok) printf("  accepted: %s\n", bad[i]);
+        CHECK(!ok);
+        CHECK(c.n_allowed == 0 && c.host[0] == '\0');                   /* a rejection leaves nothing behind */
+    }
+}
+
 int main(void)
 {
+    test_allowed_hosts();
     test_config();
     test_config_files();
     test_example_config();

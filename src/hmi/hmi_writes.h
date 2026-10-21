@@ -47,6 +47,7 @@ typedef struct {
     uint8_t tag;
     hmi_wr_state_t state;
     hmi_role_t role;
+    char actor[HMI_ACTOR_LEN];   /* logged-in user name, or "-" (see hmi_actor_copy) */
     double eng;
     uint32_t raw;
     uint32_t readback_raw;
@@ -99,6 +100,10 @@ void hmi_writes_set_enabled(hmi_writes_t *w, bool enabled);
  * the link is lost. */
 hmi_wr_submit_t hmi_writes_submit(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role,
                                   hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id);
+/* The same with the name of the logged-in user, kept in the audit record. The
+ * call above records "-". The UI always uses this one. */
+hmi_wr_submit_t hmi_writes_submit_as(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role, const char *actor,
+                                     hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id);
 bool hmi_writes_status(hmi_writes_t *w, uint32_t id, hmi_write_rec_t *out);
 void hmi_writes_stats(hmi_writes_t *w, hmi_writes_stats_t *out);
 

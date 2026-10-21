@@ -101,8 +101,43 @@ static void test_users_and_role_given(void)
     CHECK(!o.role_given && strcmp(o.users, "/var/lib/prometheus99/users.bin") == 0);   /* defaults after failure */
 }
 
+static void test_config_security_options(void)
+{
+    SECTION("cli: --config-key, --config-state and --unsigned-config");
+    hmi_cli_t o;
+    char err[128];
+    CHECK(run(&o, err, sizeof(err), 1, 0, 0, 0, 0, 0, 0));
+    CHECK(strcmp(o.config_key, "/etc/prometheus99/config.key") == 0);
+    CHECK(strcmp(o.config_state, "/var/lib/prometheus99/config.serial") == 0);
+    CHECK(!o.unsigned_config);                              /* signed configuration is the default */
+
+    CHECK(run(&o, err, sizeof(err), 5, "--config-key", "k.bin", "--config-state", "s.bin", 0, 0));
+    CHECK(strcmp(o.config_key, "k.bin") == 0 && strcmp(o.config_state, "s.bin") == 0 && !o.unsigned_config);
+
+    CHECK(run(&o, err, sizeof(err), 2, "--unsigned-config", 0, 0, 0, 0, 0));
+    CHECK(o.unsigned_config);
+    CHECK(run(&o, err, sizeof(err), 4, "--unsigned-config", "--config", "c.json", 0, 0, 0)); /* takes no value */
+    CHECK(o.unsigned_config && strcmp(o.config, "c.json") == 0);
+    CHECK(run(&o, err, sizeof(err), 4, "--config", "c.json", "--unsigned-config", 0, 0, 0));
+    CHECK(o.unsigned_config && strcmp(o.config, "c.json") == 0);
+
+    CHECK(!run(&o, err, sizeof(err), 3, "--unsigned-config", "--unsigned-config", 0, 0, 0, 0));
+    CHECK(strstr(err, "option given twice: --unsigned-config") != NULL);
+    CHECK(!run(&o, err, sizeof(err), 3, "--unsigned-config", "yes", 0, 0, 0, 0));          /* stray argument */
+    CHECK(strstr(err, "unexpected argument: yes") != NULL);
+    CHECK(!run(&o, err, sizeof(err), 2, "--unsigned-config=1", 0, 0, 0, 0, 0));
+    CHECK(run(&o, err, sizeof(err), 3, "--config-key", "a", 0, 0, 0, 0));                   /* valid: one value */
+    CHECK(!run(&o, err, sizeof(err), 2, "--config-key", 0, 0, 0, 0, 0));                   /* no value */
+    CHECK(!run(&o, err, sizeof(err), 3, "--config-state", "", 0, 0, 0, 0));                /* empty value */
+    CHECK(!run(&o, err, sizeof(err), 5, "--config-key", "a", "--config-key", "b", 0, 0));  /* repeated */
+    CHECK(!run(&o, err, sizeof(err), 3, "--configkey", "k", 0, 0, 0, 0));                  /* typo */
+    CHECK(!run(&o, err, sizeof(err), 3, "--unsigned-config", "--role", "bogus", 0, 0, 0));
+    CHECK(!o.unsigned_config);                              /* defaults after a failed parse */
+}
+
 int main(void)
 {
+    test_config_security_options();
     test_defaults_and_valid();
     test_rejections();
     test_users_and_role_given();

@@ -10,6 +10,8 @@ B=${1:-build-linux}
 TPL=${2:-config/hmi.example.json}
 W=$(mktemp -d /tmp/p99_live.XXXXXX)
 sed -e 's/192\.168\.0\.10/127.0.0.1/' -e 's/"port": 502,/"port": 5502,/' "$TPL" > "$W/cfg.json"
+. "$(dirname "$0")/sign_fixture.sh"
+sign_config "$B" "$W" || { echo "cannot sign the test configuration"; exit 1; }
 fail=0
 check() { if [ "$2" = ok ]; then echo "  ok   $1"; else echo "  FAIL $1"; fail=1; fi; }
 
@@ -19,7 +21,7 @@ for i in $(seq 1 50); do grep -q listening "$W/notify.log" 2>/dev/null && break;
 
 NOTIFY_SOCKET="$W/notify.sock" WATCHDOG_USEC=1000000 \
   "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
-  --audit "$W/audit.log" --alarms "$W/alarms.bin" --users "$W/users.bin" > "$W/app.out" 2>&1 &
+  --audit "$W/audit.log" --alarms "$W/alarms.bin" --users "$W/users.bin"  --config-key "$W/cfg.key" --config-state "$W/cfg.serial" > "$W/app.out" 2>&1 &
 APP=$!
 
 sleep 3
@@ -53,7 +55,7 @@ LP2=$!
 for i in $(seq 1 50); do grep -q listening "$W/notify2.log" 2>/dev/null && break; sleep 0.1; done
 NOTIFY_SOCKET="$W/notify2.sock" WATCHDOG_USEC=1000000 \
   "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
-  --audit "$W/audit2.log" --alarms "$W/alarms2.bin" --users "$W/users2.bin" > "$W/app2.out" 2>&1 &
+  --audit "$W/audit2.log" --alarms "$W/alarms2.bin" --users "$W/users2.bin"  --config-key "$W/cfg.key" --config-state "$W/cfg.serial" > "$W/app2.out" 2>&1 &
 APP2=$!
 sleep 8
 hp=$(grep -c "WATCHDOG=1" "$W/notify2.log")

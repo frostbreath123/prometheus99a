@@ -83,7 +83,8 @@ plus end-to-end against real libmodbus):
 | Authentication, password hashing, lockout, idle logout, first-boot administrator, `p99_user` | implemented and host-tested (Windows and WSL2, see [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)); **not run on a Raspberry Pi or a real touchscreen**, hash time on the target not measured |
 | Trend chart, multiple screens, settings UI | **not implemented** |
 | Liveness supervision (sd_notify READY and WATCHDOG, `HB nn` header mark, `deploy/prometheus99.service`) | tested on WSL2 with a fake notify socket (SIGSTOP, SIGCONT, SIGKILL, hung PLC) and with a transient real-systemd unit; **not run on a Raspberry Pi**, unit not installed under its real user and paths |
-| Config reload at runtime, config HMAC/integrity key | **not implemented** |
+| Configuration integrity (detached HMAC-SHA-512 signature, key file, rollback serial, PLC allow-list, safe mode), `p99_sign` | implemented and host-tested (Windows and WSL2, see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)); **not run under real systemd as the service user, nor on a Raspberry Pi** |
+| Config reload at runtime, saving configuration from the HMI | **not implemented** (the configuration is changed offline by root and re-signed) |
 
 ## Build and test (Windows host, MSYS2 UCRT64 GCC + GNU make)
 
@@ -136,7 +137,7 @@ failover. Its previous "0.10 MB RAM" claim was a working-set artefact
 1. Detect a framebuffer device that opens but is not a framebuffer
    (`FBIOGET_VSCREENINFO` probe) in `main_linux.c`.
 2. Raspberry Pi measurements (RSS/PSS, CPU, startup, frame time, touch latency).
-3. Config integrity. Periodic alarm-state save and audit-log rotation (both currently only on clean shutdown / unbounded). Hardware watchdog and installing the unit on a real device.
+3. Periodic alarm-state save and audit-log rotation (both currently only on clean shutdown / unbounded). Hardware watchdog and installing the unit on a real device.
 4. Trim `lv_conf.h` (default config builds a 1.5 MB test binary).
 5. Soak test, fault injection with `tc netem`, fuzzing the config parser.
 
@@ -168,13 +169,19 @@ for this repository's own code ([LICENSE](LICENSE)).
   file next to PLC writes. A granted acknowledgement and a successful login are
   refused if a configured audit file cannot be written; without `--audit` they
   work and are not recorded. The acknowledgement and write lines carry the role
-  but not yet the user name.
+  and, since M2, the logged-in user (`user=<name>`).
 - Timestamps in the audit file are milliseconds since boot (monotonic), not
   wall-clock time.
 - Limits of the user file: a CRC detects corruption, not an attacker who can
   write the file as the service user. The file's owner and mode (0600, refused
   if group or others can write it) are what protect it.
-- Still **not** implemented: config integrity (HMAC), audit-file integrity or
+- The configuration must be signed (see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)).
+  A missing, damaged, altered, wrongly keyed or rolled-back configuration, or
+  one whose `plc.host` is not in `plc.allowed_hosts`, puts the device in safe
+  mode: a banner on the screen, no PLC connection, writes off. Sign with
+  `p99_sign sign --config FILE --key FILE`. Files that group or others can
+  write are refused. `--unsigned-config` exists only in the simulation build.
+- Still **not** implemented: audit-file integrity or
   rotation, an on-screen user management page (the offline tool does this), and
   any protection of the Modbus TCP link itself (it has no authentication or
   encryption).

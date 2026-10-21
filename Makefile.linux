@@ -28,7 +28,7 @@ MB_CFLAGS = $(shell pkg-config --cflags libmodbus)
 MB_LIBS = $(shell pkg-config --libs libmodbus)
 
 HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c third_party/monocypher/monocypher.c src/hmi/hmi_platform_posix.c
+           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
 FAKE_PLC = tests/hmi/fake_modbus_server_posix.c
 WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
 
@@ -45,7 +45,7 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
@@ -75,6 +75,11 @@ $(BUILD)/prometheus99-sim: src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/ui/hmi_ui.c \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
+
+# Configuration signing tool (see src/app/p99_sign.c).
+$(BUILD)/p99_sign: src/app/p99_sign.c $(HMI_CORE)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) src/app/p99_sign.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
 
 # Offline user management tool (see src/app/p99_user.c).
 $(BUILD)/p99_user: src/app/p99_user.c $(HMI_CORE)
@@ -109,7 +114,7 @@ e2e: $(BUILD)/test_e2e
 ui-host: $(BUILD)/ui_headless
 	./$(BUILD)/ui_headless $(BUILD)/shot $(BUILD)/ui_audit.log
 
-hmi: $(BUILD)/prometheus99 $(BUILD)/p99_user
+hmi: $(BUILD)/prometheus99 $(BUILD)/p99_user $(BUILD)/p99_sign
 
 hmi-sim: $(BUILD)/prometheus99-sim
 
@@ -118,7 +123,7 @@ hmi-sim: $(BUILD)/prometheus99-sim
 hmi-run-sim: $(BUILD)/prometheus99-sim
 	./$(BUILD)/prometheus99-sim --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
 
-test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec auth-exec
+test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec auth-exec config-exec
 
 clean:
 	rm -rf $(BUILD)
@@ -150,7 +155,7 @@ $(BUILD)/notify_listener: tests/hmi/notify_listener.c
 
 # Runs the real executable under a fake systemd: READY, WATCHDOG cadence,
 # SIGSTOP / SIGCONT / SIGKILL. No display, loopback config, no PLC.
-liveness: $(BUILD)/prometheus99 $(BUILD)/notify_listener $(BUILD)/hang_server
+liveness: $(BUILD)/prometheus99 $(BUILD)/p99_sign $(BUILD)/notify_listener $(BUILD)/hang_server
 	bash tests/hmi/liveness_e2e.sh $(BUILD) config/hmi.example.json
 
 .PHONY: test-notify liveness
@@ -161,12 +166,17 @@ $(BUILD)/hang_server: tests/hmi/hang_server.c
 
 # Real executables: invalid flags exit 2; the production build refuses --role;
 # the simulation build starts with each valid role.
-cli-exec: $(BUILD)/prometheus99 $(BUILD)/prometheus99-sim
+cli-exec: $(BUILD)/prometheus99 $(BUILD)/prometheus99-sim $(BUILD)/p99_sign
 	bash tests/hmi/cli_exec_test.sh $(BUILD) config/hmi.example.json
 
 # Real executables and the user tool: first boot, store states, file modes,
 # audit records, tool commands.
-auth-exec: $(BUILD)/prometheus99 $(BUILD)/p99_user
+auth-exec: $(BUILD)/prometheus99 $(BUILD)/p99_user $(BUILD)/p99_sign
 	bash tests/hmi/auth_exec_test.sh $(BUILD) config/hmi.example.json
 
-.PHONY: cli-exec auth-exec
+# Real executables and the signing tool: signed configuration accepted,
+# every kind of tampering ends in safe mode, rollback, allow-list, file modes.
+config-exec: $(BUILD)/prometheus99 $(BUILD)/p99_sign
+	bash tests/hmi/config_exec_test.sh $(BUILD) config/hmi.example.json
+
+.PHONY: cli-exec auth-exec config-exec

@@ -7,6 +7,8 @@ B=${1:-build-linux}
 TPL=${2:-config/hmi.example.json}
 W=$(mktemp -d /tmp/p99_auth.XXXXXX)
 sed -e 's/192\.168\.0\.10/127.0.0.1/' -e 's/"port": 502,/"port": 5502,/' "$TPL" > "$W/cfg.json"
+. "$(dirname "$0")/sign_fixture.sh"
+sign_config "$B" "$W" || { echo "cannot sign the test configuration"; exit 1; }
 fail=0
 ok() { echo "  ok   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -83,7 +85,7 @@ printf 'x-password-123\n' | "$TOOL" --users "$U" --audit "$W/no_such_dir/audit.l
 
 echo "== production executable and the store"
 run_app() { # extra args; prints stderr after 1 s
-  "$APP" --config "$W/cfg.json" --users "$U" --fb /dev/null --touch /nonexistent --audit "$W/app_audit.log" "$@" > "$W/app.out" 2>&1 &
+  "$APP" --config "$W/cfg.json" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" --users "$U" --fb /dev/null --touch /nonexistent --audit "$W/app_audit.log" "$@" > "$W/app.out" 2>&1 &
   local p=$!
   sleep 1
   kill -TERM $p 2>/dev/null; wait $p 2>/dev/null

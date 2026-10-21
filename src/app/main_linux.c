@@ -10,7 +10,15 @@
  *                --audit /var/lib/prometheus99/audit.log \
  *                --alarms /var/lib/prometheus99/alarms.bin \
  *                --users /var/lib/prometheus99/users.bin \
+ *                --config-key /etc/prometheus99/config.key \
+ *                --config-state /var/lib/prometheus99/config.serial \
  *                [--fb /dev/fb0] [--touch /dev/input/event0]
+ *
+ * The configuration is used only if "<config>.sig" verifies against the key
+ * (hmi_cfgsec.h, tool p99_sign). A missing, damaged, altered, wrongly keyed or
+ * rolled-back configuration, or one whose plc.host is not in plc.allowed_hosts,
+ * is refused: the screen shows the reason, no PLC connection is made and writes
+ * stay off. --unsigned-config exists only in the simulation build.
  *
  * Roles come from logging in on the screen (hmi_auth.h). Until someone logs in
  * the role is Viewer. The first time, while no user file exists, the login
@@ -31,6 +39,7 @@
 #include "../hmi/hmi_watchdog.h"
 #include "../hmi/hmi_cli.h"
 #include "../hmi/hmi_auth.h"
+#include "../hmi/hmi_cfgsec.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -64,9 +73,9 @@ int main(int argc, char **argv)
     if (!hmi_cli_parse(argc, argv, &cli, cli_err, sizeof(cli_err))) {
         fprintf(stderr, "prometheus99: %s\n", cli_err);
         fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE] [--users FILE]\n"
-                        "                    [--fb DEV] [--touch DEV]"
+                        "                    [--config-key FILE] [--config-state FILE] [--fb DEV] [--touch DEV]"
 #ifdef HMI_TEST_ROLE
-                        " [--role viewer|operator|engineer|admin]"
+                        " [--role viewer|operator|engineer|admin] [--unsigned-config]"
 #endif
                         "\n");
         return 2;
@@ -75,6 +84,11 @@ int main(int argc, char **argv)
     if (cli.role_given) {
         fprintf(stderr, "prometheus99: --role is not available in this build: roles come from logging in on the "
                         "screen. (The simulation build 'hmi-sim' accepts it for tests.)\n");
+        return 2;
+    }
+    if (cli.unsigned_config) {
+        fprintf(stderr, "prometheus99: --unsigned-config is not available in this build: the configuration must be "
+                        "signed (see p99_sign). (The simulation build 'hmi-sim' accepts it for tests.)\n");
         return 2;
     }
 #endif
@@ -127,10 +141,49 @@ int main(int argc, char **argv)
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
 
-    char err[160];
-    bool cfg_ok = hmi_config_load_file(cfg_path, &g_cfg, err, sizeof(err));
-    char banner[200];
+    char err[200];
+    bool cfg_ok;
+    char banner[240];
     banner[0] = '\0';
+#ifdef HMI_TEST_ROLE
+    if (cli.unsigned_config) {
+        /* Test build only: no signature, no key, no allow-list. */
+        cfg_ok = hmi_config_load_file(cfg_path, &g_cfg, err, sizeof(err));
+        fprintf(stderr, "prometheus99: TEST BUILD: configuration NOT verified (--unsigned-config)\n");
+    } else
+#endif
+    {
+        /* The configuration is used only if its signature verifies (hmi_cfgsec.h).
+         * Any failure is safe mode: banner on screen, no PLC endpoint, writes off. */
+        hmi_cfgsec_paths_t sp;
+        sp.config_path = cfg_path;
+        sp.sig_path = NULL;
+        sp.key_path = cli.config_key;
+        sp.state_path = cli.config_state;
+        hmi_cfgsec_info_t si;
+        hmi_cfgsec_result_t sr = hmi_cfgsec_load(&sp, &g_cfg, &si);
+        cfg_ok = (sr == HMI_CFGSEC_OK);
+        snprintf(err, sizeof(err), "%s", si.message);
+        char aline[100];
+        if (audit_path && hmi_cfgsec_format_audit(hmi_now_ms(), &si, aline, sizeof(aline)) > 0)
+            hmi_fs_append_sync(audit_path, aline, strlen(aline)); /* best effort: nothing depends on it */
+        if (cfg_ok) {
+            fprintf(stderr, "prometheus99: configuration verified (signature serial %u)\n", (unsigned)si.serial);
+            if (si.state_damaged)
+                fprintf(stderr, "prometheus99: warning: the config serial file '%s' was damaged and was treated as absent\n",
+                        cli.config_state);
+            if (!si.serial_recorded)
+                fprintf(stderr, "prometheus99: warning: the config serial could not be stored in '%s'; rollback protection is not active\n",
+                        cli.config_state);
+            if (si.config_writable_by_service)
+                fprintf(stderr, "prometheus99: warning: the service user can modify the configuration file; a compromised "
+                                "service could rewrite it (the signature would still be checked at the next start)\n");
+            if (si.key_writable_by_service)
+                fprintf(stderr, "prometheus99: warning: the service user can modify the configuration key file\n");
+        } else {
+            fprintf(stderr, "prometheus99: CONFIGURATION REJECTED (%s): %s\n", hmi_cfgsec_reason_code(sr), si.message);
+        }
+    }
     if (!cfg_ok) snprintf(banner, sizeof(banner), "CONFIG REJECTED: %s", err);
 
     plc_libmodbus_t *plc = NULL;
