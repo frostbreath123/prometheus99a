@@ -1,6 +1,7 @@
 # PROJECT_RESUME.md: Prometheus99 handoff
 
-Last updated: 2026-10-15, after the Linux execution and sanitizer session
+Last updated: 2026-10-22 (milestone M1, authentication, implemented; see section S,
+section R and `docs/ROADMAP_STATUS.md`). Earlier text: 2026-10-15, after the Linux execution and sanitizer session
 (see section K for what changed; sections E, F, G and J were updated to
 match). Written for a fresh session / a new
 engineer with no access to the earlier conversation. Everything was checked
@@ -679,3 +680,128 @@ calling thread; Viewer still sees setpoint buttons (core refuses); no write
 rate limit beyond the queue bound; systemd hardening untested under the real
 user; Modbus TCP is unauthenticated and unencrypted and there is no threat
 model document; no fuzzing, no SBOM.
+
+---
+
+## R. Handoff for a new session: audit and roadmap (2026-10-22)
+
+Read `docs/ROADMAP_STATUS.md` first. It holds the full requirements matrix
+(55 rows against the mentor's document), the discrepancies, the P0 to P4
+gaps, milestones M1 to M9, blockers, outstanding decisions and the definition
+of finished. This section is only a pointer and a state summary.
+
+**The audit was read-only. No implementation code was changed, nothing was
+committed, and the frozen legacy prototype was not touched.** The only edits
+made after the audit are `docs/ROADMAP_STATUS.md` (new) and this section plus
+the "Last updated" line.
+
+Current state
+- Git: local repository, branch `feature/authorization-hardening`, one commit
+  `2ca7c75`. Four empty stray files (`BAD`, `DEGRADED`, `backoff`, `recovery`)
+  sit untracked in the project root; they are junk and can be deleted.
+  `third_party/lvgl` and `third_party/libmodbus` are gitlinks without a
+  `.gitmodules` file. No remote, no push, no CI.
+- Verified results (host only: Windows MSYS2 and WSL2; no Raspberry Pi, no
+  real PLC): core modules 742 checks, view-model 92, e2e 75, notify 13, config
+  golden 184 cases identical, headless UI 36 assertions, liveness 8 of 8,
+  command-line 15 of 15, real-systemd watchdog restart under WSL2, ASan, UBSan
+  and TSan 0 reports. Rerun the suites; do not trust this list blindly.
+- Requirement tally from the audit: 16 complete and verified (host evidence
+  only), 4 implemented but unverified, 18 partial, 14 not implemented, 2
+  blocked, 1 optional.
+- Not done: authentication (login, KDF, lockout, idle logout), config
+  integrity (CRC and HMAC), storage worker and journal persistence, audit
+  rotation, trends and extra screens, alarm priority, fuzzing, CI, soak, Qt
+  baseline, OPC UA spike, threat model, 62443 mapping, SBOM, everything on a
+  Raspberry Pi.
+- Known stale text to fix when touching docs: `README.md` line 77 quotes old
+  test counts; `docs/ADR-0001-runtime-boundaries.md` still says the POSIX file
+  is not yet compiled and quotes 521 checks.
+
+Outstanding decisions (waiting for the project owner)
+1. Approval of the roadmap order M1 to M5.
+2. D1: crypto library and the HMAC approach. Leaning Monocypher (Argon2id and
+   a keyed MAC in one small dependency) after a licence check; the mentor must
+   accept a keyed BLAKE2b MAC if the document's "HMAC" is to be met that way.
+   Alternatives: libsodium, mbedTLS or OpenSSL (PBKDF2 and HMAC).
+3. D2: where the config MAC key lives (a key readable by the service user does
+   not stop code running as that user).
+4. D3: Modbus coil and discrete-input scope. Leaning out of scope for now.
+5. D4: Raspberry Pi availability; M5 should start as soon as a device exists.
+6. D5: GitHub and CI setup (not requested so far).
+
+Exact next steps
+1. Ask the owner for the decisions above (at least approval, D1, D3, D4).
+2. Plan M1 (authentication and sessions) in detail and wait for approval:
+   module layout (`hmi_auth`, `hmi_users`), user-store format and file
+   permissions, KDF parameters for a small device, first-boot flow, lockout
+   policy, login screen with the LVGL keyboard, how `--role` is demoted to a
+   test option, tests and acceptance.
+3. After approval, implement M1 in small verified steps, then M2, M3, M4; start
+   M5 when hardware exists.
+
+Rules to keep
+- Complete major requirements first; defer minor polish and optional features.
+- Do not connect to a real PLC or issue real control writes.
+- Do not move, rename, delete or modify the frozen legacy prototype.
+- Do not commit, push or set up GitHub unless the owner asks.
+- Keep ADR-0001 and the architecture unless a demonstrated defect requires a
+  change; report documentation conflicts instead of choosing silently.
+- Tool notes: run Linux commands with `wsl.exe` from PowerShell, not from the
+  Bash tool (path mangling); put multi-line commands in script files; WSL
+  clears `/tmp` when the distro stops (keep work in `/root`); `mingw32-make
+  clean` deletes `build/`; TSan needs `setarch $(uname -m) -R`.
+
+## S. Milestone M1 (authentication and sessions) implemented (2026-10-22)
+
+Read `docs/AUTHENTICATION.md` for the design, parameters, evidence and limits.
+This section is the state summary. Section R above describes the situation
+before M1 and is partly out of date (it says authentication is missing).
+
+Decisions from the project owner: roadmap M1 to M5 approved; Monocypher (D1);
+root-owned key file for the config MAC, relevant from M2 (D2); coils out of
+scope for now (D3); Raspberry Pi "soon, date unknown" (D4); GitHub and CI wanted
+(D5) but not started because no repository details were given. Argon2id with 3
+passes, 8 MiB and 1 lane, on-screen first-boot administrator creation, a
+compile-time gate for `--role`, and a deferred user-management screen (M4) were
+approved.
+
+What exists now (host evidence only, Windows MSYS2 and WSL2):
+- `third_party/monocypher` (4.0.2, checksums in `docs/THIRD_PARTY.md`),
+  `src/hmi/hmi_kdf.*`, `hmi_users.*`, `hmi_auth.*`, platform additions
+  (`hmi_fs_read_all`, `hmi_fs_mode`, `hmi_random_bytes`), login screen and header
+  role label in `src/ui/hmi_ui.c`, wording in `src/ui/hmi_view.c`,
+  `src/app/p99_user.c`, a `--users` option, the production build refusing
+  `--role`, and a simulation build (`hmi-sim`, `-DHMI_TEST_ROLE=1`).
+- New tests: `test_kdf`, `test_platform`, `test_users`, `test_auth`, additions to
+  `test_cli`, `test_hmi_view`, `ui_headless`, and the scripts `auth_exec_test.sh`
+  and `cli_exec_test.sh` (rewritten for the two builds).
+- Results: core 1148 checks on Windows and 1168 on WSL2, view-model 163, e2e 75,
+  config corpus identical, UI scenario 77 assertions, liveness, `cli-exec` and
+  `auth-exec` pass on WSL2, ASan with UBSan and TSan 0 reports on every core
+  module. The legacy suite still passes (48 checks) and no legacy file changed.
+  Rerun these; do not trust this list blindly.
+- ADR-0001 has an addendum for M1 and its stale text was corrected.
+  `docs/LINUX_VALIDATION.md`, `docs/ROADMAP_STATUS.md` and the README were updated.
+
+Not verified: hash time on a Raspberry Pi (the host measures 13 to 41 ms, the
+target is unknown), typing on a real touchscreen, a deployed service under its
+own user, a power-cut test of the store write, sanitizers on the LVGL harness and
+the full executable.
+
+Known limits (documented in AUTHENTICATION.md): the user file CRC does not stop a
+writer who is the service user; deleting the file returns the device to first
+boot; deleting the counter file resets lockouts; the offline tool changes take
+effect after a restart; acknowledgement and write audit lines still carry the
+role but not the user name.
+
+Working tree: nothing is committed. Untracked or modified files are the M1 work
+plus the earlier audit documents. The four empty stray files `BAD`, `DEGRADED`,
+`backoff`, `recovery` are still there; the owner has not yet agreed to delete
+them.
+
+Next steps: GitHub and CI setup when the owner gives repository details; M2
+(configuration integrity and safe startup), then M3, M4 and M5 as in
+`docs/ROADMAP_STATUS.md`. Tool notes from section R still apply. In addition: this
+session's shell tool altered backslash escapes inside heredocs, so write files
+with the file tools and keep patch scripts in files.

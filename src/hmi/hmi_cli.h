@@ -8,8 +8,11 @@
  * never turn into a more privileged role, and a typo in `--audit` must never
  * turn into "no audit trail".
  *
- * The role is a CLAIMED role chosen by whoever starts the process. It is not
- * authentication. The default is the least privileged role (viewer).
+ * --role is a CLAIMED role chosen by whoever starts the process. It is not
+ * authentication. The default is the least privileged role (viewer). The
+ * parser still accepts it so that a test build can use it; the production
+ * executable refuses it (see main_linux.c and role_given below). Real roles
+ * come from logging in (hmi_auth.h).
  */
 #ifndef HMI_CLI_H
 #define HMI_CLI_H
@@ -23,7 +26,9 @@ typedef struct {
     const char *alarms;   /* --alarms  (default none: alarm state not persisted) */
     const char *fb;       /* --fb      (default /dev/fb0) */
     const char *touch;    /* --touch   (default /dev/input/event0) */
-    hmi_role_t role;      /* --role    (default viewer) */
+    hmi_role_t role;      /* --role    (default viewer; test builds only) */
+    bool role_given;      /* --role appeared on the command line */
+    const char *users;    /* --users   (default /var/lib/prometheus99/users.bin) */
 } hmi_cli_t;
 
 /* Returns true on success. On failure err holds a one-line reason and *out is

@@ -9,9 +9,18 @@
  *   prometheus99 --config /etc/prometheus99/hmi.json \
  *                --audit /var/lib/prometheus99/audit.log \
  *                --alarms /var/lib/prometheus99/alarms.bin \
- *                [--fb /dev/fb0] [--touch /dev/input/event0] [--role viewer|operator|engineer|admin]
+ *                --users /var/lib/prometheus99/users.bin \
+ *                [--fb /dev/fb0] [--touch /dev/input/event0]
  *
- * The role defaults to viewer and is a claimed role, not authentication.
+ * Roles come from logging in on the screen (hmi_auth.h). Until someone logs in
+ * the role is Viewer. The first time, while no user file exists, the login
+ * screen offers to create the administrator.
+ *
+ * --role viewer|operator|engineer|admin exists only in a test build (compile
+ * with -DHMI_TEST_ROLE=1, make target hmi-sim). The production build refuses it
+ * with exit status 2, so a started process can never be given a role from the
+ * command line. A test build shows a permanent "TEST ROLE ... NOT AUTHENTICATED"
+ * banner.
  *
  * An invalid or missing configuration never falls back to a default PLC: the
  * UI shows the reason, no connection is made and writes stay disabled.
@@ -21,6 +30,7 @@
 #include "../hmi/plc_libmodbus.h"
 #include "../hmi/hmi_watchdog.h"
 #include "../hmi/hmi_cli.h"
+#include "../hmi/hmi_auth.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -40,6 +50,9 @@ static uint32_t tick_cb(void) { return (uint32_t)hmi_now_ms(); }
 
 static hmi_runtime_t g_rt;
 static hmi_app_cfg_t g_cfg;
+#ifndef HMI_TEST_ROLE
+static hmi_auth_t g_auth;
+#endif
 
 int main(int argc, char **argv)
 {
@@ -50,18 +63,56 @@ int main(int argc, char **argv)
     char cli_err[160];
     if (!hmi_cli_parse(argc, argv, &cli, cli_err, sizeof(cli_err))) {
         fprintf(stderr, "prometheus99: %s\n", cli_err);
-        fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE] [--fb DEV]\n"
-                        "                    [--touch DEV] [--role viewer|operator|engineer|admin]\n");
+        fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE] [--users FILE]\n"
+                        "                    [--fb DEV] [--touch DEV]"
+#ifdef HMI_TEST_ROLE
+                        " [--role viewer|operator|engineer|admin]"
+#endif
+                        "\n");
         return 2;
     }
+#ifndef HMI_TEST_ROLE
+    if (cli.role_given) {
+        fprintf(stderr, "prometheus99: --role is not available in this build: roles come from logging in on the "
+                        "screen. (The simulation build 'hmi-sim' accepts it for tests.)\n");
+        return 2;
+    }
+#endif
     const char *cfg_path = cli.config;
     const char *audit_path = cli.audit;
     const char *alarm_path = cli.alarms;
     const char *fb_path = cli.fb;
     const char *touch_path = cli.touch;
+#ifdef HMI_TEST_ROLE
     hmi_role_t role = cli.role;
     fprintf(stderr, "prometheus99: role=%s (claimed on the command line, not authenticated)\n",
             hmi_role_name(role));
+    fprintf(stderr, "prometheus99: TEST BUILD: --role is honoured and nothing is authenticated\n");
+#else
+    {
+        hmi_auth_cfg_t acfg;
+        acfg.users_path = cli.users;
+        acfg.idle_ms = 0;
+        acfg.kdf = NULL;
+        if (!hmi_auth_init(&g_auth, &acfg, hmi_now_ms())) {
+            fprintf(stderr, "prometheus99: cannot use the user store path '%s'\n", cli.users);
+            return 2;
+        }
+        if (audit_path) hmi_auth_set_audit(&g_auth, hmi_auth_file_audit, (void *)audit_path);
+        hmi_auth_store_t st = hmi_auth_store_state(&g_auth);
+        if (st == HMI_AUTH_STORE_READY)
+            fprintf(stderr, "prometheus99: user store %s: ready\n", cli.users);
+        else if (st == HMI_AUTH_STORE_NONE)
+            fprintf(stderr, "prometheus99: user store %s: absent (first boot: the login screen creates the administrator)\n",
+                    cli.users);
+        else
+            fprintf(stderr, "prometheus99: user store %s: INVALID, login disabled (%s)\n", cli.users,
+                    hmi_auth_store_error(&g_auth));
+        if (hmi_auth_store_readable_by_others(&g_auth))
+            fprintf(stderr, "prometheus99: warning: the user store can be read by group or others (use mode 0600)\n");
+        if (!audit_path) fprintf(stderr, "prometheus99: warning: no --audit file: logins will not be recorded\n");
+    }
+#endif
 
     /* lv_linux_fbdev_set_file() returns void, so probe the device ourselves.
      * Without a display the process must fail fast (non-zero) so a service
@@ -102,7 +153,11 @@ int main(int argc, char **argv)
     (void)touch;
 
     hmi_ui_enable_heartbeat(true);
+#ifdef HMI_TEST_ROLE
     hmi_ui_init(runtime_up ? &g_rt : NULL, role, banner[0] ? banner : NULL);
+#else
+    hmi_ui_init_auth(runtime_up ? &g_rt : NULL, &g_auth, banner[0] ? banner : NULL);
+#endif
 
     /* Supervisor liveness. Pings (systemd WATCHDOG=1) are sent from this
      * loop only while the comms and supervisor threads are also advancing, so
@@ -138,5 +193,8 @@ int main(int argc, char **argv)
     if (runtime_up) hmi_runtime_stop(&g_rt);
     if (plc) plc_libmodbus_destroy(plc);
     lv_deinit();
+#ifndef HMI_TEST_ROLE
+    hmi_auth_deinit(&g_auth);
+#endif
     return 0;
 }

@@ -101,6 +101,59 @@ bool hmi_fs_append_sync(const char *path, const void *data, size_t len)
     return ok;
 }
 
+hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *len)
+{
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        DWORD e = GetLastError();
+        return (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) ? HMI_FS_READ_ABSENT : HMI_FS_READ_ERROR;
+    }
+    size_t got = 0;
+    hmi_fs_read_t res = HMI_FS_READ_OK;
+    for (;;) {
+        char extra;
+        char *dst = got < cap ? (char *)buf + got : &extra;
+        DWORD want = got < cap ? (DWORD)(cap - got) : 1u, n = 0;
+        if (!ReadFile(h, dst, want, &n, NULL)) {
+            res = HMI_FS_READ_ERROR;
+            break;
+        }
+        if (n == 0) break;
+        if (got >= cap) {
+            res = HMI_FS_READ_TOO_BIG;
+            break;
+        }
+        got += n;
+    }
+    CloseHandle(h);
+    if (res == HMI_FS_READ_OK && len) *len = got;
+    return res;
+}
+
+bool hmi_fs_mode(const char *path, uint32_t *mode)
+{
+    if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) return false;
+    *mode = 0600u; /* no POSIX permission bits here */
+    return true;
+}
+
+/* RtlGenRandom (exported as SystemFunction036 by advapi32): the documented
+ * way to get random bytes without a CryptoAPI context, and available to
+ * MinGW without extra link flags. */
+BOOLEAN NTAPI SystemFunction036(PVOID buffer, ULONG length);
+
+bool hmi_random_bytes(void *out, size_t n)
+{
+    unsigned char *p = (unsigned char *)out;
+    while (n > 0) {
+        ULONG chunk = n > 65536u ? 65536u : (ULONG)n;
+        if (!SystemFunction036(p, chunk)) return false;
+        p += chunk;
+        n -= chunk;
+    }
+    return true;
+}
+
 bool hmi_notify(const char *message)
 {
     (void)message; /* no supervisor protocol on the Windows development host */

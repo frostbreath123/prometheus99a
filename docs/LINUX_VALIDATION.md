@@ -155,3 +155,28 @@ WSL2 host (Ubuntu 24.04, gcc 13.3), not Raspberry Pi, no real PLC.
 
 Limits: the claimed role is not authentication; "durable" means `fsync`
 returned success on this filesystem; no power-cut test was run.
+
+
+## Authentication and sessions (2026-10-22)
+
+WSL2 host (Ubuntu 24.04, gcc 13.3), x86-64, not Raspberry Pi, no real PLC, no
+display. Design record: [AUTHENTICATION.md](AUTHENTICATION.md). The source tree
+was synced to `/root/p99` as before.
+
+| Item | Command | Result |
+|---|---|---|
+| Core tests, all modules | `make -f Makefile.linux test` | 1168 checks, 0 failed (kdf 32, platform 26, users 114, auth 237, cli 83) |
+| View-model | `make -f Makefile.linux test-view` | 163 checks, 0 failed |
+| End to end | `make -f Makefile.linux e2e` | 75 checks, 0 failed |
+| Config corpus | `make -f Makefile.linux test-config-golden` | identical |
+| Headless UI with first boot, wrong password, lock wait, login, idle logout, logout and audit lines | `make -f Makefile.linux ui-host` | 77 assertions, 0 failed; 0 flushes in 1.5 s idle with the login layer present |
+| Liveness under a fake systemd | `make -f Makefile.linux liveness` | pass |
+| Command line and `--role` gate (production build refuses it, simulation build accepts it) | `make -f Makefile.linux cli-exec` | pass |
+| User tool, store states, file modes, audit lines | `make -f Makefile.linux auth-exec` | pass |
+| ASan with UBSan, and TSan, every core module | `-fsanitize=address,undefined` and `-fsanitize=thread` | 0 reports |
+| Argon2id hash time, default cost (3 passes, 8 MiB) | `p99_user bench` | 41, 17 and 13 ms in three runs on this host |
+
+Limits: the sanitizers were run on the core modules, not on the LVGL harness or
+the full executable. Hash time on a Raspberry Pi, typing on a real touchscreen,
+a deployed service under its own user, and a power cut during a store write
+were not tested.

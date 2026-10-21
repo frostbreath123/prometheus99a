@@ -19,7 +19,7 @@ for i in $(seq 1 50); do grep -q listening "$W/notify.log" 2>/dev/null && break;
 
 NOTIFY_SOCKET="$W/notify.sock" WATCHDOG_USEC=1000000 \
   "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
-  --audit "$W/audit.log" --alarms "$W/alarms.bin" > "$W/app.out" 2>&1 &
+  --audit "$W/audit.log" --alarms "$W/alarms.bin" --users "$W/users.bin" > "$W/app.out" 2>&1 &
 APP=$!
 
 sleep 3
@@ -53,7 +53,7 @@ LP2=$!
 for i in $(seq 1 50); do grep -q listening "$W/notify2.log" 2>/dev/null && break; sleep 0.1; done
 NOTIFY_SOCKET="$W/notify2.sock" WATCHDOG_USEC=1000000 \
   "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
-  --audit "$W/audit2.log" --alarms "$W/alarms2.bin" > "$W/app2.out" 2>&1 &
+  --audit "$W/audit2.log" --alarms "$W/alarms2.bin" --users "$W/users2.bin" > "$W/app2.out" 2>&1 &
 APP2=$!
 sleep 8
 hp=$(grep -c "WATCHDOG=1" "$W/notify2.log")

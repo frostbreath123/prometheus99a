@@ -68,19 +68,19 @@ plus end-to-end against real libmodbus):
 
 | Feature | State |
 |---|---|
-| Decode/scaling/order, quality, versions, scheduling, backoff | host-tested (535 checks) |
+| Decode/scaling/order, quality, versions, scheduling, backoff | host-tested (the core test modules total 1148 checks on the Windows host, 1168 on WSL2, which also runs the POSIX file-mode tests) |
 | Writes: confirm, exception, lost reply, verify, expiry, audit failure, queue/audit capacity | host-tested (mock) and 2 scenarios against libmodbus |
 | Alarms: debounce, hysteresis, ack, escalation, RTN, persistence, frozen on BAD | host-tested |
 | Config validation + atomic save | host-tested (30+ rejection cases) |
 | Real Modbus TCP framing/timeouts/exceptions via libmodbus 3.1.10 | host-tested against in-process fake server (75 checks) |
 | LVGL rendering, binder, buttons | rendered headless on host; screenshots in `bench/results/` |
-| POSIX platform file, POSIX fake PLC, libmodbus 3.1.10, `Makefile.linux` | built and tested on WSL2 (Ubuntu 24.04, gcc 13.3): 535 + 79 + 75 checks, 22 UI scenario assertions pass (WSL2 host, not Raspberry Pi) |
+| POSIX platform file, POSIX fake PLC, libmodbus 3.1.10, `Makefile.linux` | built and tested on WSL2 (Ubuntu 24.04, gcc 13.3): 1168 core + 163 view-model + 75 end-to-end checks, 77 UI scenario assertions pass (WSL2 host, not Raspberry Pi) |
 | Linux executable `prometheus99` | links on WSL2; with a missing framebuffer path it prints an error and exits 2. A path that opens but is not a framebuffer (e.g. `/dev/null`) is not detected |
 | Linux fbdev + evdev touch on a real display | **never executed**; no framebuffer exists on the development host |
 | Real PLC interoperability, word/byte order of real devices | **not tested** |
 | Raspberry Pi: CPU, RAM, startup, frame time, touch latency | **not measured** |
 | Sanitizers (WSL2 gcc) | ASan+UBSan and TSan clean on core and e2e (TSan first found 3 races in the core test code itself, fixed; none in `src/hmi`) |
-| Authentication / lockout / users | **not implemented**. The role is a claimed role from `--role` (default viewer), not an identity; see "Roles and authorization" below |
+| Authentication, password hashing, lockout, idle logout, first-boot administrator, `p99_user` | implemented and host-tested (Windows and WSL2, see [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)); **not run on a Raspberry Pi or a real touchscreen**, hash time on the target not measured |
 | Trend chart, multiple screens, settings UI | **not implemented** |
 | Liveness supervision (sd_notify READY and WATCHDOG, `HB nn` header mark, `deploy/prometheus99.service`) | tested on WSL2 with a fake notify socket (SIGSTOP, SIGCONT, SIGKILL, hung PLC) and with a transient real-systemd unit; **not run on a Raspberry Pi**, unit not installed under its real user and paths |
 | Config reload at runtime, config HMAC/integrity key | **not implemented** |
@@ -104,7 +104,9 @@ sudo apt install build-essential pkg-config libmodbus-dev
 make -f Makefile.linux test
 make -f Makefile.linux e2e
 make -f Makefile.linux ui-host
-make -f Makefile.linux hmi
+make -f Makefile.linux hmi          # prometheus99 and the offline user tool p99_user
+make -f Makefile.linux hmi-sim      # test build that accepts --role; never deploy it
+make -f Makefile.linux cli-exec auth-exec
 ```
 
 Do not run `./build-linux/prometheus99` with `config/hmi.example.json` as
@@ -134,7 +136,7 @@ failover. Its previous "0.10 MB RAM" claim was a working-set artefact
 1. Detect a framebuffer device that opens but is not a framebuffer
    (`FBIOGET_VSCREENINFO` probe) in `main_linux.c`.
 2. Raspberry Pi measurements (RSS/PSS, CPU, startup, frame time, touch latency).
-3. Authentication, lockout, config integrity. Periodic alarm-state save and audit-log rotation (both currently only on clean shutdown / unbounded). Hardware watchdog and installing the unit on a real device.
+3. Config integrity. Periodic alarm-state save and audit-log rotation (both currently only on clean shutdown / unbounded). Hardware watchdog and installing the unit on a real device.
 4. Trim `lv_conf.h` (default config builds a 1.5 MB test binary).
 5. Soak test, fault injection with `tc netem`, fuzzing the config parser.
 
@@ -145,22 +147,34 @@ for this repository's own code ([LICENSE](LICENSE)).
 
 ## Roles and authorization
 
-- **The role is claimed, not authenticated.** It is chosen with `--role
-  viewer|operator|engineer|admin` by whoever starts the process. Nothing
-  verifies who that is, so command-line role selection is not authentication
-  and must not be described as access control. The default is `viewer`. The
-  shipped unit file passes `--role operator` explicitly.
-- Unknown roles, unknown options, missing values and repeated options exit
-  with status 2.
+- **Roles come from logging in.** The device starts as Viewer. A person logs in
+  on the screen, and the role of that account is the role the UI hands to the
+  core. Passwords are hashed with Argon2id, failed logins are delayed and then
+  locked, and an idle session ends after five minutes. While no user file
+  exists the login screen offers to create the administrator. Accounts are
+  managed offline with `p99_user`. The design, parameters and limits are in
+  [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+- **`--role` is a test option only.** The production executable refuses it with
+  exit status 2. The simulation build (`make -f Makefile.linux hmi-sim`)
+  honours it, says so at start-up, and shows a permanent "TEST ROLE ... NOT
+  AUTHENTICATED" banner. It must not be deployed. Unknown roles, unknown
+  options, missing values and repeated options exit with status 2 in both
+  builds.
 - Authorization is enforced in the core, not only in the UI. Acknowledging
   alarms needs Operator or above; writing a tag needs the tag's configured
   minimum role. The UI dims the ACK ALL button for a Viewer and shows the
   refusal, but the core refuses regardless.
-- Alarm acknowledgements are written to the audit file next to PLC writes. A
-  granted acknowledgement is refused if a configured audit file cannot be
-  written; without `--audit` acknowledgements work and are not recorded.
+- Alarm acknowledgements, logins, logouts and lockouts are written to the audit
+  file next to PLC writes. A granted acknowledgement and a successful login are
+  refused if a configured audit file cannot be written; without `--audit` they
+  work and are not recorded. The acknowledgement and write lines carry the role
+  but not yet the user name.
 - Timestamps in the audit file are milliseconds since boot (monotonic), not
   wall-clock time.
-- Still **not** implemented: login, password hashing, lockout, config
-  integrity (HMAC), audit-file integrity or rotation, and any protection of
-  the Modbus TCP link itself (it has no authentication or encryption).
+- Limits of the user file: a CRC detects corruption, not an attacker who can
+  write the file as the service user. The file's owner and mode (0600, refused
+  if group or others can write it) are what protect it.
+- Still **not** implemented: config integrity (HMAC), audit-file integrity or
+  rotation, an on-screen user management page (the offline tool does this), and
+  any protection of the Modbus TCP link itself (it has no authentication or
+  encryption).

@@ -22,12 +22,16 @@ src/hmi/        PORTABLE CORE (C99, no OS headers)
   hmi_alarm.*     ISA-18.2-style alarm engine, journal, persistence
   hmi_config.*    strict JSON config (jsmn)  [file I/O via platform layer]
   hmi_runtime.*   threads + audit sink wiring
+  hmi_kdf.*       Argon2id password hash (the only file that includes monocypher.h, see the 2026-10-22 addendum)
+  hmi_users.*     user store: accounts, strict file format
+  hmi_auth.*      login, lockout, idle logout, first-boot administrator
   hmi_platform.h  the ONLY OS surface: clock, mutex, thread, atomic flag, atomic file write
 src/hmi/hmi_platform_win32.c   host tests / Windows demo
-src/hmi/hmi_platform_posix.c   Linux target (not yet compiled+run, see README)
+src/hmi/hmi_platform_posix.c   Linux target (built and tested on WSL2; not run on a Raspberry Pi)
 src/hmi/plc_libmodbus.*        driver backed by libmodbus 3.1.10 (the only file that includes <modbus.h>)
 src/ui/hmi_ui.*               LVGL v9.2.2 presentation; UI thread only
 src/app/main_linux.c          Linux entry point (fbdev + evdev)
+src/app/p99_user.c            offline user management tool (Linux)
 
 include/, src/layer*.c, src/main.c   LEGACY Windows prototype (unchanged boundary)
 tests/ (legacy), tests/hmi/          host tests, fake PLC, headless UI harness
@@ -51,12 +55,13 @@ tests/ (legacy), tests/hmi/          host tests, fake PLC, headless UI harness
 ## Consequences
 
 - The portable core is host-testable with a scripted mock driver and a fake
-  clock (521 checks) and with real libmodbus against an in-process fake PLC
-  (75 checks), with no hardware.
-- Linux behaviour is only as verified as the POSIX platform file; until it is
-  built and run on Linux the claim is "compiles in principle", nothing more.
-- Roles are a launch parameter, not authentication. A real login/lockout
-  module is future work (see README "Not implemented").
+  clock and with real libmodbus against an in-process fake PLC, with no
+  hardware. The check counts change as tests are added; the current numbers
+  are in docs/LINUX_VALIDATION.md.
+- The POSIX platform file has been built and run on WSL2 (Ubuntu 24.04). Linux
+  behaviour on a Raspberry Pi has not been verified at all.
+- At the time of writing roles were a launch parameter and not authentication.
+  This was superseded on 2026-10-22: see the last addendum.
 
 ## Addendum (2026-10-15): comms / writes split
 
@@ -112,3 +117,44 @@ Decision:
 
 Not changed: PLC write authorization, audit-before-send and fail-closed
 behaviour for PLC writes (252 write checks and the e2e suite pass unchanged).
+
+## Addendum 2026-10-22: authentication and sessions
+
+Context: roles were claimed on the command line (addendum 2026-10-15), which is
+not access control. Roadmap milestone M1 replaces it with a login. Details,
+parameters and limits are in docs/AUTHENTICATION.md.
+
+Decision:
+- Roles come from a session. `hmi_auth_role(auth, now)` is the only source of the
+  role that the UI passes to the unchanged `hmi_alarm_ack*` and
+  `hmi_writes_submit`. It returns Viewer when logged out and after an idle
+  timeout, without needing any state change to happen first.
+- `hmi_authz`, the write pipeline, audit-before-send and fail-closed behaviour
+  are unchanged. A successful login is itself recorded before the session starts
+  and is refused if a configured audit file cannot be written.
+- New modules: `hmi_kdf` (Argon2id and constant-time helpers over Monocypher
+  4.0.2), `hmi_users` (strict user file), `hmi_auth` (sessions, lockout,
+  asynchronous hash job). `hmi_auth` is owned by the UI thread. Only the
+  password hash runs on a short-lived worker thread, and it communicates through
+  one atomic flag and a thread join.
+- Rule 1 above (core files include only the C standard library and
+  `hmi_platform.h`) gets a second exception, the same kind as `plc_libmodbus.c`:
+  `hmi_kdf.c` includes `monocypher.h` and nothing else outside the portable core
+  does. The platform layer gained `hmi_fs_read_all`, `hmi_fs_mode` and
+  `hmi_random_bytes` so that no other core file touches the operating system.
+- The Argon2id scratch memory (8 MiB at the default cost) is allocated for one
+  hash and freed afterwards. This is a transient allocation made only while a
+  password is checked, not a steady-state allocation.
+- `--role` is parsed in every build but the production executable refuses it
+  (exit status 2). A separate build compiled with `-DHMI_TEST_ROLE=1` accepts it,
+  announces that it is a test build and shows a permanent banner. It is for
+  tests and simulation only.
+
+Consequences:
+- The user file is protected by its owner and mode, not by its format. A CRC
+  detects corruption but not an attacker who can write the file as the service
+  user (see docs/AUTHENTICATION.md).
+- The existing acknowledgement and write audit lines still carry the role and
+  not the user name. Adding it is planned for milestones M2 and M3.
+- Nothing here was run on a Raspberry Pi. The hash time on the target is
+  unmeasured.
