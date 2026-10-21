@@ -213,7 +213,8 @@ typedef struct {
     uint64_t since_ms[HMI_MAX_TAGS + 1];
 } ack_set_t;
 
-static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint64_t now, hmi_role_t role)
+static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint64_t now, hmi_role_t role,
+                                    const char *actor)
 {
     ack_set_t set;
     hmi_ack_audit_fn audit;
@@ -242,6 +243,7 @@ static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint
     hmi_ack_audit_t rec;
     rec.t_ms = now;
     rec.role = role;
+    hmi_actor_copy(rec.actor, actor);
     rec.all = all;
     rec.result = allowed ? HMI_ACK_OK : HMI_ACK_DENIED;
     rec.n_points = set.n;
@@ -281,12 +283,22 @@ static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint
 
 hmi_ack_result_t hmi_alarm_ack(hmi_alarm_t *a, size_t point, uint64_t now, hmi_role_t role)
 {
-    return ack_request(a, false, point, now, role);
+    return ack_request(a, false, point, now, role, NULL);
 }
 
 hmi_ack_result_t hmi_alarm_ack_all(hmi_alarm_t *a, uint64_t now, hmi_role_t role)
 {
-    return ack_request(a, true, 0, now, role);
+    return ack_request(a, true, 0, now, role, NULL);
+}
+
+hmi_ack_result_t hmi_alarm_ack_as(hmi_alarm_t *a, size_t point, uint64_t now, hmi_role_t role, const char *actor)
+{
+    return ack_request(a, false, point, now, role, actor);
+}
+
+hmi_ack_result_t hmi_alarm_ack_all_as(hmi_alarm_t *a, uint64_t now, hmi_role_t role, const char *actor)
+{
+    return ack_request(a, true, 0, now, role, actor);
 }
 
 void hmi_alarm_get(hmi_alarm_t *a, size_t point, hmi_alarm_point_t *out)

@@ -155,6 +155,45 @@ Consequences:
   detects corruption but not an attacker who can write the file as the service
   user (see docs/AUTHENTICATION.md).
 - The existing acknowledgement and write audit lines still carry the role and
-  not the user name. Adding it is planned for milestones M2 and M3.
+  not the user name. (Done in M2: see the 2026-10-22 addendum on configuration integrity.)
 - Nothing here was run on a Raspberry Pi. The hash time on the target is
   unmeasured.
+
+## Addendum 2026-10-22: configuration integrity and safe startup
+
+Context: the configuration decides which PLC the device talks to and whether and
+how far it may write, and until now any file edit could change that. Roadmap
+milestone M2 adds an integrity check. Details, file ownership, limits and
+evidence are in docs/CONFIG_INTEGRITY.md.
+
+Decision:
+- A configuration is used only if its detached HMAC-SHA-512 signature verifies
+  (`hmi_cfgsec`). Nothing is parsed before the MAC check succeeds. A failure is
+  the existing safe mode (banner, no PLC endpoint, writes off). The strict
+  parser, the table-driven schema and the golden corpus are unchanged apart from
+  one new optional field, `plc.allowed_hosts`, which a signed configuration must
+  contain with `plc.host` in it.
+- The signature carries a serial number and the device refuses a lower one than
+  it has accepted (rollback protection).
+- The files are owned by root and only read by the service. The HMI therefore
+  does not write its configuration. The roadmap item "configuration save
+  restricted to Admin" is deferred to milestone M4 and needs a privileged helper.
+- Rule 1 above gets a third exception of the same kind as the earlier two:
+  `hmi_mac.c` includes Monocypher's `monocypher-ed25519.h` and nothing else
+  outside the portable core does. `hmi_cfgsec.c` and `hmi_users.c` use only the
+  platform layer, which gained `hmi_fs_writable_by_me`.
+- Acknowledgement and write audit records carry the logged-in user.
+  `hmi_alarm_ack_as`, `hmi_alarm_ack_all_as` and `hmi_writes_submit_as` take the
+  name; the older calls record "-". The role checks, audit-before-effect and
+  fail-closed behaviour are unchanged. The line formats only gained a trailing
+  ` user=<name>`.
+- The production executable refuses `--unsigned-config`; the simulation build
+  accepts it for tests.
+
+Consequences:
+- Changing the configuration is an offline, privileged step (edit, sign,
+  restart). The HMI cannot change it.
+- A shared-secret MAC does not protect against anyone who holds the key or is
+  root, and the serial state file can be deleted by the service user.
+- Nothing here was run under real systemd as the service user or on a
+  Raspberry Pi.

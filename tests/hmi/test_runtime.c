@@ -95,15 +95,19 @@ static void test_runtime_ack_audit(void)
     size_t unacked = hmi_alarm_count_unacked(&rt.alarms);
 
     CHECK(hmi_alarm_ack_all(&rt.alarms, hmi_now_ms(), HMI_ROLE_VIEWER) == HMI_ACK_DENIED);
+    CHECK(hmi_alarm_ack_all_as(&rt.alarms, hmi_now_ms(), HMI_ROLE_VIEWER, "view.er") == HMI_ACK_DENIED);
+    CHECK(hmi_alarm_ack_all_as(&rt.alarms, hmi_now_ms(), HMI_ROLE_VIEWER, "bad name=x") == HMI_ACK_DENIED); /* hostile name */
     CHECK(hmi_alarm_count_unacked(&rt.alarms) == unacked);
-    CHECK(hmi_alarm_ack(&rt.alarms, 0, hmi_now_ms(), HMI_ROLE_OPERATOR) == HMI_ACK_OK);
+    CHECK(hmi_alarm_ack_as(&rt.alarms, 0, hmi_now_ms(), HMI_ROLE_OPERATOR, "op1") == HMI_ACK_OK);
     CHECK(hmi_alarm_count_unacked(&rt.alarms) == unacked - 1);
     hmi_runtime_stop(&rt);
 
     size_t len = slurp(path, text, sizeof(text));
     CHECK(len > 0);
-    CHECK(strstr(text, " ALARM_ACK role=viewer action=ACK_ALL result=DENIED n=1 points=LVL\n") != NULL);
-    CHECK(strstr(text, " ALARM_ACK role=operator action=ACK result=GRANTED n=1 points=LVL\n") != NULL);
+    CHECK(strstr(text, " ALARM_ACK role=viewer action=ACK_ALL result=DENIED n=1 points=LVL user=-\n") != NULL);        /* the unnamed call records "-" */
+    CHECK(strstr(text, " ALARM_ACK role=viewer action=ACK_ALL result=DENIED n=1 points=LVL user=view.er\n") != NULL);
+    CHECK(strstr(text, " ALARM_ACK role=operator action=ACK result=GRANTED n=1 points=LVL user=op1\n") != NULL);
+    CHECK(strstr(text, "bad name") == NULL && strstr(text, "x user=") == NULL);          /* a hostile name never reaches the file */
     CHECK(text[len - 1] == '\n');                  /* only complete lines */
     remove(path);
 

@@ -308,8 +308,69 @@ static void test_writes_module(void)
     hmi_tagdb_destroy(&db);
 }
 
+/* ---- the user who asked is part of every audit record of the write ---- */
+typedef struct {
+    int n;
+    char actor[16][HMI_ACTOR_LEN];
+    char event[16][16];
+} actor_log_t;
+
+static bool actor_audit(void *u, const hmi_write_rec_t *r, const char *ev)
+{
+    actor_log_t *l = (actor_log_t *)u;
+    if (l->n < 16) {
+        snprintf(l->actor[l->n], HMI_ACTOR_LEN, "%s", r->actor);
+        snprintf(l->event[l->n], sizeof(l->event[0]), "%s", ev);
+        l->n++;
+    }
+    return true;
+}
+
+static void test_write_actor(void)
+{
+    SECTION("writes: the logged-in user is kept in the audit record");
+    fx_t *f = fx_new(false);
+    settle_connected(f);
+    actor_log_t log;
+    memset(&log, 0, sizeof(log));
+    hmi_writes_set_audit(&f->w, actor_audit, &log);
+
+    uint32_t id;
+    hmi_write_rec_t r;
+    CHECK(hmi_writes_submit_as(&f->w, 0, 42.0, HMI_ROLE_OPERATOR, "op1", hmi_comms_link_health(&f->c), g_now, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && strcmp(r.actor, "op1") == 0);
+    run_until(f, g_now + 100);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_CONFIRMED && strcmp(r.actor, "op1") == 0);
+    CHECK(log.n >= 2);                                       /* RESERVED, SENT and the final record */
+    int all_op1 = 1;
+    for (int i = 0; i < log.n; i++) all_op1 &= strcmp(log.actor[i], "op1") == 0;
+    CHECK(all_op1);                                          /* every record of this write names the user */
+
+    /* the unnamed call and invalid names record "-" */
+    int before = log.n;
+    CHECK(submit(f, 0, 43.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && strcmp(r.actor, "-") == 0);
+    run_until(f, g_now + 100);
+    CHECK(log.n > before && strcmp(log.actor[before], "-") == 0);
+    const char *bad[] = { "", "ab", "Admin", "a b c", "evil\nuser", "user=admin", "abcdefghijklmnopqrstuvwxy", "Ã©tienne" };
+    for (size_t k = 0; k < sizeof(bad) / sizeof(bad[0]); k++) {
+        CHECK(hmi_writes_submit_as(&f->w, 0, 44.0, HMI_ROLE_OPERATOR, bad[k], hmi_comms_link_health(&f->c), g_now, &id) == HMI_WRS_OK);
+        CHECK(hmi_writes_status(&f->w, id, &r) && strcmp(r.actor, "-") == 0);
+        run_until(f, g_now + 100);
+    }
+    CHECK(hmi_writes_submit_as(&f->w, 0, 45.0, HMI_ROLE_OPERATOR, NULL, hmi_comms_link_health(&f->c), g_now, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && strcmp(r.actor, "-") == 0);
+    run_until(f, g_now + 100);
+    /* a name of exactly 24 characters is kept whole */
+    CHECK(hmi_writes_submit_as(&f->w, 0, 46.0, HMI_ROLE_OPERATOR, "abcdefghijklmnopqrstuvwx", hmi_comms_link_health(&f->c), g_now, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && strcmp(r.actor, "abcdefghijklmnopqrstuvwx") == 0);
+    run_until(f, g_now + 100);
+    fx_free(f, false);
+}
+
 int main(void)
 {
+    test_write_actor();
     test_write_confirmed();
     test_write_disabled();
     test_write_exception();

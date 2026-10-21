@@ -51,6 +51,8 @@ const char *hmi_ui_ack_status_text(void);
 /* Test seam: runs exactly what pressing ACK ALL runs, including for roles
  * whose button is disabled, so tests can prove the core refuses. UI thread. */
 void hmi_ui_press_ack_all(void);
+/* Test seam: runs exactly what pressing the setpoint SEND button runs. */
+void hmi_ui_press_setpoint_send(void);
 
 /* Test seams for the login screen. Each runs exactly what the matching
  * on-screen control runs. UI thread only. */

@@ -19,12 +19,16 @@ static void defaults(hmi_cli_t *o)
     o->role = HMI_ROLE_VIEWER;
     o->role_given = false;
     o->users = "/var/lib/prometheus99/users.bin";
+    o->config_key = "/etc/prometheus99/config.key";
+    o->config_state = "/var/lib/prometheus99/config.serial";
+    o->unsigned_config = false;
 }
 
 bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_cap)
 {
-    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_USERS, F_COUNT };
-    static const char *const FLAGS[F_COUNT] = { "--config", "--audit", "--alarms", "--fb", "--touch", "--role", "--users" };
+    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_USERS, F_CONFIG_KEY, F_CONFIG_STATE, F_UNSIGNED, F_COUNT };
+    static const char *const FLAGS[F_COUNT] = { "--config", "--audit", "--alarms", "--fb", "--touch", "--role", "--users",
+                                              "--config-key", "--config-state", "--unsigned-config" };
     bool seen[F_COUNT] = { false };
     hmi_cli_t o;
     defaults(&o);
@@ -43,6 +47,10 @@ bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_
         }
         if (seen[f]) return fail(err, err_cap, "option given twice", arg);
         seen[f] = true;
+        if (f == F_UNSIGNED) { /* the only option without a value */
+            o.unsigned_config = true;
+            continue;
+        }
         if (i + 1 >= argc) return fail(err, err_cap, "missing value for", arg);
         const char *val = argv[++i];
         if (val[0] == '\0' || strncmp(val, "--", 2) == 0) return fail(err, err_cap, "missing value for", arg);
@@ -53,6 +61,8 @@ bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_
             case F_FB: o.fb = val; break;
             case F_TOUCH: o.touch = val; break;
             case F_USERS: o.users = val; break;
+            case F_CONFIG_KEY: o.config_key = val; break;
+            case F_CONFIG_STATE: o.config_state = val; break;
             case F_ROLE:
                 o.role_given = true;
                 if (!hmi_role_parse(val, &o.role)) {

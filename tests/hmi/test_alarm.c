@@ -234,6 +234,37 @@ static void test_ack_operator_allowed(void)
     fx_free(f, true);
 }
 
+static void test_ack_actor(void)
+{
+    SECTION("alarms: the user who acknowledged is passed to the audit hook");
+    fx_t *f = fx_two_unacked();
+    ack_rec_t r;
+    memset(&r, 0, sizeof(r));
+    r.ret = true;
+    hmi_alarm_set_ack_audit(&f->al, ack_hook, &r);
+
+    CHECK(hmi_alarm_ack_all_as(&f->al, g_now, HMI_ROLE_VIEWER, "view.er") == HMI_ACK_DENIED);
+    CHECK(r.calls == 1 && strcmp(r.last.actor, "view.er") == 0);          /* denied attempts name the user too */
+    CHECK(hmi_alarm_ack_as(&f->al, 0, g_now, HMI_ROLE_OPERATOR, "op1") == HMI_ACK_OK);
+    CHECK(r.calls == 2 && strcmp(r.last.actor, "op1") == 0 && r.last.result == HMI_ACK_OK);
+    CHECK(hmi_alarm_ack(&f->al, hmi_tagdb_count(&f->db), g_now, HMI_ROLE_OPERATOR) == HMI_ACK_OK);
+    CHECK(r.calls == 3 && strcmp(r.last.actor, "-") == 0);                /* the unnamed call */
+    CHECK(hmi_alarm_ack_all_as(&f->al, g_now, HMI_ROLE_ADMIN, "admin") == HMI_ACK_NOTHING);
+    CHECK(r.calls == 3);                                                  /* nothing to do: still no record */
+    fx_free(f, true);
+
+    f = fx_two_unacked();
+    memset(&r, 0, sizeof(r));
+    r.ret = true;
+    hmi_alarm_set_ack_audit(&f->al, ack_hook, &r);
+    const char *bad[] = { "", "ab", "Admin", "a b", "x=y", "line\nbreak", NULL };
+    for (size_t k = 0; k < sizeof(bad) / sizeof(bad[0]); k++) {
+        CHECK(hmi_alarm_ack_all_as(&f->al, g_now, HMI_ROLE_VIEWER, bad[k]) == HMI_ACK_DENIED);
+        CHECK(strcmp(r.last.actor, "-") == 0);
+    }
+    fx_free(f, true);
+}
+
 static void test_ack_audit_policy(void)
 {
     SECTION("alarms: acknowledgement audit hook, ordering and fail-closed policy");
@@ -312,6 +343,7 @@ int main(void)
     test_alarm_persistence();
     test_ack_denied_changes_nothing();
     test_ack_operator_allowed();
+    test_ack_actor();
     test_ack_audit_policy();
     return test_finish();
 }

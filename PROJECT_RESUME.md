@@ -805,3 +805,55 @@ Next steps: GitHub and CI setup when the owner gives repository details; M2
 `docs/ROADMAP_STATUS.md`. Tool notes from section R still apply. In addition: this
 session's shell tool altered backslash escapes inside heredocs, so write files
 with the file tools and keep patch scripts in files.
+
+## T. Milestone M2 (configuration integrity and safe startup) implemented (2026-10-22)
+
+Read `docs/CONFIG_INTEGRITY.md` for the design, the ownership table, limits and
+evidence. This section is the state summary. Section S above describes M1 and
+says acknowledgement and write lines lack the user name; since M2 they carry it.
+
+Owner decisions for M2: HMAC-SHA-512 from Monocypher's optional files; the
+configuration, its signature and the key owned by root and only read by the
+service. Reported consequence: the HMI cannot save configuration itself, so
+"configuration save restricted to Admin" moves to M4 and needs a privileged helper.
+
+What exists now (host evidence only, Windows MSYS2 and WSL2):
+- `third_party/monocypher/monocypher-ed25519.*` (SHA-512 and HMAC, checksums in
+  `docs/THIRD_PARTY.md`), `src/hmi/hmi_mac.*`, `hmi_cfgsec.*`, `plc.allowed_hosts`
+  in `hmi_config.c`, `src/app/p99_sign.c`, signed-configuration start-up in
+  `main_linux.c` with the options `--config-key`, `--config-state` and (test build
+  only) `--unsigned-config`, a platform call `hmi_fs_writable_by_me`.
+- A configuration is used only if its detached signature verifies; nothing is
+  parsed before the MAC check; any failure is safe mode (banner, no PLC
+  connection, writes off); rollback is refused by a serial; every start-up
+  appends `CONFIG_ACCEPTED serial=N` or `CONFIG_REJECTED reason=...` to the audit file.
+- Audit identity: `hmi_alarm_ack_as`, `hmi_alarm_ack_all_as` and
+  `hmi_writes_submit_as`; acknowledgement and write lines end with `user=<name>`.
+- `deploy/prometheus99.service` has the root-owned install steps. The shipped
+  `config/hmi.example.json` has an `allowed_hosts` entry.
+- New tests: `test_mac`, `test_cfgsec`, additions to `test_config`, `test_cli`,
+  `test_writes`, `test_alarm`, `test_runtime`, `test_users`, `ui_headless`, and
+  `config_exec_test.sh`. The other executable tests now run against a signed
+  configuration (`sign_fixture.sh`).
+- Results: core 1492 checks on Windows and 1532 on WSL2, view-model 163, e2e 75,
+  config corpus identical, UI scenario 84 assertions, liveness, `cli-exec`,
+  `auth-exec` and `config-exec` pass on WSL2, ASan with UBSan and TSan 0 reports
+  on every core module, mutation checks of the new rules all caught. The legacy
+  suite still passes (48 checks) and no legacy file changed. Rerun these.
+- ADR-0001 has an addendum for M2. README, `docs/LINUX_VALIDATION.md`,
+  `docs/ROADMAP_STATUS.md` (rows 32 and 33 complete on the host; row 26 still
+  partial) and `docs/AUTHENTICATION.md` were updated.
+
+Not verified: a run under real systemd as the `prometheus` user with root-owned
+files, a power cut during the serial state write, timing on a Raspberry Pi,
+sanitizers on the LVGL harness and the full executable.
+
+Known limits: anyone who holds the key or is root can sign; the serial state file
+can be deleted by the service user; a signed configuration is trusted as written.
+
+Working tree: M1 is committed and pushed (`fe165c2`); M2 is not committed. The
+four empty stray files are still there and the owner has not agreed to delete them.
+
+Next: M3 (persistence and storage), M4 (screens, including the on-device
+configuration helper), M5 (Raspberry Pi) as in `docs/ROADMAP_STATUS.md`.
+GitHub and CI setup still waits for repository details.

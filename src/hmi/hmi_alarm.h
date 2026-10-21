@@ -67,7 +67,8 @@ typedef enum {
 
 typedef struct {
     uint64_t t_ms;                       /* hmi_now_ms() of the attempt (monotonic, since boot) */
-    hmi_role_t role;                     /* claimed role */
+    hmi_role_t role;                     /* the role the caller presented */
+    char actor[HMI_ACTOR_LEN];           /* logged-in user name, or "-" (see hmi_actor_copy) */
     bool all;                            /* ACK ALL (true) or a single point */
     hmi_ack_result_t result;             /* HMI_ACK_OK (granted) or HMI_ACK_DENIED */
     size_t n_points;
@@ -130,6 +131,11 @@ void hmi_alarm_set_ack_audit(hmi_alarm_t *a, hmi_ack_audit_fn fn, void *user);
 /* point: tag index, or the tag count for the comms alarm. */
 hmi_ack_result_t hmi_alarm_ack(hmi_alarm_t *a, size_t point, uint64_t now_ms, hmi_role_t role);
 hmi_ack_result_t hmi_alarm_ack_all(hmi_alarm_t *a, uint64_t now_ms, hmi_role_t role);
+
+/* The same with the name of the logged-in user, which goes into the audit
+ * record. The calls above record "-". The UI always uses these. */
+hmi_ack_result_t hmi_alarm_ack_as(hmi_alarm_t *a, size_t point, uint64_t now_ms, hmi_role_t role, const char *actor);
+hmi_ack_result_t hmi_alarm_ack_all_as(hmi_alarm_t *a, uint64_t now_ms, hmi_role_t role, const char *actor);
 
 void hmi_alarm_get(hmi_alarm_t *a, size_t point, hmi_alarm_point_t *out);
 size_t hmi_alarm_journal_copy(hmi_alarm_t *a, hmi_alarm_log_t *out, size_t cap); /* oldest first */

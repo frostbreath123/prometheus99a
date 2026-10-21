@@ -99,6 +99,13 @@ static hmi_role_t current_role(uint64_t now)
     return s_auth ? hmi_auth_role(s_auth, now) : s_fixed_role;
 }
 
+/* The logged-in user's name for the audit trail ("" when nobody is logged in,
+ * and always NULL for the test build's claimed role). */
+static const char *current_actor(uint64_t now)
+{
+    return s_auth ? hmi_auth_user(s_auth, now) : NULL;
+}
+
 /* Header label, ACK button state and the login button caption follow the role. */
 static void refresh_role_ui(bool force)
 {
@@ -370,7 +377,7 @@ static void do_ack_all(void)
 {
     if (!s_rt || !s_ack_status) return;
     uint64_t now = hmi_now_ms();
-    hmi_ack_result_t r = hmi_alarm_ack_all(&s_rt->alarms, now, current_role(now));
+    hmi_ack_result_t r = hmi_alarm_ack_all_as(&s_rt->alarms, now, current_role(now), current_actor(now));
     snprintf(t_ack, sizeof(t_ack), "%s", hmi_view_ack_result_text(r));
     lv_label_set_text(s_ack_status, t_ack);
     lv_obj_set_style_text_color(s_ack_status, tone_color(hmi_view_ack_result_tone(r)), 0);
@@ -395,8 +402,8 @@ static void sp_send_cb(lv_event_t *e)
     if (s_sp_tag < 0 || !s_rt) return;
     uint32_t id = 0;
     uint64_t now = hmi_now_ms();
-    hmi_wr_submit_t r = hmi_writes_submit(&s_rt->writes, (size_t)s_sp_tag, s_sp_value, current_role(now),
-                                          hmi_comms_link_health(&s_rt->comms), now, &id);
+    hmi_wr_submit_t r = hmi_writes_submit_as(&s_rt->writes, (size_t)s_sp_tag, s_sp_value, current_role(now),
+                                             current_actor(now), hmi_comms_link_health(&s_rt->comms), now, &id);
     if (r == HMI_WRS_OK) {
         s_last_write_id = id;
     } else {
@@ -537,6 +544,7 @@ const char *hmi_ui_link_text(void) { return t_link; }
 const char *hmi_ui_heartbeat_text(void) { return t_hb; }
 const char *hmi_ui_ack_status_text(void) { return t_ack; }
 void hmi_ui_press_ack_all(void) { do_ack_all(); }
+void hmi_ui_press_setpoint_send(void) { sp_send_cb(NULL); }
 
 const char *hmi_ui_role_text(void) { return t_role; }
 bool hmi_ui_login_visible(void) { return s_ov_mode != OV_HIDDEN; }

@@ -128,6 +128,12 @@ static void compact_queue(hmi_writes_t *w)
 hmi_wr_submit_t hmi_writes_submit(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role,
                                   hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id)
 {
+    return hmi_writes_submit_as(w, tag, eng, role, NULL, link, now_ms, out_id);
+}
+
+hmi_wr_submit_t hmi_writes_submit_as(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role, const char *actor,
+                                     hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id)
+{
     hmi_mutex_lock(&w->lock);
     bool enabled = w->enabled;
     hmi_mutex_unlock(&w->lock);
@@ -173,6 +179,7 @@ hmi_wr_submit_t hmi_writes_submit(hmi_writes_t *w, size_t tag, double eng, hmi_r
     r->tag = (uint8_t)tag;
     r->state = HMI_WR_RESERVED;
     r->role = role;
+    hmi_actor_copy(r->actor, actor);
     r->eng = eng;
     r->raw = raw;
     r->t_submit_ms = now_ms;

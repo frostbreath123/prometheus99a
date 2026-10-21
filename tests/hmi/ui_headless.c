@@ -328,7 +328,7 @@ int main(int argc, char **argv)
         const hmi_kdf_params_t cheap = { 1, 64, 1 };
         hmi_auth_cfg_t acfg;
         acfg.users_path = users_path;
-        acfg.idle_ms = 1500;
+        acfg.idle_ms = 6000;
         acfg.kdf = &cheap;
         CHECK(hmi_auth_init(&auth, &acfg, hmi_now_ms()));
         hmi_auth_set_audit(&auth, hmi_auth_file_audit, (void *)audit_path);
@@ -411,10 +411,24 @@ int main(int argc, char **argv)
         CHECK(hmi_auth_role(&auth, hmi_now_ms()) == HMI_ROLE_ADMIN);
         hmi_ui_press_ack_all();
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") != 0);
+
+        /* what the admin does is recorded under the admin's name: an
+         * acknowledgement (the alarm returns to normal and waits for it) and a write */
+        fms_set_holding(srv, 0, 700);          /* back to normal ... */
+        pump(1.0, &samples, &n, cap);
+        fms_set_holding(srv, 0, 910);          /* ... and a new high alarm that waits for acknowledgement */
+        pump(1.5, &samples, &n, cap);
+        CHECK(hmi_alarm_count_unacked(&rt.alarms) >= 1);
+        hmi_ui_press_ack_all();
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACKNOWLEDGED") == 0);
+        uint32_t writes_before = fms_write_count(srv);
+        hmi_ui_press_setpoint_send();
+        pump(1.0, &samples, &n, cap);
+        CHECK(fms_write_count(srv) == writes_before + 1);
         save_ppm((snprintf(err, sizeof(err), "%s_9_logged_in.ppm", prefix), err));
 
         /* idle logout: no touch input in this harness, so the deadline runs out */
-        pump(2.2, &samples, &n, cap);
+        pump(6.5, &samples, &n, cap);
         CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
         hmi_ui_press_ack_all();
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
@@ -447,6 +461,16 @@ int main(int argc, char **argv)
         CHECK(strstr(atext, "IDLE_LOGOUT user=admin role=admin") != NULL);
         CHECK(strstr(atext, " LOGOUT user=admin role=admin") != NULL);
         CHECK(strstr(atext, "ALARM_ACK role=viewer action=ACK_ALL result=DENIED") != NULL);
+        CHECK(strstr(atext, "ALARM_ACK role=admin action=ACK_ALL result=GRANTED") != NULL);
+        CHECK(strstr(atext, " user=admin") != NULL);                  /* acknowledgement and write lines name the user */
+        {
+            const char *wl = strstr(atext, " RESERVED id=");
+            const char *last_res = NULL;
+            while (wl) { last_res = wl; wl = strstr(wl + 1, " RESERVED id="); }
+            CHECK(last_res != NULL && strstr(last_res, "role=3") != NULL);          /* role 3 = admin */
+            const char *eol = last_res ? strchr(last_res, 10) : NULL;
+            CHECK(eol != NULL && eol - last_res > 10 && strncmp(eol - 11, " user=admin", 11) == 0);
+        }
         CHECK(strstr(atext, "pass") == NULL && strstr(atext, "nobody") == NULL); /* no credentials, no unknown names */
         hmi_auth_deinit(&auth);
     }

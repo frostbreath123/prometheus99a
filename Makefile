@@ -36,7 +36,7 @@ $(TEST_TARGET): $(TEST_SRCS) $(wildcard include/*.h tests/*.h)
 
 # ---------------- portable HMI runtime ----------------
 HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c third_party/monocypher/monocypher.c
+           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c
 HMI_PLAT = src/hmi/hmi_platform_win32.c
 HMI_HDRS = $(wildcard src/hmi/*.h src/ui/*.h tests/hmi/*.h)
 HMI_WARN = -Wall -Wextra -Wpedantic
@@ -58,7 +58,7 @@ $(BUILD)/liblvgl.a: config/lv_conf.h | $(BUILD)
 	   $(CC) -std=gnu99 -Os -ffunction-sections -fdata-sections $(LVGL_INC) -c {} -o $$o'
 	ar rcs $@ $(BUILD)/lvgl/*.o
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec
 HMI_TEST_EXES = $(patsubst %,$(BUILD)/hmi_tests/test_%.exe,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.

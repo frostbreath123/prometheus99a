@@ -180,3 +180,22 @@ Limits: the sanitizers were run on the core modules, not on the LVGL harness or
 the full executable. Hash time on a Raspberry Pi, typing on a real touchscreen,
 a deployed service under its own user, and a power cut during a store write
 were not tested.
+
+## Configuration integrity and audit identity (2026-10-22)
+
+WSL2 host (Ubuntu 24.04, gcc 13.3), x86-64, not Raspberry Pi, no real PLC, no
+display, no real systemd. Design record: [CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.md).
+
+| Item | Command | Result |
+|---|---|---|
+| Core tests, all modules | `make -f Makefile.linux test` | 1532 checks, 0 failed (mac 13, cfgsec 223, config 122, writes 280, alarm 103, runtime 68, cli 107, users 131, auth 237) |
+| View-model, end to end, config corpus | `test-view`, `e2e`, `test-config-golden` | 163 checks, 75 checks, identical |
+| Headless UI scenario, now with the acknowledgement and write recorded under the admin's name | `make -f Makefile.linux ui-host` | 84 assertions, 0 failed |
+| Liveness, command line, authentication executables | `liveness`, `cli-exec`, `auth-exec` | pass (all three now run against a signed configuration) |
+| Signing tool and every start-up rejection, with a loopback listener counting connections | `make -f Makefile.linux config-exec` | pass: 0 connections in each safe-mode run, 2 in the accepted run |
+| Mutation check of the POSIX file-mode rules (key, configuration, signature) | local script | each disabled rule made the suite fail |
+| ASan with UBSan, and TSan, every core module | `-fsanitize=address,undefined`, `-fsanitize=thread` | 0 reports |
+
+Limits: no real systemd, no `prometheus` user, no root-owned files; the
+sanitizers were run on the core modules, not on the LVGL harness or the full
+executable.

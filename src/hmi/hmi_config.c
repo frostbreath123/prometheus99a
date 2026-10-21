@@ -409,7 +409,28 @@ static bool parse_tag(ctx_t *c, int obj, hmi_tag_cfg_t *t)
 
 /* ---- plc ---- */
 
-enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN };
+enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN, PL_ALLOWED };
+
+/* "allowed_hosts": the only PLC addresses this device may ever connect to, as
+ * dotted-quad literals. Optional for the parser (unsigned test configurations
+ * need not have it); hmi_cfgsec requires it, and the host in use to be in it. */
+static bool plc_allowed_hosts(ctx_t *c, int val, void *base)
+{
+    hmi_app_cfg_t *cfg = (hmi_app_cfg_t *)base;
+    const jsmntok_t *arr = &c->t[val];
+    cfg->n_allowed = 0;
+    if (arr->type != JSMN_ARRAY) return fail(c, "allowed_hosts must be array", NULL);
+    if (arr->size < 1 || arr->size > HMI_MAX_ALLOWED) return fail(c, "allowed_hosts count", NULL);
+    for (int k = 0; k < arr->size; k++) {
+        char *dst = cfg->allowed_hosts[k];
+        if (!get_str_ex(c, val + 1 + k, dst, HMI_HOST_LEN, "allowed_hosts", false)) return false;
+        if (!valid_ipv4(dst)) return fail(c, "allowed host must be an IPv4 literal", dst);
+        for (int j = 0; j < k; j++)
+            if (strcmp(cfg->allowed_hosts[j], dst) == 0) return fail(c, "duplicate allowed host", dst);
+        cfg->n_allowed = (size_t)k + 1u;
+    }
+    return true;
+}
 
 static const field_t PLC_FIELDS[] = {
     { "host", K_STR, offsetof(hmi_app_cfg_t, host), HMI_HOST_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
@@ -417,6 +438,7 @@ static const field_t PLC_FIELDS[] = {
     { "unit", K_U8, offsetof(hmi_app_cfg_t, unit), 0, 0, 247, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "response_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, response_timeout_ms), 0, 50, 30000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "connect_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, connect_timeout_ms), 0, 50, 30000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "allowed_hosts", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, plc_allowed_hosts },
 };
 static const section_t PLC_SECTION = { "plc", PLC_FIELDS, sizeof(PLC_FIELDS) / sizeof(PLC_FIELDS[0]), false };
 
@@ -541,4 +563,12 @@ bool hmi_config_save_text(const char *path, const char *json, size_t len, char *
         return false;
     }
     return true;
+}
+
+bool hmi_config_host_allowed(const hmi_app_cfg_t *cfg)
+{
+    if (!cfg || cfg->n_allowed == 0 || cfg->host[0] == '\0') return false;
+    for (size_t i = 0; i < cfg->n_allowed; i++)
+        if (strcmp(cfg->allowed_hosts[i], cfg->host) == 0) return true;
+    return false;
 }

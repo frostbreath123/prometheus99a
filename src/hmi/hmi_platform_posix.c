@@ -198,6 +198,11 @@ bool hmi_fs_mode(const char *path, uint32_t *mode)
     return true;
 }
 
+bool hmi_fs_writable_by_me(const char *path)
+{
+    return access(path, W_OK) == 0;
+}
+
 bool hmi_random_bytes(void *out, size_t n)
 {
     char *p = (char *)out;

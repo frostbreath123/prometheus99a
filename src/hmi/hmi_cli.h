@@ -29,6 +29,10 @@ typedef struct {
     hmi_role_t role;      /* --role    (default viewer; test builds only) */
     bool role_given;      /* --role appeared on the command line */
     const char *users;    /* --users   (default /var/lib/prometheus99/users.bin) */
+    const char *config_key;   /* --config-key   (default /etc/prometheus99/config.key) */
+    const char *config_state; /* --config-state (default /var/lib/prometheus99/config.serial) */
+    bool unsigned_config; /* --unsigned-config (takes no value): test builds only, skips the
+                             signature check. The production executable refuses it. */
 } hmi_cli_t;
 
 /* Returns true on success. On failure err holds a one-line reason and *out is

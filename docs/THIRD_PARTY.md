@@ -29,3 +29,15 @@ Monocypher provenance (recorded 2026-10-22)
 - Files are unmodified. The licence file says the project is dual-licensed (2-clause BSD or CC0).
 - Correctness check in this repository: `tests/hmi/test_kdf.c` reproduces the RFC 9106
   section 5.3 Argon2id test vector through the wrapper.
+
+Monocypher optional files (added for milestone M2, recorded 2026-10-22)
+- `third_party/monocypher/monocypher-ed25519.c` and `monocypher-ed25519.h` come from
+  `src/optional/` of the same 4.0.2 release tarball, unmodified. They provide
+  SHA-512 and HMAC-SHA-512, used only through `src/hmi/hmi_mac.c`. The ed25519
+  signature functions in the same file are compiled but not used.
+- SHA-256: `monocypher-ed25519.c`
+  `7c9b16056cbd27521919e8a6f56a228808b9e718afc42e3d33f28c08e5abdee2`, `monocypher-ed25519.h`
+  `bd546edcd468d64e28caa3dbf4b1d6bfad7435c0ce994723fd81aae26405121b`.
+- Same dual licence as the rest of Monocypher (2-clause BSD or CC0).
+- Correctness check in this repository: `tests/hmi/test_mac.c` reproduces RFC 4231
+  test cases 1, 2, 3 and 6 for HMAC-SHA-512 (also cross-checked with Python's `hmac`).

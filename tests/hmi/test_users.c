@@ -75,6 +75,22 @@ static void test_crc_names_policy(void)
     CHECK(!hmi_password_policy("admin", big, &why) && strstr(why, "long"));
 }
 
+static void test_actor_matches_name_rule(void)
+{
+    SECTION("users: the audit actor rule is the same as the user name rule");
+    const char *samples[] = { "abc", "ab", "", "op.one", "a_b-c.9", "Admin", "a b", "x=y", "abcdefghijklmnopqrstuvwx",
+                              "abcdefghijklmnopqrstuvwxy", "Ã©tienne", "tab\there", "new\nline", "000", "-", "..." };
+    for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+        char a[HMI_ACTOR_LEN];
+        hmi_actor_copy(a, samples[i]);
+        if (hmi_user_name_valid(samples[i])) CHECK(strcmp(a, samples[i]) == 0);
+        else CHECK(strcmp(a, "-") == 0);
+    }
+    char a[HMI_ACTOR_LEN];
+    hmi_actor_copy(a, NULL);
+    CHECK(strcmp(a, "-") == 0);
+}
+
 static void test_format(void)
 {
     SECTION("users: serialize and strict parse");
@@ -272,6 +288,7 @@ static void test_editing(void)
 int main(void)
 {
     test_crc_names_policy();
+    test_actor_matches_name_rule();
     test_format();
     test_file();
     test_editing();

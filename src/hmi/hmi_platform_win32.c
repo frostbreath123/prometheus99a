@@ -137,6 +137,12 @@ bool hmi_fs_mode(const char *path, uint32_t *mode)
     return true;
 }
 
+bool hmi_fs_writable_by_me(const char *path)
+{
+    (void)path; /* no per-user write test here; callers treat false as "unknown" */
+    return false;
+}
+
 /* RtlGenRandom (exported as SystemFunction036 by advapi32): the documented
  * way to get random bytes without a CryptoAPI context, and available to
  * MinGW without extra link flags. */

@@ -12,6 +12,7 @@
 #include "hmi_tags.h"
 
 #define HMI_CONFIG_MAX_BYTES 32768u
+#define HMI_MAX_ALLOWED 8   /* entries in plc.allowed_hosts */
 
 typedef struct {
     char host[HMI_HOST_LEN];      /* dotted-quad IPv4 literal only (no DNS) */
@@ -20,6 +21,8 @@ typedef struct {
     uint32_t response_timeout_ms;
     uint32_t connect_timeout_ms;
     bool writes_enabled;          /* global write master switch, default false */
+    char allowed_hosts[HMI_MAX_ALLOWED][HMI_HOST_LEN]; /* plc.allowed_hosts, optional here */
+    size_t n_allowed;
     hmi_tag_cfg_t tags[HMI_MAX_TAGS];
     size_t n_tags;
 } hmi_app_cfg_t;
@@ -27,6 +30,9 @@ typedef struct {
 /* Returns true on success. On failure *out is zeroed (writes_enabled=false,
  * n_tags=0, empty host) and err holds a short reason. */
 bool hmi_config_parse(const char *json, size_t len, hmi_app_cfg_t *out, char *err, size_t err_cap);
+/* True when the list is not empty and `host` is one of its entries. A device
+ * that has verified its configuration (hmi_cfgsec) refuses any other host. */
+bool hmi_config_host_allowed(const hmi_app_cfg_t *cfg);
 bool hmi_config_load_file(const char *path, hmi_app_cfg_t *out, char *err, size_t err_cap);
 
 /* Persist the raw config text atomically (temp + fsync + rename). The text
