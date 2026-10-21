@@ -28,7 +28,7 @@ MB_CFLAGS = $(shell pkg-config --cflags libmodbus)
 MB_LIBS = $(shell pkg-config --libs libmodbus)
 
 HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_platform_posix.c
+           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c third_party/monocypher/monocypher.c src/hmi/hmi_platform_posix.c
 FAKE_PLC = tests/hmi/fake_modbus_server_posix.c
 WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
 
@@ -45,7 +45,7 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
@@ -69,6 +69,17 @@ $(BUILD)/prometheus99: src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c sr
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c \
 	  src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
+
+# Simulation / test build: honours --role and authenticates nothing. NEVER deploy it.
+$(BUILD)/prometheus99-sim: src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/ui/hmi_ui.c \
+	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
+
+# Offline user management tool (see src/app/p99_user.c).
+$(BUILD)/p99_user: src/app/p99_user.c $(HMI_CORE)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) src/app/p99_user.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
 
 $(BUILD)/test_view: tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE)
 	@mkdir -p $(BUILD)
@@ -98,18 +109,21 @@ e2e: $(BUILD)/test_e2e
 ui-host: $(BUILD)/ui_headless
 	./$(BUILD)/ui_headless $(BUILD)/shot $(BUILD)/ui_audit.log
 
-hmi: $(BUILD)/prometheus99
+hmi: $(BUILD)/prometheus99 $(BUILD)/p99_user
 
-# Needs a framebuffer (/dev/fb0) and evdev touch/mouse. Not a test.
-hmi-run-sim: $(BUILD)/prometheus99
-	./$(BUILD)/prometheus99 --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
+hmi-sim: $(BUILD)/prometheus99-sim
 
-test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec
+# Needs a framebuffer (/dev/fb0) and evdev touch/mouse. Not a test. Uses the
+# simulation build, which is the only one that accepts --role.
+hmi-run-sim: $(BUILD)/prometheus99-sim
+	./$(BUILD)/prometheus99-sim --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
+
+test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec auth-exec
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: test test-view test-config-golden e2e ui-host hmi hmi-run-sim test-all clean
+.PHONY: test test-view test-config-golden e2e ui-host hmi hmi-sim hmi-run-sim test-all clean
 
 # Outside hmi_tags.c (and the white-box core test) nothing may read or write
 # the tag table's members directly; use the hmi_tagdb_* accessors.
@@ -145,8 +159,14 @@ $(BUILD)/hang_server: tests/hmi/hang_server.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
-# Real executable: invalid role / flags exit 2, valid roles start, default is viewer.
-cli-exec: $(BUILD)/prometheus99
+# Real executables: invalid flags exit 2; the production build refuses --role;
+# the simulation build starts with each valid role.
+cli-exec: $(BUILD)/prometheus99 $(BUILD)/prometheus99-sim
 	bash tests/hmi/cli_exec_test.sh $(BUILD) config/hmi.example.json
 
-.PHONY: cli-exec
+# Real executables and the user tool: first boot, store states, file modes,
+# audit records, tool commands.
+auth-exec: $(BUILD)/prometheus99 $(BUILD)/p99_user
+	bash tests/hmi/auth_exec_test.sh $(BUILD) config/hmi.example.json
+
+.PHONY: cli-exec auth-exec

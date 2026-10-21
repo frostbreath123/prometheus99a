@@ -2,6 +2,7 @@
 #
 # Install (as root, paths are the defaults used below):
 #   install -m 0755 build-linux/prometheus99 /usr/local/bin/prometheus99
+#   install -m 0755 build-linux/p99_user /usr/local/bin/p99_user   # optional offline user tool
 #   install -d -o prometheus -g prometheus /etc/prometheus99 /var/lib/prometheus99
 #   install -m 0644 -o prometheus config/hmi.example.json /etc/prometheus99/hmi.json   # then edit host
 #   install -m 0644 deploy/prometheus99.service /etc/systemd/system/
@@ -28,12 +29,15 @@ NotifyAccess=main
 User=prometheus
 Group=prometheus
 SupplementaryGroups=video input
-# --role is a CLAIMED role set by whoever writes this unit; it is not
-# authentication. Without it the process runs as viewer (no acknowledgements,
-# no writes). Unknown roles or options make the process exit with status 2.
+# Roles come from logging in on the screen. The process starts as viewer (no
+# acknowledgements, no writes) until someone logs in. The production build
+# refuses --role (exit status 2), so a role cannot be set from this unit. The
+# user file is created by the first-boot screen or with p99_user, owned by the
+# service user, mode 0600; a file that group or others can write is refused.
 ExecStart=/usr/local/bin/prometheus99 --config /etc/prometheus99/hmi.json \
     --audit /var/lib/prometheus99/audit.log --alarms /var/lib/prometheus99/alarms.bin \
-    --fb /dev/fb0 --touch /dev/input/event0 --role operator
+    --users /var/lib/prometheus99/users.bin \
+    --fb /dev/fb0 --touch /dev/input/event0
 Restart=on-failure
 RestartSec=2
 # The runtime sends a ping every 5 s. A worker thread may legitimately be

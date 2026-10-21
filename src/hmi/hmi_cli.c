@@ -17,12 +17,14 @@ static void defaults(hmi_cli_t *o)
     o->fb = "/dev/fb0";
     o->touch = "/dev/input/event0";
     o->role = HMI_ROLE_VIEWER;
+    o->role_given = false;
+    o->users = "/var/lib/prometheus99/users.bin";
 }
 
 bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_cap)
 {
-    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_COUNT };
-    static const char *const FLAGS[F_COUNT] = { "--config", "--audit", "--alarms", "--fb", "--touch", "--role" };
+    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_USERS, F_COUNT };
+    static const char *const FLAGS[F_COUNT] = { "--config", "--audit", "--alarms", "--fb", "--touch", "--role", "--users" };
     bool seen[F_COUNT] = { false };
     hmi_cli_t o;
     defaults(&o);
@@ -50,7 +52,9 @@ bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_
             case F_ALARMS: o.alarms = val; break;
             case F_FB: o.fb = val; break;
             case F_TOUCH: o.touch = val; break;
+            case F_USERS: o.users = val; break;
             case F_ROLE:
+                o.role_given = true;
                 if (!hmi_role_parse(val, &o.role)) {
                     if (err && err_cap)
                         snprintf(err, err_cap, "unknown role '%s' (viewer, operator, engineer, admin)", val);

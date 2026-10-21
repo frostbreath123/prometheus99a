@@ -56,4 +56,25 @@ bool hmi_fs_atomic_write(const char *path, const void *data, size_t len);
 /* Append and flush to stable storage before returning. */
 bool hmi_fs_append_sync(const char *path, const void *data, size_t len);
 
+/* Read a whole file into buf (capacity cap). The three failure outcomes are
+ * kept apart because callers treat "absent" differently from "unreadable". */
+typedef enum {
+    HMI_FS_READ_OK = 0,
+    HMI_FS_READ_ABSENT,    /* the file does not exist */
+    HMI_FS_READ_ERROR,     /* exists but cannot be read */
+    HMI_FS_READ_TOO_BIG    /* longer than cap; *len is then not meaningful */
+} hmi_fs_read_t;
+hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *len);
+
+/* The permission bits (rwxrwxrwx, 0..0777) of a file. On a platform without
+ * POSIX permissions (the Windows development host) it reports 0600, so the
+ * caller's "too open" checks never fire there. Returns false if the file
+ * cannot be examined. */
+bool hmi_fs_mode(const char *path, uint32_t *mode);
+
+/* Cryptographically secure random bytes from the operating system. Returns
+ * false on any failure; the caller must then not continue (never fall back to
+ * a weak source). */
+bool hmi_random_bytes(void *out, size_t n);
+
 #endif /* HMI_PLATFORM_H */

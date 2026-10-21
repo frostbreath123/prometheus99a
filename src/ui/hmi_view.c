@@ -190,3 +190,106 @@ hmi_tone_t hmi_view_ack_result_tone(hmi_ack_result_t r)
 {
     return r == HMI_ACK_OK ? HMI_TONE_GOOD : r == HMI_ACK_NOTHING ? HMI_TONE_MUTED : HMI_TONE_BAD;
 }
+
+/* ---- login and session wording ---- */
+static void upper_into(char *dst, size_t cap, const char *src)
+{
+    size_t i = 0;
+    for (; src[i] && i + 1 < cap; i++) {
+        char c = src[i];
+        dst[i] = (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+    }
+    dst[i] = '\0';
+}
+
+void hmi_view_role_label(hmi_role_t role, const char *user, char *buf, size_t cap)
+{
+    if (cap == 0) return;
+    char r[16];
+    upper_into(r, sizeof(r), hmi_role_name(role));
+    if (role == HMI_ROLE_VIEWER || !user || !user[0]) snprintf(buf, cap, "%s", r);
+    else snprintf(buf, cap, "%s  %s", r, user);
+}
+
+hmi_tone_t hmi_view_role_tone(hmi_role_t role)
+{
+    return role == HMI_ROLE_VIEWER ? HMI_TONE_MUTED : HMI_TONE_GOOD;
+}
+
+void hmi_view_wait_text(uint32_t ms, char *buf, size_t cap)
+{
+    uint32_t s = ms / 1000u + ((ms % 1000u) ? 1u : 0u);
+    snprintf(buf, cap, "%u:%02u", (unsigned)(s / 60u), (unsigned)(s % 60u));
+}
+
+void hmi_view_login_text(hmi_login_result_t r, uint32_t wait_ms, const char *user, char *buf, size_t cap)
+{
+    char w[16];
+    hmi_view_wait_text(wait_ms, w, sizeof(w));
+    switch (r) {
+        case HMI_LOGIN_OK: snprintf(buf, cap, "Logged in as %s", user ? user : ""); break;
+        case HMI_LOGIN_PENDING: snprintf(buf, cap, "Checking, please wait"); break;
+        case HMI_LOGIN_BAD:
+            if (wait_ms >= HMI_AUTH_LOCK_BASE_MS)
+                snprintf(buf, cap, "Wrong user name or password. Locked, try again in %s", w);
+            else
+                snprintf(buf, cap, "Wrong user name or password");
+            break;
+        case HMI_LOGIN_LOCKED: snprintf(buf, cap, "Too many failed attempts. Try again in %s", w); break;
+        case HMI_LOGIN_WAIT: snprintf(buf, cap, "Please wait %s before trying again", w); break;
+        case HMI_LOGIN_BUSY: snprintf(buf, cap, "Checking, please wait"); break;
+        case HMI_LOGIN_NO_STORE: snprintf(buf, cap, "No accounts yet. Create the administrator."); break;
+        case HMI_LOGIN_STORE_INVALID:
+            snprintf(buf, cap, "User store is damaged. Login is disabled. An administrator must repair it.");
+            break;
+        case HMI_LOGIN_SESSION_ACTIVE: snprintf(buf, cap, "Already logged in"); break;
+        case HMI_LOGIN_AUDIT_FAILED: snprintf(buf, cap, "Login refused: the audit log cannot be written"); break;
+        case HMI_LOGIN_INPUT: snprintf(buf, cap, "Password is too long (64 characters at most)"); break;
+        case HMI_LOGIN_ERROR: snprintf(buf, cap, "Internal error, please try again"); break;
+        default: snprintf(buf, cap, "Login: unknown result"); break;
+    }
+}
+
+hmi_tone_t hmi_view_login_tone(hmi_login_result_t r)
+{
+    switch (r) {
+        case HMI_LOGIN_OK: return HMI_TONE_GOOD;
+        case HMI_LOGIN_PENDING:
+        case HMI_LOGIN_BUSY:
+        case HMI_LOGIN_NO_STORE:
+        case HMI_LOGIN_SESSION_ACTIVE: return HMI_TONE_TEXT;
+        case HMI_LOGIN_LOCKED:
+        case HMI_LOGIN_WAIT: return HMI_TONE_WARN;
+        default: return HMI_TONE_BAD;
+    }
+}
+
+void hmi_view_setup_text(hmi_setup_result_t r, const char *reason, char *buf, size_t cap)
+{
+    switch (r) {
+        case HMI_SETUP_OK: snprintf(buf, cap, "Administrator created. You can log in now."); break;
+        case HMI_SETUP_PENDING: snprintf(buf, cap, "Creating the account, please wait"); break;
+        case HMI_SETUP_NOT_FIRST_BOOT: snprintf(buf, cap, "An account store already exists"); break;
+        case HMI_SETUP_NAME: snprintf(buf, cap, "User name: 3 to 24 characters, a-z 0-9 _ . -"); break;
+        case HMI_SETUP_PASSWORD: snprintf(buf, cap, "%s", (reason && reason[0]) ? reason : "Password rejected"); break;
+        case HMI_SETUP_BUSY: snprintf(buf, cap, "Working, please wait"); break;
+        case HMI_SETUP_AUDIT_FAILED: snprintf(buf, cap, "Not created: the audit log cannot be written"); break;
+        case HMI_SETUP_SAVE_FAILED: snprintf(buf, cap, "Not created: the account file cannot be saved"); break;
+        case HMI_SETUP_ERROR: snprintf(buf, cap, "Internal error, please try again"); break;
+        default: snprintf(buf, cap, "Setup: unknown result"); break;
+    }
+}
+
+hmi_tone_t hmi_view_setup_tone(hmi_setup_result_t r)
+{
+    if (r == HMI_SETUP_OK) return HMI_TONE_GOOD;
+    if (r == HMI_SETUP_PENDING || r == HMI_SETUP_BUSY) return HMI_TONE_TEXT;
+    return HMI_TONE_BAD;
+}
+
+const char *hmi_view_setup_mismatch_text(void) { return "The two passwords do not match"; }
+
+void hmi_view_test_role_banner(hmi_role_t role, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "TEST ROLE %s - NOT AUTHENTICATED", hmi_role_name(role));
+}

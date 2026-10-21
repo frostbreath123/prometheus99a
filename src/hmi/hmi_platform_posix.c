@@ -8,7 +8,9 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <sys/random.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <stdio.h>
 #include <string.h>
@@ -157,6 +159,58 @@ bool hmi_fs_append_sync(const char *path, const void *data, size_t len)
     bool ok = write_all(fd, data, len) && fsync(fd) == 0;
     close(fd);
     return ok;
+}
+
+hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *len)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? HMI_FS_READ_ABSENT : HMI_FS_READ_ERROR;
+    size_t got = 0;
+    hmi_fs_read_t res = HMI_FS_READ_OK;
+    for (;;) {
+        if (got == cap) { /* one more byte means the file is longer than cap */
+            char extra;
+            ssize_t e = read(fd, &extra, 1);
+            if (e < 0 && errno == EINTR) continue;
+            if (e < 0) res = HMI_FS_READ_ERROR;
+            else if (e > 0) res = HMI_FS_READ_TOO_BIG;
+            break;
+        }
+        ssize_t n = read(fd, (char *)buf + got, cap - got);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            res = HMI_FS_READ_ERROR;
+            break;
+        }
+        if (n == 0) break;
+        got += (size_t)n;
+    }
+    close(fd);
+    if (res == HMI_FS_READ_OK && len) *len = got;
+    return res;
+}
+
+bool hmi_fs_mode(const char *path, uint32_t *mode)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    *mode = (uint32_t)(st.st_mode & 0777);
+    return true;
+}
+
+bool hmi_random_bytes(void *out, size_t n)
+{
+    char *p = (char *)out;
+    while (n > 0) {
+        ssize_t r = getrandom(p, n, 0);
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        p += r;
+        n -= (size_t)r;
+    }
+    return true;
 }
 
 bool hmi_notify(const char *message)

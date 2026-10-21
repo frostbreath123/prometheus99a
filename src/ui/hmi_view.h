@@ -17,6 +17,7 @@
 #include "../hmi/hmi_comms.h"
 #include "../hmi/hmi_alarm.h"
 #include "../hmi/hmi_writes.h"
+#include "../hmi/hmi_auth.h"
 
 /* Semantic colour of a piece of text; the binder owns the actual colours. */
 typedef enum {
@@ -76,5 +77,25 @@ void hmi_view_heartbeat_text(uint32_t seconds, char *buf, size_t cap);
 /* Outcome of an ACK / ACK ALL request, as returned by the core. */
 const char *hmi_view_ack_result_text(hmi_ack_result_t r);
 hmi_tone_t hmi_view_ack_result_tone(hmi_ack_result_t r);
+
+/* ---- login and session wording ---- */
+/* Header label: "VIEWER" when logged out, else "<ROLE>  <user>" with the role in
+ * capitals. A text longer than the buffer is cut, never overflowed. */
+void hmi_view_role_label(hmi_role_t role, const char *user, char *buf, size_t cap);
+hmi_tone_t hmi_view_role_tone(hmi_role_t role);
+
+/* Time as M:SS, rounded UP to whole seconds so "0:00" is never shown while a
+ * wait remains. */
+void hmi_view_wait_text(uint32_t ms, char *buf, size_t cap);
+
+/* One message per outcome. The wording for a wrong user name and a wrong
+ * password is identical, so the screen does not reveal which accounts exist. */
+void hmi_view_login_text(hmi_login_result_t r, uint32_t wait_ms, const char *user, char *buf, size_t cap);
+hmi_tone_t hmi_view_login_tone(hmi_login_result_t r);
+void hmi_view_setup_text(hmi_setup_result_t r, const char *reason, char *buf, size_t cap);
+hmi_tone_t hmi_view_setup_tone(hmi_setup_result_t r);
+const char *hmi_view_setup_mismatch_text(void);
+/* Shown permanently when the process runs with --role (a test build only). */
+void hmi_view_test_role_banner(hmi_role_t role, char *buf, size_t cap);
 
 #endif /* HMI_VIEW_H */

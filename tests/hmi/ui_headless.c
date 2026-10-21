@@ -314,6 +314,143 @@ int main(int argc, char **argv)
         CHECK(strstr(atext, "ALARM_ACK role=operator action=ACK_ALL result=GRANTED") != NULL);
     }
 
+    /* Authentication through the UI path: the role handed to the core is the
+     * session role. First boot creates the administrator, a wrong password is
+     * refused and shown identically for any account, a correct one opens the
+     * session, an idle session ends, and every step is in the audit file. */
+    {
+        static char users_path[256], lock_path[272];
+        snprintf(users_path, sizeof(users_path), "%s_users.bin", prefix);
+        snprintf(lock_path, sizeof(lock_path), "%s.lock", users_path);
+        remove(users_path);
+        remove(lock_path);
+        static hmi_auth_t auth;
+        const hmi_kdf_params_t cheap = { 1, 64, 1 };
+        hmi_auth_cfg_t acfg;
+        acfg.users_path = users_path;
+        acfg.idle_ms = 1500;
+        acfg.kdf = &cheap;
+        CHECK(hmi_auth_init(&auth, &acfg, hmi_now_ms()));
+        hmi_auth_set_audit(&auth, hmi_auth_file_audit, (void *)audit_path);
+
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init_auth(&rt, &auth, NULL);
+        lv_mem_monitor(&mon);
+        printf("LVGL heap with the login screen built: used=%u KB of %u KB\n",
+               (unsigned)((mon.total_size - mon.free_size) / 1024), (unsigned)(mon.total_size / 1024));
+        pump(0.3, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DISABLED: viewer role") == 0);
+        CHECK(!hmi_ui_login_visible());
+        hmi_ui_press_ack_all(); /* with no session the core refuses */
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
+
+        /* first boot */
+        hmi_ui_press_login_button();
+        pump(0.3, &samples, &n, cap);
+        CHECK(hmi_ui_login_visible());
+        CHECK(strcmp(hmi_ui_login_title_text(), "CREATE ADMINISTRATOR") == 0);
+        CHECK(strstr(hmi_ui_login_status_text(), "No accounts") != NULL);
+        save_ppm((snprintf(err, sizeof(err), "%s_7_first_boot.ppm", prefix), err));
+        hmi_ui_login_fill("admin", "short", "short");
+        hmi_ui_login_submit();
+        CHECK(strstr(hmi_ui_login_status_text(), "too short") != NULL);
+        CHECK(hmi_ui_login_field_text(1)[0] == '\0' && hmi_ui_login_field_text(2)[0] == '\0'); /* wiped */
+        hmi_ui_login_fill("admin", "admin-pass-1", "admin-pass-2");
+        hmi_ui_login_submit();
+        CHECK(strstr(hmi_ui_login_status_text(), "do not match") != NULL);
+        hmi_ui_login_fill("Admin Name!", NULL, NULL);                  /* the keyboard filter drops what is not allowed */
+        CHECK(strcmp(hmi_ui_login_field_text(0), "dminame") == 0);     /* only a-z 0-9 _ . - are accepted */
+        hmi_ui_login_fill("admin", "admin-pass-1", "admin-pass-1");
+        hmi_ui_login_submit();
+        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Administrator created") == NULL; i++)
+            pump(0.1, &samples, &n, cap);
+        CHECK(strstr(hmi_ui_login_status_text(), "Administrator created") != NULL);
+        CHECK(strcmp(hmi_ui_login_title_text(), "LOG IN") == 0);
+        CHECK(hmi_auth_store_state(&auth) == HMI_AUTH_STORE_READY);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);              /* creating does not log in */
+
+        /* wrong password */
+        hmi_ui_login_fill("admin", "wrong-pass-12", NULL);
+        hmi_ui_login_submit();
+        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Wrong user") == NULL; i++)
+            pump(0.1, &samples, &n, cap);
+        printf("[ui] wrong password: '%s'\n", hmi_ui_login_status_text());
+        CHECK(strcmp(hmi_ui_login_status_text(), "Wrong user name or password") == 0);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
+        CHECK(hmi_ui_login_field_text(1)[0] == '\0');
+        /* an unknown user gets the very same wording */
+        pump(1.1, &samples, &n, cap);
+        hmi_ui_login_fill("nobody", "wrong-pass-12", NULL);
+        hmi_ui_login_submit();
+        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Wrong user") == NULL; i++)
+            pump(0.1, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_login_status_text(), "Wrong user name or password") == 0);
+        /* too soon after a failure */
+        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
+        hmi_ui_login_submit();
+        CHECK(strstr(hmi_ui_login_status_text(), "Please wait") != NULL);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);              /* the right password was not accepted */
+        save_ppm((snprintf(err, sizeof(err), "%s_8_login_refused.ppm", prefix), err));
+        pump(1.4, &samples, &n, cap);                                  /* the countdown ends by itself */
+        CHECK(hmi_ui_login_status_text()[0] == '\0');
+
+        /* cancel and reopen */
+        hmi_ui_login_cancel();
+        CHECK(!hmi_ui_login_visible());
+
+        /* correct login */
+        hmi_ui_press_login_button();
+        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
+        hmi_ui_login_submit();
+        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.1, &samples, &n, cap);
+        CHECK(!hmi_ui_login_visible());
+        pump(0.2, &samples, &n, cap);
+        printf("[ui] logged in: header='%s'\n", hmi_ui_role_text());
+        CHECK(strcmp(hmi_ui_role_text(), "ADMIN  admin") == 0);
+        CHECK(hmi_auth_role(&auth, hmi_now_ms()) == HMI_ROLE_ADMIN);
+        hmi_ui_press_ack_all();
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") != 0);
+        save_ppm((snprintf(err, sizeof(err), "%s_9_logged_in.ppm", prefix), err));
+
+        /* idle logout: no touch input in this harness, so the deadline runs out */
+        pump(2.2, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
+        hmi_ui_press_ack_all();
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
+
+        /* explicit logout with the header button */
+        hmi_ui_press_login_button();
+        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
+        hmi_ui_login_submit();
+        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.1, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "ADMIN  admin") == 0);
+        hmi_ui_press_login_button();
+        pump(0.2, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
+
+        /* settled again: an idle screen with the login machinery present stays idle */
+        pump(0.5, &samples, &n, cap);
+        f0 = s_flushes;
+        pump(1.5, &samples, &n, cap);
+        CHECK(s_flushes - f0 == 0);
+
+        FILE *af = fopen(audit_path, "rb");
+        static char atext[65536];
+        size_t alen = af ? fread(atext, 1, sizeof(atext) - 1, af) : 0;
+        if (af) fclose(af);
+        atext[alen] = '\0';
+        CHECK(strstr(atext, "USER_CREATE user=admin role=admin") != NULL);
+        CHECK(strstr(atext, "LOGIN_FAIL user=admin failures=1") != NULL);
+        CHECK(strstr(atext, "LOGIN_FAIL user=? failures=1") != NULL);
+        CHECK(strstr(atext, "LOGIN_OK user=admin role=admin") != NULL);
+        CHECK(strstr(atext, "IDLE_LOGOUT user=admin role=admin") != NULL);
+        CHECK(strstr(atext, " LOGOUT user=admin role=admin") != NULL);
+        CHECK(strstr(atext, "ALARM_ACK role=viewer action=ACK_ALL result=DENIED") != NULL);
+        CHECK(strstr(atext, "pass") == NULL && strstr(atext, "nobody") == NULL); /* no credentials, no unknown names */
+        hmi_auth_deinit(&auth);
+    }
+
     /* raw results */
     qsort(samples, n, sizeof(double), cmp_d);
     double sum = 0;
