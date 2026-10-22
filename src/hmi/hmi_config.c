@@ -436,8 +436,8 @@ static const field_t PLC_FIELDS[] = {
     { "host", K_STR, offsetof(hmi_app_cfg_t, host), HMI_HOST_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "port", K_U16, offsetof(hmi_app_cfg_t, port), 0, 1, 65535, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "unit", K_U8, offsetof(hmi_app_cfg_t, unit), 0, 0, 247, NULL, NULL, NO_FLAG_OFF, 0, NULL },
-    { "response_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, response_timeout_ms), 0, 50, 30000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
-    { "connect_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, connect_timeout_ms), 0, 50, 30000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "response_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, response_timeout_ms), 0, 50, HMI_RESPONSE_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "connect_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, connect_timeout_ms), 0, 50, HMI_CONNECT_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "allowed_hosts", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, plc_allowed_hosts },
 };
 static const section_t PLC_SECTION = { "plc", PLC_FIELDS, sizeof(PLC_FIELDS) / sizeof(PLC_FIELDS[0]), false };
@@ -462,6 +462,8 @@ typedef struct {
     hmi_app_cfg_t *out;
     uint32_t version;
     bool writes_enabled;
+    uint32_t write_min_interval_ms;
+    uint32_t write_max_per_minute;
 } top_t;
 
 static bool top_plc(ctx_t *c, int val, void *base)
@@ -484,13 +486,15 @@ static bool top_tags(ctx_t *c, int val, void *base)
     return true;
 }
 
-enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS };
+enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS, TOP_WMIN, TOP_WMAX };
 
 static const field_t TOP_FIELDS[] = {
     { "version", K_U32, offsetof(top_t, version), 0, 1, 1, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "writes_enabled", K_BOOL, offsetof(top_t, writes_enabled), 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "plc", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, top_plc },
     { "tags", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, top_tags },
+    { "write_min_interval_ms", K_U32, offsetof(top_t, write_min_interval_ms), 0, 100, 3600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "write_max_per_minute", K_U32, offsetof(top_t, write_max_per_minute), 0, 1, 600, NULL, NULL, NO_FLAG_OFF, 0, NULL },
 };
 static const section_t TOP_SECTION = { NULL, TOP_FIELDS, sizeof(TOP_FIELDS) / sizeof(TOP_FIELDS[0]), true };
 
@@ -505,12 +509,14 @@ static bool parse_document(ctx_t *c, size_t len, hmi_app_cfg_t *out)
     if (c->t[0].type != JSMN_OBJECT) return fail(c, "top level must be object", NULL);
     if (skip(c, 0) != n) return fail(c, "trailing data", NULL);
 
-    top_t top = { out, 0, false };
+    top_t top = { out, 0, false, 1000u, 30u }; /* defaults of the two optional write limits */
     seen_t st;
     if (!parse_object(c, 0, &TOP_SECTION, &top, &st)) return false;
     unsigned all = (1u << TOP_VERSION) | (1u << TOP_PLC) | (1u << TOP_TAGS);
     if ((st.seen & all) != all) return fail(c, "version, plc and tags are required", NULL);
     out->writes_enabled = top.writes_enabled;
+    out->write_min_interval_ms = top.write_min_interval_ms;
+    out->write_max_per_minute = top.write_max_per_minute;
 
     /* cross-tag checks (names unique, register spans, group building) */
     hmi_tagdb_t *db = (hmi_tagdb_t *)malloc(sizeof(*db));

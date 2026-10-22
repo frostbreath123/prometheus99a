@@ -197,8 +197,52 @@ static void test_allowed_hosts(void)
     }
 }
 
+static void test_write_limits_and_timeouts(void)
+{
+    SECTION("config: write rate limits and the bounds of the PLC timeouts");
+    static hmi_app_cfg_t cfg;
+    char err[128];
+    CHECK(parse(GOOD_CFG, &cfg, err));
+    CHECK(cfg.write_min_interval_ms == 1000u && cfg.write_max_per_minute == 30u); /* defaults when absent */
+
+    char doc[2048];
+    const char *tail = strstr(GOOD_CFG, "\"writes_enabled\"");
+    CHECK(tail != NULL);
+    size_t head = (size_t)(tail - GOOD_CFG);
+    snprintf(doc, sizeof(doc), "%.*s\"write_min_interval_ms\":250,\"write_max_per_minute\":7,%s", (int)head, GOOD_CFG, tail);
+    CHECK(parse(doc, &cfg, err) && cfg.write_min_interval_ms == 250u && cfg.write_max_per_minute == 7u);
+    snprintf(doc, sizeof(doc), "%.*s\"write_min_interval_ms\":99,%s", (int)head, GOOD_CFG, tail);
+    CHECK(!parse(doc, &cfg, err));
+    snprintf(doc, sizeof(doc), "%.*s\"write_max_per_minute\":0,%s", (int)head, GOOD_CFG, tail);
+    CHECK(!parse(doc, &cfg, err));
+    snprintf(doc, sizeof(doc), "%.*s\"write_max_per_minute\":601,%s", (int)head, GOOD_CFG, tail);
+    CHECK(!parse(doc, &cfg, err));
+    CHECK(cfg.n_tags == 0 && !cfg.writes_enabled); /* a rejected file leaves nothing usable */
+
+    /* the timeouts may not exceed what the service watchdog and stop timeout allow */
+    const char *resp = strstr(GOOD_CFG, "\"response_timeout_ms\":300");
+    CHECK(resp != NULL);
+    size_t rpos = (size_t)(resp - GOOD_CFG);
+    snprintf(doc, sizeof(doc), "%.*s\"response_timeout_ms\":%u%s", (int)rpos, GOOD_CFG, HMI_RESPONSE_TIMEOUT_MAX_MS,
+             resp + strlen("\"response_timeout_ms\":300"));
+    CHECK(parse(doc, &cfg, err) && cfg.response_timeout_ms == HMI_RESPONSE_TIMEOUT_MAX_MS);
+    snprintf(doc, sizeof(doc), "%.*s\"response_timeout_ms\":%u%s", (int)rpos, GOOD_CFG, HMI_RESPONSE_TIMEOUT_MAX_MS + 1u,
+             resp + strlen("\"response_timeout_ms\":300"));
+    CHECK(!parse(doc, &cfg, err));
+    snprintf(doc, sizeof(doc), "%.*s\"response_timeout_ms\":300,\"connect_timeout_ms\":%u%s", (int)rpos, GOOD_CFG,
+             HMI_CONNECT_TIMEOUT_MAX_MS, resp + strlen("\"response_timeout_ms\":300"));
+    CHECK(parse(doc, &cfg, err) && cfg.connect_timeout_ms == HMI_CONNECT_TIMEOUT_MAX_MS);
+    snprintf(doc, sizeof(doc), "%.*s\"response_timeout_ms\":300,\"connect_timeout_ms\":%u%s", (int)rpos, GOOD_CFG,
+             HMI_CONNECT_TIMEOUT_MAX_MS + 1u, resp + strlen("\"response_timeout_ms\":300"));
+    CHECK(!parse(doc, &cfg, err));
+    /* the largest allowed timeouts keep the worst stall under the 10 s service watchdog */
+    CHECK(2u * HMI_RESPONSE_TIMEOUT_MAX_MS + 2000u /* audit wait */ + 2000u < 10000u);
+    CHECK(HMI_CONNECT_TIMEOUT_MAX_MS + 2000u < 10000u);
+}
+
 int main(void)
 {
+    test_write_limits_and_timeouts();
     test_allowed_hosts();
     test_config();
     test_config_files();

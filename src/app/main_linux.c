@@ -40,6 +40,7 @@
 #include "../hmi/hmi_cli.h"
 #include "../hmi/hmi_auth.h"
 #include "../hmi/hmi_cfgsec.h"
+#include "../hmi/hmi_auditfmt.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -61,6 +62,21 @@ static hmi_runtime_t g_rt;
 static hmi_app_cfg_t g_cfg;
 #ifndef HMI_TEST_ROLE
 static hmi_auth_t g_auth;
+
+/* Once the runtime is up, login records go through its storage worker, so they
+ * are ordered with the other audit records and counted against the size cap of
+ * the file. The call waits (at most HMI_AUDIT_WAIT_MS) until the record is
+ * durable, on the UI thread: a login is rare and must not succeed unrecorded. */
+static bool runtime_login_audit(void *user, const hmi_auth_audit_rec_t *rec)
+{
+    char line[256];
+    size_t n = hmi_auth_format_audit(rec, line, sizeof(line));
+    if (n == 0) return false;
+    hmi_wall_t w;
+    hmi_wall_now(&w);
+    n = hmi_audit_stamp_line(line, n, sizeof(line), &w);
+    return n != 0 && hmi_runtime_audit_append((hmi_runtime_t *)user, line, n);
+}
 #endif
 
 int main(int argc, char **argv)
@@ -164,9 +180,14 @@ int main(int argc, char **argv)
         hmi_cfgsec_result_t sr = hmi_cfgsec_load(&sp, &g_cfg, &si);
         cfg_ok = (sr == HMI_CFGSEC_OK);
         snprintf(err, sizeof(err), "%s", si.message);
-        char aline[100];
-        if (audit_path && hmi_cfgsec_format_audit(hmi_now_ms(), &si, aline, sizeof(aline)) > 0)
-            hmi_fs_append_sync(audit_path, aline, strlen(aline)); /* best effort: nothing depends on it */
+        char aline[200];
+        size_t alen = audit_path ? hmi_cfgsec_format_audit(hmi_now_ms(), &si, aline, sizeof(aline)) : 0;
+        if (alen > 0) {
+            hmi_wall_t aw;
+            hmi_wall_now(&aw);
+            size_t stamped = hmi_audit_stamp_line(aline, strlen(aline), sizeof(aline), &aw);
+            hmi_fs_append_sync(audit_path, aline, stamped ? stamped : strlen(aline)); /* best effort: nothing depends on it */
+        }
         if (cfg_ok) {
             fprintf(stderr, "prometheus99: configuration verified (signature serial %u)\n", (unsigned)si.serial);
             if (si.state_damaged)
@@ -194,6 +215,9 @@ int main(int argc, char **argv)
             hmi_plc_driver_t drv;
             plc_libmodbus_driver(plc, &drv);
             runtime_up = hmi_runtime_start(&g_rt, &g_cfg, &drv, audit_path, alarm_path);
+#ifndef HMI_TEST_ROLE
+            if (runtime_up && audit_path) hmi_auth_set_audit(&g_auth, runtime_login_audit, &g_rt);
+#endif
         }
         if (!runtime_up) snprintf(banner, sizeof(banner), "RUNTIME START FAILED");
     }

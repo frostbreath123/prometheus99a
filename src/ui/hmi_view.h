@@ -78,6 +78,9 @@ void hmi_view_heartbeat_text(uint32_t seconds, char *buf, size_t cap);
 const char *hmi_view_ack_result_text(hmi_ack_result_t r);
 hmi_tone_t hmi_view_ack_result_tone(hmi_ack_result_t r);
 
+/* Banner shown while the storage worker cannot write its files. */
+void hmi_view_storage_fault_text(char *buf, size_t cap);
+
 /* ---- login and session wording ---- */
 /* Header label: "VIEWER" when logged out, else "<ROLE>  <user>" with the role in
  * capitals. A text longer than the buffer is cut, never overflowed. */

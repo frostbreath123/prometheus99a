@@ -28,7 +28,7 @@ MB_CFLAGS = $(shell pkg-config --cflags libmodbus)
 MB_LIBS = $(shell pkg-config --libs libmodbus)
 
 HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
+           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c src/hmi/hmi_store.c src/hmi/hmi_auditfmt.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
 FAKE_PLC = tests/hmi/fake_modbus_server_posix.c
 WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
 
@@ -45,7 +45,7 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec store auditfmt
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
@@ -180,3 +180,21 @@ config-exec: $(BUILD)/prometheus99 $(BUILD)/p99_sign
 	bash tests/hmi/config_exec_test.sh $(BUILD) config/hmi.example.json
 
 .PHONY: cli-exec auth-exec config-exec
+
+# The runtime is killed with SIGKILL at random moments while it writes the
+# audit file, the alarm journal and the alarm state; the files must be valid
+# every time and every PLC write must have its SENT record (see the script).
+$(BUILD)/killloop_child: tests/hmi/killloop_child.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/killloop_child.c tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+
+$(BUILD)/killloop_verify: tests/hmi/killloop_verify.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/killloop_verify.c tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+
+# KILL_ROUNDS=<n> sets the number of rounds (default 30)
+killloop: $(BUILD)/killloop_child $(BUILD)/killloop_verify
+	bash tests/hmi/killloop_selftest.sh $(BUILD)
+	bash tests/hmi/killloop_test.sh $(BUILD) $(or $(KILL_ROUNDS),30)
+
+.PHONY: killloop

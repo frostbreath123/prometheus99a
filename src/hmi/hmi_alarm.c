@@ -49,8 +49,9 @@ void hmi_alarm_set_sink(hmi_alarm_t *a, hmi_alarm_log_sink_t fn, void *user)
     hmi_mutex_unlock(&a->lock);
 }
 
-/* Caller holds lock. Sink is invoked after state is final; a slow sink would
- * delay the alarm thread only, never the comms or UI threads. */
+/* Caller holds lock. The entry goes into the in-memory journal and, if a sink
+ * is installed, into a small queue that flush_sink() empties after the caller
+ * has released the lock: the sink is never called under the alarm lock. */
 static void log_event(hmi_alarm_t *a, size_t point, uint64_t now, hmi_alarm_event_t ev, double value)
 {
     hmi_alarm_log_t *e = &a->journal[a->j_head];
@@ -63,7 +64,43 @@ static void log_event(hmi_alarm_t *a, size_t point, uint64_t now, hmi_alarm_even
     e->value = value;
     a->j_head = (uint8_t)((a->j_head + 1) % HMI_JOURNAL_LEN);
     if (a->j_count < HMI_JOURNAL_LEN) a->j_count++;
-    if (a->sink && !a->sink(a->sink_user, e)) a->sink_failures++;
+    a->state_rev++;
+    if (a->sink) {
+        if (a->sq_count >= HMI_SINK_PENDING) a->sink_dropped++;
+        else a->sink_q[(a->sq_head + a->sq_count++) % HMI_SINK_PENDING] = *e;
+    }
+}
+
+/* Called without the lock. Hands queued entries to the sink in order. If another
+ * thread is already doing so it will also take the entries queued meanwhile, so
+ * the sink sees them in sequence and never concurrently. */
+static void flush_sink(hmi_alarm_t *a)
+{
+    hmi_alarm_log_t batch[16];
+    hmi_mutex_lock(&a->lock);
+    if (a->sink_flushing || !a->sink) {
+        hmi_mutex_unlock(&a->lock);
+        return;
+    }
+    a->sink_flushing = true;
+    for (;;) {
+        size_t n = a->sq_count < 16u ? a->sq_count : 16u;
+        if (n == 0) break;
+        for (size_t i = 0; i < n; i++) batch[i] = a->sink_q[(a->sq_head + i) % HMI_SINK_PENDING];
+        a->sq_head = (uint8_t)((a->sq_head + n) % HMI_SINK_PENDING);
+        a->sq_count = (uint8_t)(a->sq_count - n);
+        hmi_alarm_log_sink_t fn = a->sink;
+        void *user = a->sink_user;
+        hmi_mutex_unlock(&a->lock);
+        uint32_t failed = 0;
+        for (size_t i = 0; i < n; i++) {
+            if (fn && !fn(user, &batch[i])) failed++;
+        }
+        hmi_mutex_lock(&a->lock);
+        a->sink_failures += failed;
+    }
+    a->sink_flushing = false;
+    hmi_mutex_unlock(&a->lock);
 }
 
 static void apply_kind(hmi_alarm_t *a, size_t p, hmi_alarm_kind_t k, uint64_t now, double v)
@@ -87,6 +124,7 @@ static void apply_kind(hmi_alarm_t *a, size_t p, hmi_alarm_kind_t k, uint64_t no
                 log_event(a, p, now, HMI_ALE_RTN, v);
             } else if (k != pt->kind) {
                 pt->kind = k;
+                a->state_rev++; /* the persisted kind changed, with or without a journal entry */
                 if (new_rank > old_rank) log_event(a, p, now, HMI_ALE_ESCALATED, v);
             }
             break;
@@ -103,6 +141,7 @@ static void apply_kind(hmi_alarm_t *a, size_t p, hmi_alarm_kind_t k, uint64_t no
                 pt->since_ms = now;
                 log_event(a, p, now, HMI_ALE_ESCALATED, v);
             } else {
+                if (pt->kind != k) a->state_rev++;
                 pt->kind = k;
             }
             break;
@@ -140,6 +179,8 @@ static hmi_alarm_kind_t debounced(hmi_alarm_t *a, size_t p, hmi_alarm_kind_t wan
     return cur;
 }
 
+static void note_ack_outcome(hmi_alarm_t *a, hmi_ack_result_t r);
+
 void hmi_alarm_step(hmi_alarm_t *a, uint64_t now, hmi_link_health_t link)
 {
     hmi_tag_value_t vals[HMI_MAX_TAGS];
@@ -170,7 +211,17 @@ void hmi_alarm_step(hmi_alarm_t *a, uint64_t now, hmi_link_health_t link)
     hmi_alarm_kind_t k = debounced(a, sp, want, now, 1000u, 0u);
     (void)cur;
     apply_kind(a, sp, k, now, 0.0);
+    /* An acknowledgement whose audit record never completed is dropped, not applied. */
+    for (int i = 0; i < HMI_ACK_PENDING_MAX; i++) {
+        hmi_ack_pending_t *p = &a->pend[i];
+        if (p->used && now - p->t_start_ms > HMI_ACK_PENDING_TTL_MS) {
+            p->used = false;
+            a->ack_audit_failures++;
+            note_ack_outcome(a, HMI_ACK_AUDIT_FAILED);
+        }
+    }
     hmi_mutex_unlock(&a->lock);
+    flush_sink(a);
 }
 
 /* ---- acknowledgement ---- */
@@ -204,21 +255,72 @@ void hmi_alarm_set_ack_audit(hmi_alarm_t *a, hmi_ack_audit_fn fn, void *user)
     hmi_mutex_unlock(&a->lock);
 }
 
-/* What was awaiting acknowledgement when the request arrived. */
-typedef struct {
-    size_t n;
-    uint8_t point[HMI_MAX_TAGS + 1];
-    hmi_alarm_state_t state[HMI_MAX_TAGS + 1];
-    hmi_alarm_kind_t kind[HMI_MAX_TAGS + 1];
-    uint64_t since_ms[HMI_MAX_TAGS + 1];
-} ack_set_t;
+void hmi_alarm_set_ack_audit_async(hmi_alarm_t *a, hmi_ack_audit_submit_fn fn, void *user)
+{
+    hmi_mutex_lock(&a->lock);
+    a->ack_submit = fn;
+    a->ack_submit_user = user;
+    hmi_mutex_unlock(&a->lock);
+}
+
+/* Caller holds the lock. Acknowledges only the exact alarms the operator was
+ * shown and the audit record named. Returns how many were acknowledged. */
+static size_t apply_ack_locked(hmi_alarm_t *a, const hmi_ack_set_t *set, uint64_t now)
+{
+    size_t acked = 0;
+    for (size_t i = 0; i < set->n; i++) {
+        size_t p = set->point[i];
+        const hmi_alarm_point_t *pt = &a->pt[p];
+        if (pt->state != set->state[i] || pt->kind != set->kind[i] || pt->since_ms != set->since_ms[i]) continue;
+        ack_point_locked(a, p, now);
+        acked++;
+    }
+    return acked;
+}
+
+/* Caller holds the lock. */
+static void note_ack_outcome(hmi_alarm_t *a, hmi_ack_result_t r)
+{
+    a->last_ack_result = r;
+    a->last_ack_seq++;
+}
+
+void hmi_alarm_ack_audit_done(hmi_alarm_t *a, uint32_t token, bool ok, uint64_t now)
+{
+    hmi_mutex_lock(&a->lock);
+    for (int i = 0; i < HMI_ACK_PENDING_MAX; i++) {
+        hmi_ack_pending_t *p = &a->pend[i];
+        if (!p->used || p->token != token) continue;
+        p->used = false;
+        if (!ok) {
+            a->ack_audit_failures++;
+            note_ack_outcome(a, HMI_ACK_AUDIT_FAILED);
+        } else {
+            note_ack_outcome(a, apply_ack_locked(a, &p->set, now) ? HMI_ACK_OK : HMI_ACK_NOTHING);
+        }
+        break;
+    }
+    hmi_mutex_unlock(&a->lock);
+    flush_sink(a);
+}
+
+uint32_t hmi_alarm_last_ack(hmi_alarm_t *a, hmi_ack_result_t *result)
+{
+    hmi_mutex_lock(&a->lock);
+    uint32_t seq = a->last_ack_seq;
+    if (result) *result = a->last_ack_result;
+    hmi_mutex_unlock(&a->lock);
+    return seq;
+}
 
 static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint64_t now, hmi_role_t role,
                                     const char *actor)
 {
-    ack_set_t set;
+    hmi_ack_set_t set;
     hmi_ack_audit_fn audit;
     void *audit_user;
+    hmi_ack_audit_submit_fn submit;
+    void *submit_user;
     set.n = 0;
 
     hmi_mutex_lock(&a->lock);
@@ -233,6 +335,8 @@ static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint
     }
     audit = a->ack_audit;
     audit_user = a->ack_audit_user;
+    submit = a->ack_submit;
+    submit_user = a->ack_submit_user;
     hmi_mutex_unlock(&a->lock);
 
     bool allowed = hmi_authz_allows(role, HMI_ACT_ACK_ALARM, HMI_ROLE_VIEWER);
@@ -251,12 +355,44 @@ static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint
 
     if (!allowed) {
         /* Best effort: the request is refused whether or not this is recorded. */
-        if (audit && !audit(audit_user, &rec)) {
+        bool recorded = submit ? submit(submit_user, &rec, 0u) : (audit ? audit(audit_user, &rec) : true);
+        if (!recorded) {
             hmi_mutex_lock(&a->lock);
             a->ack_audit_failures++;
             hmi_mutex_unlock(&a->lock);
         }
         return HMI_ACK_DENIED;
+    }
+
+    if (submit) {
+        /* Two-phase: take a pending slot, queue the record, return at once. The
+         * acknowledgement is applied by hmi_alarm_ack_audit_done(). */
+        uint32_t token = 0;
+        hmi_mutex_lock(&a->lock);
+        for (int i = 0; i < HMI_ACK_PENDING_MAX; i++) {
+            hmi_ack_pending_t *p = &a->pend[i];
+            if (p->used) continue;
+            if (++a->next_token == 0) a->next_token = 1; /* 0 means "no completion" */
+            token = a->next_token;
+            p->used = true;
+            p->token = token;
+            p->t_start_ms = now;
+            p->set = set;
+            break;
+        }
+        if (token == 0) a->ack_audit_failures++; /* every pending slot is busy: refuse */
+        hmi_mutex_unlock(&a->lock);
+        if (token == 0) return HMI_ACK_AUDIT_FAILED;
+        if (!submit(submit_user, &rec, token)) {
+            hmi_mutex_lock(&a->lock);
+            for (int i = 0; i < HMI_ACK_PENDING_MAX; i++) {
+                if (a->pend[i].used && a->pend[i].token == token) a->pend[i].used = false;
+            }
+            a->ack_audit_failures++;
+            hmi_mutex_unlock(&a->lock);
+            return HMI_ACK_AUDIT_FAILED;
+        }
+        return HMI_ACK_PENDING;
     }
 
     /* Audit before effect; no lock is held while the hook touches storage. */
@@ -267,17 +403,10 @@ static hmi_ack_result_t ack_request(hmi_alarm_t *a, bool all, size_t point, uint
         return HMI_ACK_AUDIT_FAILED;
     }
 
-    size_t acked = 0;
     hmi_mutex_lock(&a->lock);
-    for (size_t i = 0; i < set.n; i++) {
-        size_t p = set.point[i];
-        const hmi_alarm_point_t *pt = &a->pt[p];
-        /* Only the exact alarm the operator was shown and we recorded. */
-        if (pt->state != set.state[i] || pt->kind != set.kind[i] || pt->since_ms != set.since_ms[i]) continue;
-        ack_point_locked(a, p, now);
-        acked++;
-    }
+    size_t acked = apply_ack_locked(a, &set, now); /* only the exact alarms the operator was shown and we recorded */
     hmi_mutex_unlock(&a->lock);
+    flush_sink(a);
     return acked ? HMI_ACK_OK : HMI_ACK_NOTHING;
 }
 
@@ -353,9 +482,12 @@ static uint32_t crc32_calc(const uint8_t *p, size_t n)
     return ~crc;
 }
 
-bool hmi_alarm_save(hmi_alarm_t *a, const char *path)
+typedef char hmi_alarm_state_size_check[(sizeof(alarm_blob_t) <= HMI_ALARM_STATE_MAX) ? 1 : -1];
+
+size_t hmi_alarm_state_serialize(hmi_alarm_t *a, void *buf, size_t cap, uint32_t *rev)
 {
     alarm_blob_t b;
+    if (cap < sizeof(b)) return 0;
     memset(&b, 0, sizeof(b));
     hmi_mutex_lock(&a->lock);
     b.magic = 0x504D4C41u; /* 'ALMP' */
@@ -366,21 +498,27 @@ bool hmi_alarm_save(hmi_alarm_t *a, const char *path)
         b.kind[i] = (uint8_t)a->pt[i].kind;
         b.acked_rank[i] = a->pt[i].acked_rank;
     }
+    if (rev) *rev = a->state_rev;
     hmi_mutex_unlock(&a->lock);
     b.crc = 0;
     b.crc = crc32_calc((const uint8_t *)&b, sizeof(b));
-    return hmi_fs_atomic_write(path, &b, sizeof(b));
+    memcpy(buf, &b, sizeof(b));
+    return sizeof(b);
 }
 
-bool hmi_alarm_load(hmi_alarm_t *a, const char *path)
+uint32_t hmi_alarm_state_rev(hmi_alarm_t *a)
+{
+    hmi_mutex_lock(&a->lock);
+    uint32_t r = a->state_rev;
+    hmi_mutex_unlock(&a->lock);
+    return r;
+}
+
+bool hmi_alarm_state_apply(hmi_alarm_t *a, const void *buf, size_t len)
 {
     alarm_blob_t b;
-    FILE *f = fopen(path, "rb");
-    if (!f) return false;
-    size_t got = fread(&b, 1, sizeof(b), f);
-    int extra = fgetc(f);
-    fclose(f);
-    if (got != sizeof(b) || extra != EOF) return false;
+    if (len != sizeof(b)) return false;
+    memcpy(&b, buf, sizeof(b));
     uint32_t crc = b.crc;
     b.crc = 0;
     if (crc32_calc((const uint8_t *)&b, sizeof(b)) != crc) return false;
@@ -394,6 +532,40 @@ bool hmi_alarm_load(hmi_alarm_t *a, const char *path)
         a->pt[i].kind = (hmi_alarm_kind_t)b.kind[i];
         a->pt[i].acked_rank = b.acked_rank[i];
     }
+    a->state_rev++;
     hmi_mutex_unlock(&a->lock);
     return true;
+}
+
+bool hmi_alarm_save(hmi_alarm_t *a, const char *path)
+{
+    uint8_t buf[HMI_ALARM_STATE_MAX];
+    size_t n = hmi_alarm_state_serialize(a, buf, sizeof(buf), NULL);
+    return n > 0 && hmi_fs_atomic_write(path, buf, n);
+}
+
+bool hmi_alarm_load(hmi_alarm_t *a, const char *path)
+{
+    uint8_t buf[HMI_ALARM_STATE_MAX];
+    size_t len = 0;
+    if (hmi_fs_read_all(path, buf, sizeof(buf), &len) != HMI_FS_READ_OK) return false; /* absent, unreadable or too long */
+    return hmi_alarm_state_apply(a, buf, len);
+}
+
+void hmi_alarm_journal_restore(hmi_alarm_t *a, const hmi_alarm_log_t *ev, size_t n)
+{
+    hmi_mutex_lock(&a->lock);
+    if (n > HMI_JOURNAL_LEN) {
+        ev += n - HMI_JOURNAL_LEN; /* keep the newest */
+        n = HMI_JOURNAL_LEN;
+    }
+    a->j_head = 0;
+    a->j_count = 0;
+    for (size_t i = 0; i < n; i++) {
+        a->journal[a->j_head] = ev[i];
+        a->j_head = (uint8_t)((a->j_head + 1) % HMI_JOURNAL_LEN);
+        a->j_count++;
+        if (ev[i].seq > a->seq) a->seq = ev[i].seq;
+    }
+    hmi_mutex_unlock(&a->lock);
 }

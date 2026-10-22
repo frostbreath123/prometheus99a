@@ -25,7 +25,9 @@ src/hmi/        PORTABLE CORE (C99, no OS headers)
   hmi_kdf.*       Argon2id password hash (the only file that includes monocypher.h, see the 2026-10-22 addendum)
   hmi_users.*     user store: accounts, strict file format
   hmi_auth.*      login, lockout, idle logout, first-boot administrator
-  hmi_platform.h  the ONLY OS surface: clock, mutex, thread, atomic flag, atomic file write
+  hmi_store.*     storage worker: every durable file write, bounded queue, rotation
+  hmi_auditfmt.*  audit and journal line formats, wall-clock stamp (pure functions)
+  hmi_platform.h  the ONLY OS surface: clock, mutex, thread, event, atomic flag, file operations
 src/hmi/hmi_platform_win32.c   host tests / Windows demo
 src/hmi/hmi_platform_posix.c   Linux target (built and tested on WSL2; not run on a Raspberry Pi)
 src/hmi/plc_libmodbus.*        driver backed by libmodbus 3.1.10 (the only file that includes <modbus.h>)
@@ -197,3 +199,57 @@ Consequences:
   root, and the serial state file can be deleted by the service user.
 - Nothing here was run under real systemd as the service user or on a
   Raspberry Pi.
+
+## Addendum 2026-10-22: persistence and storage
+
+Context: the UI thread waited for the disk when it recorded a write or an
+acknowledgement, the alarm journal and the alarm state were kept in memory
+until a clean shutdown, the audit file was unbounded and had no wall-clock
+time, and the shutdown budget was shorter than the longest legitimate stall.
+Roadmap milestone M3 addresses these. Design, formats, limits and evidence are
+in docs/STORAGE.md.
+
+Decision:
+- One storage worker thread (`hmi_store`) performs every durable write: the
+  audit file, the alarm journal and the alarm state. It has a bounded queue, a
+  visible fault flag and rotation with a size cap. The platform layer gained
+  `hmi_event_*`, `hmi_fs_size`, `hmi_fs_rename`, `hmi_fs_read_tail` and
+  `hmi_wall_ms`; no other core file touches the operating system.
+- Audit before effect is kept and made asynchronous. `hmi_writes_submit_as`
+  and the acknowledgement calls return before the record is durable. A PLC
+  write stays RESERVED until its RESERVED record is durable, and the comms
+  thread waits until the SENT record is durable before transmitting. An
+  acknowledgement returns `HMI_ACK_PENDING` and is applied, with the same
+  unseen-alarm check, when its record is durable. A record that fails, or does
+  not complete in time, means the action does not happen (fail closed). This
+  amends the 2026-10-15 and 2026-10-22 addenda only in when the call returns;
+  the order (record, then effect) and the refusal when the record cannot be
+  made durable are unchanged. The synchronous hooks remain for tests and for
+  use without a storage worker.
+- Lock graph: the store lock, like the others, is never held across a file
+  operation or a callback, and is never nested with another lock. The alarm
+  engine no longer calls its journal sink under its own lock: it queues entries
+  and delivers them after unlocking, in order, from one caller at a time.
+  Before, the sink was called under the alarm lock, which would have nested the
+  alarm lock with any lock the sink takes; no sink was installed in production
+  until now.
+- A write is checked a second time by the comms thread just before it is sent,
+  and a rate limit applies to accepted submissions. Both are part of
+  `hmi_writes`; the limits are optional fields of the signed configuration.
+- The configuration bounds for `response_timeout_ms` and `connect_timeout_ms`
+  were lowered to 2000 and 3000 so that the longest stall of the comms thread
+  (8 s) fits the service watchdog and stop timeout. `hmi_runtime_stop` returns
+  whether everything stopped and was released.
+- Audit lines carry a wall-clock time and whether the clock is synchronised, in
+  addition to the monotonic time. The line formats are in
+  `hmi_auditfmt`.
+- `hmi_alarm.c` no longer reads its state file with `fopen`; it uses
+  `hmi_fs_read_all` of the platform layer, which tells an absent, an unreadable
+  and an oversized file apart.
+
+Consequences:
+- A login still waits on the UI thread for its record, for at most 2 s.
+- Records still queued when the process dies are lost (at most 64); an action
+  that needed a record never took effect without it.
+- Nothing here was run on a Raspberry Pi, on real flash storage, or through a
+  real power failure.

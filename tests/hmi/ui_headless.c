@@ -272,7 +272,8 @@ int main(int argc, char **argv)
         hmi_alarm_point_t cp;
         hmi_alarm_get(&rt.alarms, hmi_tagdb_count(&rt.db), &cp);
         CHECK(cp.state == HMI_AL_RTN_UNACK); /* link back; alarm waits for the operator */
-        hmi_alarm_ack_all(&rt.alarms, hmi_now_ms(), HMI_ROLE_OPERATOR);
+        CHECK(hmi_alarm_ack_all(&rt.alarms, hmi_now_ms(), HMI_ROLE_OPERATOR) == HMI_ACK_PENDING); /* recorded first, by the worker */
+        pump(0.5, &samples, &n, cap);
         CHECK(hmi_alarm_count_unacked(&rt.alarms) == 0);
         hmi_alarm_get(&rt.alarms, hmi_tagdb_count(&rt.db), &cp);
         CHECK(cp.state == HMI_AL_NORMAL);
@@ -302,6 +303,9 @@ int main(int argc, char **argv)
         pump(0.3, &samples, &n, cap);
         hmi_ui_press_ack_all();
         printf("[ui] operator ACK ALL: '%s'\n", hmi_ui_ack_status_text());
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK PENDING: recording") == 0); /* the button did not wait for the disk */
+        pump(0.5, &samples, &n, cap);
+        printf("[ui] operator ACK ALL settled: '%s'\n", hmi_ui_ack_status_text());
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACKNOWLEDGED") == 0);
         CHECK(hmi_alarm_count_unacked(&rt.alarms) == 0);
 
@@ -420,6 +424,7 @@ int main(int argc, char **argv)
         pump(1.5, &samples, &n, cap);
         CHECK(hmi_alarm_count_unacked(&rt.alarms) >= 1);
         hmi_ui_press_ack_all();
+        pump(0.5, &samples, &n, cap);
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACKNOWLEDGED") == 0);
         uint32_t writes_before = fms_write_count(srv);
         hmi_ui_press_setpoint_send();
@@ -469,8 +474,15 @@ int main(int argc, char **argv)
             while (wl) { last_res = wl; wl = strstr(wl + 1, " RESERVED id="); }
             CHECK(last_res != NULL && strstr(last_res, "role=3") != NULL);          /* role 3 = admin */
             const char *eol = last_res ? strchr(last_res, 10) : NULL;
-            CHECK(eol != NULL && eol - last_res > 10 && strncmp(eol - 11, " user=admin", 11) == 0);
+            char one[400];
+            size_t ln = (eol && (size_t)(eol - last_res) < sizeof(one)) ? (size_t)(eol - last_res) : 0;
+            if (ln) memcpy(one, last_res, ln);
+            one[ln] = '\0';
+            CHECK(ln > 10 && strstr(one, " user=admin old=") != NULL);               /* user, then the value it replaced */
+            CHECK(strstr(one, " oldq=GOOD wall=") != NULL && strstr(one, " sync=") != NULL);
+            CHECK(strstr(atext, " BOOT wall=") != NULL);                              /* the start marker */
         }
+        CHECK(!hmi_runtime_storage_fault(&rt));                                       /* every record was written */
         CHECK(strstr(atext, "pass") == NULL && strstr(atext, "nobody") == NULL); /* no credentials, no unknown names */
         hmi_auth_deinit(&auth);
     }

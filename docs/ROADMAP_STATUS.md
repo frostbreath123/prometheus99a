@@ -118,6 +118,66 @@ Still open for M2: a run under real systemd as the `prometheus` user with the
 root-owned files, a power-cut test of the serial state write, and the
 privileged helper for on-device configuration changes (M4).
 
+## Update 2026-10-22: milestone M3 (persistence and storage) is implemented
+
+Decisions given by the project owner for M3: the plan was approved with the
+recommended option for each of its five decisions. (1) Writes and
+acknowledgements are two-phase: the call returns before the record is durable
+and the action takes effect only when it is. (2) The write rate limits are
+optional fields of the signed configuration. (3) The PLC timeouts are bounded in
+the configuration so that the longest stall fits the service watchdog and stop
+timeout. (4) At the size cap the audit file and the journal rotate (1 MiB, four
+rotated files, a marker line); a failed rotation refuses the record and sets
+the fault flag. (5) The trace ring (row 42) is deferred; only a storage fault
+banner and counters were added. Design, formats, limits, evidence and the list
+of what is not verified are in [STORAGE.md](STORAGE.md).
+
+Rows 2, 22, 26, 27, 28 and 43 changed to complete and verified on the host. Row
+41 changed from not implemented to implemented but unverified. Row 40 stays
+implemented but unverified (no power-cut test is possible on the host), and row
+42 stays partial. After M3 the tally is 26 CV, 5 IU, 10 PI, 11 NI, 2 BL, 1 OF.
+
+Fresh host results after M3 (rerun them rather than trusting this list):
+
+| Item | Result |
+|---|---|
+| Core modules, Windows host (`mingw32-make test-hmi`) | 2597 checks, 0 failed |
+| Core modules, WSL2 (also runs the POSIX file-mode rules and the clock state) | 2635 checks, 0 failed |
+| View-model, end to end | 168 and 75 checks, 0 failed |
+| Config corpus | identical to the golden file, which was regenerated (see conflicts) |
+| Headless UI scenario | 89 assertions, 0 failed on both hosts |
+| Liveness, command line, authentication and configuration executable tests (WSL2) | pass |
+| Kill-loop (WSL2) | 150 rounds, 125 SIGKILL and 25 clean stops, verifier passed after each; its self test (13 checks) refuses each fault it is meant to catch |
+| ASan with UBSan, and TSan, every core module and the end-to-end test (WSL2) | 0 reports |
+| Mutation checks of the new rules | 33 of 34 caught; the 34th is an equivalent change |
+| Legacy prototype suite (Windows) | 48 checks, 0 failed; no legacy source file was changed |
+
+Documentation conflicts found while doing M3 (reported, not hidden):
+
+1. The ADR text on acknowledgements says the record is made before the effect
+   and the action is refused if it cannot be recorded. That holds, but the call
+   now returns `HMI_ACK_PENDING` and the outcome comes later. Recorded in the
+   ADR addendum.
+2. The roadmap says the UI thread must not block on the audit record. A login
+   still waits for its record, at most 2 s, on the UI thread.
+3. The roadmap says "all write-safety tests unchanged". The 280 earlier write
+   checks are unchanged and pass. The runtime and UI tests had to change because
+   acknowledgements are two-phase and the audit lines gained a trailing stamp.
+4. The bounds of `response_timeout_ms` and `connect_timeout_ms` were lowered
+   from 30000 to 2000 and 3000, which the roadmap did not list. With the old
+   bounds the longest stall (92 s) could not fit `WatchdogSec=10` or
+   `TimeoutStopSec=15`. One case of the golden corpus (case 040) changed, and 18
+   cases were added.
+5. The roadmap lists row 42 under M3 without a task for it; only the fault flag
+   and counters exist.
+6. `PROJECT_RESUME.md` said the working tree was clean while its own START HERE
+   block was an uncommitted change. Corrected.
+
+Still open for M3: a real power-cut test and the behaviour of `fsync` and the
+rename on the storage of the target, the clock state with a real time source,
+the trace ring, and grouping several queued records into one flush (all M5 or
+later).
+
 ## 1. Executive summary
 
 Genuinely complete, on the development host only (Windows MSYS2, WSL2 Ubuntu
@@ -197,7 +257,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | # | § | Requirement | Status | Evidence and files | Remaining |
 |---|---|---|---|---|---|
 | 1 | 2, 4.1 | Layered C99, OS access only through the platform layer | CV (H) | ADR-0001, `src/hmi/hmi_platform.h`, `check-tagdb-access`, builds on Windows and Linux | none |
-| 2 | 4.2 | Threads: UI, comms, storage worker | PI | `hmi_runtime.c` has UI, comms and supervisor threads; TSan clean; no storage worker | storage worker (M3) |
+| 2 | 4.2 | Threads: UI, comms, storage worker | CV (H) | `hmi_store.*`: one storage worker with a bounded queue and a fault flag owns every durable write (M3); TSan clean; see STORAGE.md | Pi |
 | 3 | 4.3 | One lock discipline, no IO under a lock | CV (H) | locks never nested; TSan and ASan clean; ack audit runs outside the lock | none |
 | 4 | 4.4, 8.3 | Static tables, fixed LVGL pool, no steady-state heap | CV (H, app only) | `ui_headless`: 0 heap calls in 2 s, LVGL 20 KB of 128 KB | process PSS and Pi (row 50) |
 | 5 | 8.7 | Release flags, strip, LVGL logs off | PI | -O2, -Wall -Wextra -Wpedantic, PIE, relro, fortify, `LV_USE_LOG 0` | `-Werror`, stripped release target, `size` report |
@@ -233,7 +293,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | 19 | 7.2 | Dirty flag with deadband | PI | version counters and label-text comparison; deadband used only for alarms | decide whether the document's mechanism is required |
 | 20 | 5.3 | Alarm state machine | CV (H) | `test_alarm` 81 | none |
 | 21 | 5.3 | Alarm priority | NI | no field in the alarm configuration | M4 |
-| 22 | 5.3, 8.6 | Alarm persistence and journal | PI | state saved only at clean shutdown (CRC, atomic); journal is a 64-entry RAM ring | M3 |
+| 22 | 5.3, 8.6 | Alarm persistence and journal | CV (H) | since M3 the alarm state is rewritten on change within an interval and an hourly limit and at shutdown; the journal is on disk with a CRC per line, rotated, and reloaded at start; kill-loop of 150 rounds; see STORAGE.md | power-cut test and flash behaviour on the Pi |
 
 ### Writes
 
@@ -241,9 +301,9 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 |---|---|---|---|---|---|
 | 24 | 7.4 | Validation, role, range, queue, read-back, at-most-once, UNKNOWN | CV (H, S) | `test_writes` 252, e2e | none |
 | 25 | 7.4, 10 | Audit before send, fail closed | CV (H, S) | same | none |
-| 26 | 7.4 | Audit content: user, old value, new value, result, time; via storage worker | PI | records id, tag, role, user (since M2), new value, raw, read-back, exception code, monotonic ms; no old value or wall time; synchronous, and the RESERVED record is written on the UI thread | M3 |
-| 27 | 10 | Write rate limiting | PI | queue bound of 8 and a 5 s time to live only | M3 |
-| 28 | 7.4 | Re-validation in the comms thread | NI | configuration is immutable after load, so the risk is low | M3 |
+| 26 | 7.4 | Audit content: user, old value, new value, result, time; via storage worker | CV (H) | since M3 the record has user, old value and its quality, new value, raw, read-back, exception code, monotonic ms and a wall-clock stamp with the clock state; written by the storage worker, the UI thread does not wait (a login still waits up to 2 s) | Pi |
+| 27 | 10 | Write rate limiting | CV (H) | `write_min_interval_ms` per tag and `write_max_per_minute` in the signed configuration, defaults 1000 ms and 30; `test_writes` | none for the host |
+| 28 | 7.4 | Re-validation in the comms thread | CV (H) | the comms thread checks switch, tag, role, range and encoding again before sending (`REJECTED_REVALIDATION`); the login session is not re-checked | none for the host |
 
 ### Security
 
@@ -265,10 +325,10 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 |---|---|---|---|---|---|
 | 38 | 7.1, 9 | READY, WATCHDOG, restart on hang | CV (D) | `tests/hmi/liveness_e2e.sh` 8 of 8; real-systemd watchdog restart under WSL2 | Pi |
 | 39 | 9 | Hardware watchdog, read-only root overlay | NI | none | M5 |
-| 40 | 9, 8.6 | Power loss during a write | IU | atomic rename and directory fsync implemented; no power-cut test | M3, M5 |
-| 41 | 9 | Wrong clock, NTP flag | NI | monotonic time only | M3 |
-| 42 | 6 | journald logging, trace ring | PI | seven stderr lines; no trace ring | M3 |
-| 43 | 7.6 | Clean shutdown | PI | SIGTERM exits 0 (tested); the join budget in `hmi_runtime_stop` (response + connect + 2 s) is shorter than the longest legitimate worker stall (2 x response + connect + 2 s), so a stop during a write can leak objects | defect, fix in M3 |
+| 40 | 9, 8.6 | Power loss during a write | IU | atomic rename and directory fsync implemented; the kill-loop (150 rounds of SIGKILL) and injected torn writes pass on the host, but they are not a power cut | M5 |
+| 41 | 9 | Wrong clock, NTP flag | IU | every audit and journal line carries a wall-clock time and `sync=ok` or `sync=no` from the kernel clock state (read on WSL2 only; the Windows host always says `no`); BOOT markers order the runs | real NTP and a device without a clock (M5) |
+| 42 | 6 | journald logging, trace ring | PI | stderr lines; since M3 a visible storage fault flag and counters; no trace ring | trace ring (not part of the M3 tasks) |
+| 43 | 7.6 | Clean shutdown | CV (H) | the join budget defect is fixed (M3): the stall bound is `max(connect, 2 x response + 2000) + 2000`, one budget for both threads, then the storage queue is drained and the last alarm state written; `hmi_runtime_stop` reports whether everything stopped; the timeouts are bounded so that the stop fits `TimeoutStopSec`; test with a write in flight | real systemd stop on the Pi |
 
 ### Verification and performance
 
@@ -395,6 +455,11 @@ deferred to M4 (see the update at the top).
   safe mode is visible on screen; tamper tests pass.
 
 ### M3 Persistence and storage (P1, P2)
+
+Status 2026-10-22: implemented and verified on the host (not on a Raspberry Pi,
+no real power cut). See [STORAGE.md](STORAGE.md) for what was built, the
+decisions, evidence and limits. The task list and acceptance text below are the
+original plan.
 
 - Requirements: rows 2, 22, 26, 27, 28, 40, 41, 42, 43; §4.2, §8.6, §9.
 - Tasks: storage worker thread with a bounded queue and a visible fault flag;
