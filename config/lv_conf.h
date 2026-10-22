@@ -53,7 +53,7 @@
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
     /*Size of the memory available for `lv_malloc()` in bytes (>= 2kB)*/
-    #define LV_MEM_SIZE (192 * 1024U)   /* measured: about 90 KB are used with every screen built; see docs/SCREENS.md */
+    #define LV_MEM_SIZE (192 * 1024U)   /* measured on the host: about 119 KB are used with every screen and the login layer built; see docs/SCREENS.md */
 
     /*Size of the memory expand for `lv_malloc()` in bytes*/
     #define LV_MEM_POOL_EXPAND_SIZE 0
