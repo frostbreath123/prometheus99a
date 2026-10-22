@@ -97,6 +97,18 @@ test-config-golden: $(BUILD)/config_golden.exe
 	./$(BUILD)/config_golden.exe > $(BUILD)/config_golden.out
 	diff -u tests/hmi/config_golden.txt $(BUILD)/config_golden.out && echo "config golden: identical"
 
+# Live demo window (Win32, no extra library): the real UI and runtime against the fake PLC, with a
+# stand-in for the root helper. A demonstration build, not the product (see demo/hmi_win_demo.c).
+$(BUILD)/hmi_win_demo.exe: demo/hmi_win_demo.c tests/hmi/fake_modbus_server.c \
+                           $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(HMI_PLAT) $(HMI_HDRS) \
+                           $(LIBMODBUS_OBJ) $(BUILD)/liblvgl.a | $(BUILD)
+	$(CC) -std=gnu99 -Wall -Wextra -Os $(LVGL_INC) $(LIBMODBUS_INC) -Isrc/hmi demo/hmi_win_demo.c \
+	  tests/hmi/fake_modbus_server.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c \
+	  $(HMI_CORE) $(HMI_PLAT) $(LIBMODBUS_OBJ) $(BUILD)/liblvgl.a -o $@ -mwindows -lws2_32 -lgdi32 -luser32 -lm
+
+demo-live: $(BUILD)/hmi_win_demo.exe
+	cd $(BUILD) && ./hmi_win_demo.exe
+
 test-hmi: $(HMI_TEST_EXES)
 	sh tests/hmi/run_core_tests.sh $(BUILD)/hmi_tests $(HMI_TESTS)
 
@@ -121,7 +133,7 @@ clean:
 	rm -f $(TARGET) $(TEST_TARGET) src/*.o
 	rm -rf $(BUILD)
 
-.PHONY: all test test-hmi test-view test-config-golden test-e2e ui-host test-all check-linux clean
+.PHONY: all test test-hmi demo-live test-view test-config-golden test-e2e ui-host test-all check-linux clean
 
 # Outside hmi_tags.c (and the white-box core test) nothing may read or write
 # the tag table's members directly; use the hmi_tagdb_* accessors.
