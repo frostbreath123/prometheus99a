@@ -229,3 +229,35 @@ torn writes. Whether `fsync` and the rename make records durable on the storage
 of a Raspberry Pi was not tested. The clock state (`adjtimex`) was read on WSL2
 only. The sanitizers were not run on the LVGL harness, the full executable or
 the kill-loop processes.
+
+## Screens, settings and configuration changes (2026-10-22, milestone M4)
+
+WSL2 host (Ubuntu 24.04, gcc 13.3), x86-64, not Raspberry Pi, no real PLC, no display, no real
+systemd. The source tree was synced to `/root/p99`. Design records: [SCREENS.md](SCREENS.md) and
+[CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.md).
+
+| Item | Command | Result |
+|---|---|---|
+| Core tests, all modules | `make -f Makefile.linux test` | 3925 checks, 0 failed (cfgedit 868, cli 116) |
+| View-model, end to end, config corpus | `test-view`, `e2e`, `test-config-golden` | 313 checks, 75 checks, identical |
+| Headless UI scenario | `make -f Makefile.linux ui-host` | 277 assertions, 0 failed |
+| Liveness, command line, authentication, configuration executables | `liveness`, `cli-exec`, `auth-exec`, `config-exec` | pass |
+| The root helper against real files, as root | `make -f Makefile.linux cfgedit-exec` | passes |
+| Production and simulation executables, helper | `make -f Makefile.linux hmi hmi-sim` | build without warnings |
+| ASan with UBSan | core tests `cfgedit auth users config cfgsec cli trend alarm store runtime auditfmt`, and `p99_cfg` running `cfgedit-exec` | 0 reports |
+| TSan | core tests `cfgedit auth runtime trend` | 0 reports |
+| Mutation checks of the new rules | local script | 33 of 34 caught (one equivalent change) |
+| Unit files | `systemd-analyze verify` on `prometheus99.service`, `prometheus99-config.service`, `prometheus99-config.path` | no messages (the executables were stand-ins); a syntax check only |
+
+Windows host (MSYS2 UCRT64 GCC 13.2): `mingw32-make test-hmi test-view test-config-golden ui-host`
+pass: core 3887 checks, view-model 313, corpus identical, UI scenario 277 assertions. Three
+intermittent failures of the `runtime` and `auth` tests on this host were explained and fixed (two
+test timing margins and a retry of the file replace in `hmi_platform_win32.c`; see
+`ROADMAP_STATUS.md`). `runtime` ran 60 times without a failure afterwards.
+
+Defect found by the Linux build only: `BYTE_ORDER` is a macro in glibc's `endian.h` and collided with
+an array name in `hmi_config_write.c`; renamed.
+
+Limits: the units were not run, the restart of the service by the helper was not tried, the
+sanitizers were not run on the LVGL harness or the full executable, and nothing was rendered on a
+real display.

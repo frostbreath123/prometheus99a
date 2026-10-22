@@ -31,6 +31,8 @@ typedef struct {
     const char *users;    /* --users   (default /var/lib/prometheus99/users.bin) */
     const char *config_key;   /* --config-key   (default /etc/prometheus99/config.key) */
     const char *config_state; /* --config-state (default /var/lib/prometheus99/config.serial) */
+    const char *spool;    /* --spool DIR (default none: settings cannot be changed from the screen). The directory
+                             where requests for p99_cfg are left (hmi_cfgedit.h). */
     bool unsigned_config; /* --unsigned-config (takes no value): test builds only, skips the
                              signature check. The production executable refuses it. */
 } hmi_cli_t;

@@ -389,8 +389,161 @@ static void test_login_wording(void)
     CHECK_STR(b, "TEST ROLE operator - NOT AUTHENTICATED");
 }
 
+static void test_priority_wording(void)
+{
+    printf("view: alarm priority wording\n");
+    CHECK_STR(hmi_view_priority_text(HMI_PRI_LOW), "LOW");
+    CHECK_STR(hmi_view_priority_text(HMI_PRI_MEDIUM), "MED");
+    CHECK_STR(hmi_view_priority_text(HMI_PRI_HIGH), "HIGH");
+    CHECK_STR(hmi_view_priority_text(HMI_PRI_CRITICAL), "CRIT");
+    CHECK_STR(hmi_view_priority_text((hmi_priority_t)9), "?");
+    CHECK(hmi_view_priority_tone(HMI_PRI_CRITICAL) == HMI_TONE_BAD);
+    CHECK(hmi_view_priority_tone(HMI_PRI_HIGH) == HMI_TONE_WARN);
+    CHECK(hmi_view_priority_tone(HMI_PRI_MEDIUM) == HMI_TONE_TEXT);
+    CHECK(hmi_view_priority_tone(HMI_PRI_LOW) == HMI_TONE_MUTED);
+}
+
+static void test_list_wording(void)
+{
+    printf("view: alarm list wording\n");
+    char b[24];
+    const char *names[2] = { "LEVEL", "TEMP" };
+    CHECK_STR(hmi_view_alarm_point_name(names, 2, 0), "LEVEL");
+    CHECK_STR(hmi_view_alarm_point_name(names, 2, 1), "TEMP");
+    CHECK_STR(hmi_view_alarm_point_name(names, 2, 2), "PLC LINK");   /* the comms alarm follows the tags */
+    CHECK_STR(hmi_view_alarm_point_name(names, 2, 99), "PLC LINK");
+
+    static const struct { uint64_t ms; const char *txt; } age[] = {
+        { 0, "0s" }, { 999, "0s" }, { 1000, "1s" }, { 59999, "59s" }, { 60000, "1m00s" },
+        { 61000, "1m01s" }, { 3599999, "59m59s" }, { 3600000, "1h00m" }, { 3660000, "1h01m" },
+        { 359999999ULL, "99h59m" }, { 360000000ULL, ">99h" }, { 999999999999ULL, ">99h" },
+    };
+    for (size_t i = 0; i < sizeof(age) / sizeof(age[0]); i++) {
+        hmi_view_age_text(age[i].ms, b, sizeof(b));
+        if (strcmp(b, age[i].txt) != 0) printf("  age %llu -> '%s', expected '%s'\n", (unsigned long long)age[i].ms, b, age[i].txt);
+        CHECK_STR(b, age[i].txt);
+    }
+    hmi_view_age_text(3660000, b, 4);                    /* a short buffer is cut, never overrun */
+    CHECK(strlen(b) == 3);
+
+    hmi_view_page_text(0, 1, b, sizeof(b)); CHECK_STR(b, "1/1");
+    hmi_view_page_text(2, 7, b, sizeof(b)); CHECK_STR(b, "3/7");
+    hmi_view_page_text(0, 0, b, sizeof(b)); CHECK_STR(b, "0/0");
+    CHECK_STR(hmi_view_no_alarms_text(), "no active alarms");
+    CHECK_STR(hmi_view_ack_changed_text(), "ALARM CHANGED: check the list");
+
+    hmi_view_axis_text(50.04, b, sizeof(b)); CHECK_STR(b, "50.04");
+    hmi_view_axis_text(0, b, sizeof(b)); CHECK_STR(b, "0");
+    hmi_view_axis_text(-12.5, b, sizeof(b)); CHECK_STR(b, "-12.5");
+    hmi_view_axis_text(1234.56, b, sizeof(b)); CHECK_STR(b, "1235");
+    hmi_view_axis_text(0.0001235, b, sizeof(b)); CHECK_STR(b, "0.0001235");
+    hmi_view_axis_text(12345678, b, sizeof(b)); CHECK_STR(b, "1.235e+07");
+
+    char s[96];
+    hmi_view_trend_status_text("LEVEL", "%", 1, true, 49.8, 50.34, "10m00s", s, sizeof(s));
+    CHECK_STR(s, "LEVEL  min 49.8  max 50.3 %  (last 10m00s)");
+    hmi_view_trend_status_text("LEVEL", "", 0, false, 0, 0, "20m00s", s, sizeof(s));
+    CHECK_STR(s, "LEVEL: no good data in the last 20m00s");
+    hmi_view_trend_status_text("T", "C", 9, true, 1.5, 2.5, "1h00m", s, sizeof(s));        /* decimals are limited to 0..3 */
+    CHECK_STR(s, "T  min 1.500  max 2.500 C  (last 1h00m)");
+    hmi_view_trend_status_text("T", "C", -2, true, 1.4, 2.6, "1h00m", s, sizeof(s));   /* 0 places; values away from a .5 so the result does not depend on the C library */
+    CHECK_STR(s, "T  min 1  max 3 C  (last 1h00m)");
+    hmi_view_trend_status_text("LONG_NAME_LONG_NAME", "units", 1, true, 1, 2, "1m00s", s, 20);   /* cut, never overrun */
+    CHECK(strlen(s) == 19);
+    CHECK(strstr(hmi_view_no_trend_text(), "\"trend\": true") != NULL);
+}
+
+static void test_config_wording(void)
+{
+    printf("view: configuration change wording\n");
+    char b[160];
+    for (int r = 0; r <= (int)HMI_CFGREQ_TOO_LARGE; r++) {
+        hmi_view_cfgreq_text((hmi_cfgreq_result_t)r, b, sizeof(b));
+        CHECK(b[0] != '\0' && strstr(b, "unknown") == NULL);
+        CHECK((hmi_view_cfgreq_tone((hmi_cfgreq_result_t)r) == HMI_TONE_GOOD) == (r == (int)HMI_CFGREQ_OK));   /* a failure is never good */
+    }
+    hmi_view_cfgreq_text((hmi_cfgreq_result_t)99, b, sizeof(b)); CHECK_STR(b, "Request: unknown result");
+    hmi_view_cfgreq_text(HMI_CFGREQ_DENIED, b, sizeof(b)); CHECK_STR(b, "Not allowed: log in as an engineer or administrator");
+    CHECK(hmi_view_cfgreq_tone(HMI_CFGREQ_BUSY) == HMI_TONE_WARN && hmi_view_cfgreq_tone(HMI_CFGREQ_AUDIT_FAILED) == HMI_TONE_BAD);
+    hmi_view_cfgreq_text(HMI_CFGREQ_WRITE_FAILED, b, 10); CHECK(strlen(b) == 9);                       /* cut, never overrun */
+
+    hmi_view_cfgstate_text(HMI_CFGREQ_NONE, "x", b, sizeof(b)); CHECK_STR(b, "");
+    hmi_view_cfgstate_text(HMI_CFGREQ_PENDING, "", b, sizeof(b)); CHECK_STR(b, "Waiting for the configuration helper");
+    hmi_view_cfgstate_text(HMI_CFGREQ_APPLIED, "applied serial=8 changes=3 by=eng1", b, sizeof(b));
+    CHECK_STR(b, "applied serial=8 changes=3 by=eng1. The service restarts to use it");
+    hmi_view_cfgstate_text(HMI_CFGREQ_APPLIED, NULL, b, sizeof(b)); CHECK_STR(b, "applied. The service restarts to use it");
+    hmi_view_cfgstate_text(HMI_CFGREQ_REJECTED, "rejected: stale request", b, sizeof(b)); CHECK_STR(b, "rejected: stale request");
+    hmi_view_cfgstate_text(HMI_CFGREQ_REJECTED, "", b, sizeof(b)); CHECK_STR(b, "rejected");
+    CHECK(hmi_view_cfgstate_tone(HMI_CFGREQ_APPLIED) == HMI_TONE_GOOD && hmi_view_cfgstate_tone(HMI_CFGREQ_REJECTED) == HMI_TONE_BAD);
+    CHECK(hmi_view_cfgstate_tone(HMI_CFGREQ_PENDING) == HMI_TONE_TEXT && hmi_view_cfgstate_tone(HMI_CFGREQ_NONE) == HMI_TONE_TEXT);
+
+    hmi_view_cfg_number_text(82, b, sizeof(b)); CHECK_STR(b, "82");
+    hmi_view_cfg_number_text(0.5, b, sizeof(b)); CHECK_STR(b, "0.5");
+    hmi_view_cfg_number_text(-12.25, b, sizeof(b)); CHECK_STR(b, "-12.25");
+    hmi_view_cfg_number_text(1234567.0, b, sizeof(b)); CHECK_STR(b, "1.23457e+06");
+    hmi_view_cfg_number_text(0.1 + 0.2, b, sizeof(b)); CHECK_STR(b, "0.3");
+    CHECK_STR(hmi_view_priority_caps(HMI_PRI_LOW), "LOW");
+    CHECK_STR(hmi_view_priority_caps(HMI_PRI_MEDIUM), "MEDIUM");
+    CHECK_STR(hmi_view_priority_caps(HMI_PRI_HIGH), "HIGH");
+    CHECK_STR(hmi_view_priority_caps(HMI_PRI_CRITICAL), "CRITICAL");
+    CHECK_STR(hmi_view_priority_caps((hmi_priority_t)7), "?");
+    CHECK(strstr(hmi_view_config_need_engineer_text(), "engineer") != NULL);
+    CHECK(strstr(hmi_view_config_unavailable_text(), "not set up") != NULL);
+}
+
+static void test_settings_wording(void)
+{
+    printf("view: settings wording\n");
+    char b[96];
+    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Account added");
+    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_PASSWORD, NULL, b, sizeof(b)); CHECK_STR(b, "Password changed");
+    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_ROLE, NULL, b, sizeof(b)); CHECK_STR(b, "Role changed");
+    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_REMOVE, NULL, b, sizeof(b)); CHECK_STR(b, "Account removed");
+    hmi_view_uadm_text(HMI_UADM_OK, (hmi_view_user_action_t)9, NULL, b, sizeof(b)); CHECK_STR(b, "Done");
+    hmi_view_uadm_text(HMI_UADM_PASSWORD, HMI_VIEW_UA_ADD, "Password too short", b, sizeof(b)); CHECK_STR(b, "Password too short");
+    hmi_view_uadm_text(HMI_UADM_PASSWORD, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Password rejected");
+    hmi_view_uadm_text(HMI_UADM_SELF, HMI_VIEW_UA_REMOVE, NULL, b, sizeof(b)); CHECK_STR(b, "Not allowed on your own account");
+    hmi_view_uadm_text((hmi_uadm_result_t)99, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Account change: unknown result");
+    /* every result has wording, and a tone that does not call a failure good */
+    for (int r = 0; r <= (int)HMI_UADM_ERROR; r++) {
+        hmi_view_uadm_text((hmi_uadm_result_t)r, HMI_VIEW_UA_ADD, "x", b, sizeof(b));
+        CHECK(b[0] != '\0' && strstr(b, "unknown") == NULL);
+        CHECK((hmi_view_uadm_tone((hmi_uadm_result_t)r) == HMI_TONE_GOOD) == (r == (int)HMI_UADM_OK));
+    }
+    CHECK(hmi_view_uadm_tone(HMI_UADM_PENDING) == HMI_TONE_TEXT);
+    CHECK(hmi_view_uadm_tone(HMI_UADM_AUDIT_FAILED) == HMI_TONE_BAD && hmi_view_uadm_tone(HMI_UADM_DENIED) == HMI_TONE_BAD);
+    CHECK(hmi_view_uadm_tone(HMI_UADM_EXISTS) == HMI_TONE_WARN);
+    hmi_view_uadm_text(HMI_UADM_FULL, HMI_VIEW_UA_ADD, NULL, b, 12);                    /* cut, never overrun */
+    CHECK(strlen(b) == 11);
+
+    CHECK_STR(hmi_view_role_caps(HMI_ROLE_OPERATOR), "OPERATOR");
+    CHECK_STR(hmi_view_role_caps(HMI_ROLE_ENGINEER), "ENGINEER");
+    CHECK_STR(hmi_view_role_caps(HMI_ROLE_ADMIN), "ADMIN");
+    CHECK_STR(hmi_view_role_caps(HMI_ROLE_VIEWER), "VIEWER");
+    CHECK_STR(hmi_view_role_caps((hmi_role_t)9), "?");
+    hmi_view_account_state_text(0, b, sizeof(b)); CHECK_STR(b, "");
+    hmi_view_account_state_text(45000, b, sizeof(b)); CHECK_STR(b, "LOCKED 0:45");
+    hmi_view_account_state_text(900000, b, sizeof(b)); CHECK_STR(b, "LOCKED 15:00");
+    CHECK(strlen(hmi_view_users_need_admin_text()) > 10 && strlen(hmi_view_users_unavailable_text()) > 10);
+
+    hmi_view_plc_text("192.168.0.10", 502, 1, b, sizeof(b)); CHECK_STR(b, "PLC 192.168.0.10:502  unit 1");
+    hmi_view_writes_text(true, true, b, sizeof(b)); CHECK_STR(b, "Writes: enabled");
+    hmi_view_writes_text(false, false, b, sizeof(b)); CHECK(strstr(b, "configuration") != NULL);
+    hmi_view_writes_text(true, false, b, sizeof(b)); CHECK(strstr(b, "audit") != NULL);
+    hmi_view_storage_text(false, 12, 0, b, sizeof(b)); CHECK_STR(b, "Storage: ok, 12 records written");
+    hmi_view_storage_text(true, 12, 3, b, sizeof(b)); CHECK(strstr(b, "FAULT") != NULL && strstr(b, "3 failed") != NULL);
+    hmi_view_clock_text(true, true, b, sizeof(b)); CHECK(strstr(b, "synchronised") != NULL && strstr(b, "NOT") == NULL);
+    hmi_view_clock_text(true, false, b, sizeof(b)); CHECK(strstr(b, "NOT synchronised") != NULL);
+    hmi_view_clock_text(false, false, b, sizeof(b)); CHECK(strstr(b, "cannot be read") != NULL);
+    hmi_view_tags_text(4, 2, 1, b, sizeof(b)); CHECK_STR(b, "Tags: 4   with alarms: 1   trended: 2");
+}
+
 int main(void)
 {
+    test_settings_wording();
+    test_config_wording();
+    test_list_wording();
+    test_priority_wording();
     test_decimals();
     test_value_and_quality();
     test_alarm_cells();

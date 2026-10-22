@@ -89,6 +89,20 @@ bool hmi_event_wait(hmi_event_t *e, uint32_t timeout_ms)
 
 void hmi_event_destroy(hmi_event_t *e) { CloseHandle((HANDLE)(uintptr_t)e->opaque[0]); }
 
+/* On Windows a virus scanner or an indexer can hold a file open for a few milliseconds without
+ * FILE_SHARE_DELETE, and then replacing that file fails with "access denied" or "sharing violation".
+ * The replace is tried again for at most 200 ms; any other error, or a longer hold, still fails.
+ * (The Linux platform layer has no such case: rename replaces an open file.) */
+static BOOL replace_file(const char *from, const char *to)
+{
+    for (int attempt = 0;; attempt++) {
+        if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return TRUE;
+        DWORD e = GetLastError();
+        if (attempt >= 20 || (e != ERROR_ACCESS_DENIED && e != ERROR_SHARING_VIOLATION && e != ERROR_LOCK_VIOLATION)) return FALSE;
+        Sleep(10);
+    }
+}
+
 bool hmi_fs_atomic_write(const char *path, const void *data, size_t len)
 {
     char tmp[512];
@@ -102,7 +116,7 @@ bool hmi_fs_atomic_write(const char *path, const void *data, size_t len)
         DeleteFileA(tmp);
         return false;
     }
-    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    if (!replace_file(tmp, path)) {
         DeleteFileA(tmp);
         return false;
     }
@@ -211,7 +225,7 @@ bool hmi_fs_size(const char *path, uint64_t *size)
 
 bool hmi_fs_rename(const char *from, const char *to)
 {
-    return MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    return replace_file(from, to) != 0;
 }
 
 bool hmi_wall_ms(uint64_t *unix_ms, bool *synced)

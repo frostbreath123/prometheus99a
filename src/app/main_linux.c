@@ -12,7 +12,7 @@
  *                --users /var/lib/prometheus99/users.bin \
  *                --config-key /etc/prometheus99/config.key \
  *                --config-state /var/lib/prometheus99/config.serial \
- *                [--fb /dev/fb0] [--touch /dev/input/event0]
+ *                [--spool /var/spool/prometheus99] [--fb /dev/fb0] [--touch /dev/input/event0]
  *
  * The configuration is used only if "<config>.sig" verifies against the key
  * (hmi_cfgsec.h, tool p99_sign). A missing, damaged, altered, wrongly keyed or
@@ -89,7 +89,8 @@ int main(int argc, char **argv)
     if (!hmi_cli_parse(argc, argv, &cli, cli_err, sizeof(cli_err))) {
         fprintf(stderr, "prometheus99: %s\n", cli_err);
         fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE] [--users FILE]\n"
-                        "                    [--config-key FILE] [--config-state FILE] [--fb DEV] [--touch DEV]"
+                        "                    [--config-key FILE] [--config-state FILE] [--spool DIR]\n"
+                        "                    [--fb DEV] [--touch DEV]"
 #ifdef HMI_TEST_ROLE
                         " [--role viewer|operator|engineer|admin] [--unsigned-config]"
 #endif
@@ -161,10 +162,13 @@ int main(int argc, char **argv)
     bool cfg_ok;
     char banner[240];
     banner[0] = '\0';
+    char cfg_info[96] = "Configuration: not loaded";   /* shown on the settings screen */
+    uint32_t cfg_serial = 0;                           /* serial of the signature in use: the base of a change request */
 #ifdef HMI_TEST_ROLE
     if (cli.unsigned_config) {
         /* Test build only: no signature, no key, no allow-list. */
         cfg_ok = hmi_config_load_file(cfg_path, &g_cfg, err, sizeof(err));
+        if (cfg_ok) snprintf(cfg_info, sizeof(cfg_info), "Configuration: NOT verified (test build)");
         fprintf(stderr, "prometheus99: TEST BUILD: configuration NOT verified (--unsigned-config)\n");
     } else
 #endif
@@ -179,6 +183,7 @@ int main(int argc, char **argv)
         hmi_cfgsec_info_t si;
         hmi_cfgsec_result_t sr = hmi_cfgsec_load(&sp, &g_cfg, &si);
         cfg_ok = (sr == HMI_CFGSEC_OK);
+        cfg_serial = si.serial;
         snprintf(err, sizeof(err), "%s", si.message);
         char aline[200];
         size_t alen = audit_path ? hmi_cfgsec_format_audit(hmi_now_ms(), &si, aline, sizeof(aline)) : 0;
@@ -189,6 +194,7 @@ int main(int argc, char **argv)
             hmi_fs_append_sync(audit_path, aline, stamped ? stamped : strlen(aline)); /* best effort: nothing depends on it */
         }
         if (cfg_ok) {
+            snprintf(cfg_info, sizeof(cfg_info), "Configuration: signed, serial %u", (unsigned)si.serial);
             fprintf(stderr, "prometheus99: configuration verified (signature serial %u)\n", (unsigned)si.serial);
             if (si.state_damaged)
                 fprintf(stderr, "prometheus99: warning: the config serial file '%s' was damaged and was treated as absent\n",
@@ -234,6 +240,12 @@ int main(int argc, char **argv)
     hmi_ui_init(runtime_up ? &g_rt : NULL, role, banner[0] ? banner : NULL);
 #else
     hmi_ui_init_auth(runtime_up ? &g_rt : NULL, &g_auth, banner[0] ? banner : NULL);
+#endif
+    hmi_ui_set_config_info(cfg_info);
+#ifndef HMI_TEST_ROLE
+    /* Changing settings from the screen needs a verified configuration, a running runtime (it writes the
+     * audit record) and a spool directory for the root helper p99_cfg. Without all three the view stays off. */
+    if (cli.spool && cfg_ok && runtime_up) hmi_ui_set_config_edit(cli.spool, cfg_serial);
 #endif
 
     /* Supervisor liveness. Pings (systemd WATCHDOG=1) are sent from this

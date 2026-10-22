@@ -221,6 +221,12 @@ static void supervisor_thread(void *arg)
         uint64_t now = hmi_now_ms();
         hmi_tagdb_age(&rt->db, now);
         hmi_alarm_step(&rt->alarms, now, hmi_comms_link_health(&rt->comms));
+        if (rt->trend.n_series) {
+            /* the snapshot takes and releases the tag lock; the trend lock is taken after, never nested */
+            hmi_tag_value_t vals[HMI_MAX_TAGS];
+            hmi_tagdb_snapshot(&rt->db, vals, HMI_MAX_TAGS);
+            hmi_trend_step(&rt->trend, now, vals, hmi_tagdb_count(&rt->db));
+        }
         state_saver(rt, now);
         hmi_flag_set(&rt->beat_super, (int32_t)((uint32_t)hmi_flag_get(&rt->beat_super) + 1u)); /* single writer, wraps */
         hmi_sleep_ms(50);
@@ -279,6 +285,15 @@ bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi
     hmi_comms_set_writes(&rt->comms, &rt->writes);
 
     if (!hmi_alarm_init(&rt->alarms, &rt->db)) {
+        hmi_writes_destroy(&rt->writes);
+        hmi_comms_destroy(&rt->comms);
+        hmi_tagdb_destroy(&rt->db);
+        return false;
+    }
+
+    if (!hmi_trend_init(&rt->trend, cfg->tags, cfg->n_tags,
+                        cfg->trend_bucket_ms ? cfg->trend_bucket_ms : HMI_TREND_BUCKET_DEFAULT_MS, hmi_now_ms())) {
+        hmi_alarm_destroy(&rt->alarms);
         hmi_writes_destroy(&rt->writes);
         hmi_comms_destroy(&rt->comms);
         hmi_tagdb_destroy(&rt->db);
@@ -347,6 +362,7 @@ fail:
         rt->store_ready = false;
         rt->store_started = false;
     }
+    hmi_trend_destroy(&rt->trend);
     hmi_alarm_destroy(&rt->alarms);
     hmi_writes_destroy(&rt->writes);
     hmi_comms_destroy(&rt->comms);
@@ -401,6 +417,7 @@ bool hmi_runtime_stop(hmi_runtime_t *rt)
     rt->started = false;
     if (a && b && s) {
         hmi_store_destroy(&rt->store);
+        hmi_trend_destroy(&rt->trend);
         hmi_alarm_destroy(&rt->alarms);
         hmi_writes_destroy(&rt->writes);
         hmi_comms_destroy(&rt->comms);

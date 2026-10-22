@@ -641,8 +641,380 @@ static void test_core_integration(void)
     clean();
 }
 
+/* ---- accounts changed while the device runs ---- */
+static size_t disk_count(void)
+{
+    hmi_users_t d;
+    char err[120];
+    return hmi_users_load(USERS, &d, err, sizeof(err)) == HMI_USERS_LOAD_OK ? d.n : 999u;
+}
+
+static hmi_role_t disk_role(const char *name)
+{
+    hmi_users_t d;
+    char err[120];
+    if (hmi_users_load(USERS, &d, err, sizeof(err)) != HMI_USERS_LOAD_OK) return (hmi_role_t)99;
+    int i = hmi_users_find(&d, name);
+    return i < 0 ? (hmi_role_t)98 : d.u[i].role;
+}
+
+static bool login_as(const char *name, const char *pw, uint64_t t)
+{
+    return hmi_auth_login(&A, name, pw, t).result == HMI_LOGIN_OK;
+}
+
+static void test_user_admin_denied(void)
+{
+    SECTION("auth: only an administrator may manage accounts, and a refusal is recorded");
+    uint64_t t = 1000;
+    seeded(t);
+    const char *who[] = { NULL, "op1", "eng1" };           /* nobody logged in, an operator, an engineer */
+    const char *pw[] = { NULL, "operator-pass-1", "engineer-pass-1" };
+    const char *by[] = { "by=?", "by=op1", "by=eng1" };
+    for (int k = 0; k < 3; k++) {
+        if (who[k]) {
+            t += 5000;
+            CHECK(login_as(who[k], pw[k], t));
+        }
+        CHECK(hmi_auth_user_count(&A, t) == 0);
+        hmi_user_info_t info;
+        CHECK(!hmi_auth_user_info(&A, 0, t, &info));
+        sink_reset();
+        CHECK(hmi_auth_user_add(&A, "newone", HMI_ROLE_OPERATOR, "newone-pass-1", t) == HMI_UADM_DENIED);
+        CHECK(hmi_auth_user_add_begin(&A, "newone", HMI_ROLE_OPERATOR, "newone-pass-1", t) == HMI_UADM_DENIED);
+        CHECK(!hmi_auth_busy(&A));                          /* no hash was started */
+        CHECK(hmi_auth_user_password(&A, "op1", "another-pass-9", t) == HMI_UADM_DENIED);
+        CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ADMIN, t) == HMI_UADM_DENIED);
+        CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_DENIED);
+        CHECK(sink_count("USER_DENIED") == 5 && sink_count(by[k]) == 5);
+        CHECK(sink_count("USER_ADD") == 0 && sink_count("USER_REMOVE") == 0 && sink_count("USER_ROLE") == 0);
+        CHECK(A.users.n == 3 && disk_count() == 3 && disk_role("op1") == HMI_ROLE_OPERATOR);
+        if (who[k]) hmi_auth_logout(&A, t);
+    }
+    /* a session that idled out is not an administrator any more, without any tick */
+    t += 5000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    CHECK(hmi_auth_user_count(&A, t) == 3);
+    CHECK(hmi_auth_user_count(&A, t + IDLE) == 0);
+    CHECK(hmi_auth_user_remove(&A, "op1", t + IDLE) == HMI_UADM_DENIED);
+    CHECK(disk_count() == 3);
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_add(void)
+{
+    SECTION("auth: an administrator adds an account on the device");
+    uint64_t t = 1000;
+    seeded(t);
+    CHECK(login_as("admin", "admin-pass-1", t));
+    hmi_user_info_t info;
+    CHECK(hmi_auth_user_count(&A, t) == 3);
+    CHECK(hmi_auth_user_info(&A, 0, t, &info) && strcmp(info.name, "admin") == 0 && info.role == HMI_ROLE_ADMIN && info.wait_ms == 0);
+    CHECK(hmi_auth_user_info(&A, 2, t, &info) && strcmp(info.name, "eng1") == 0 && info.role == HMI_ROLE_ENGINEER);
+    CHECK(!hmi_auth_user_info(&A, 3, t, &info));
+    CHECK(!hmi_auth_user_info(&A, 0, t, NULL));
+
+    sink_reset();
+    t += 1000;
+    CHECK(hmi_auth_user_add(&A, "newop", HMI_ROLE_OPERATOR, "newop-pass-1", t) == HMI_UADM_OK);
+    CHECK(sink_count("USER_ADD user=newop role=operator by=admin") == 1);
+    CHECK(sink_count("newop-pass") == 0 && sink_count("pass") == 0);                 /* no password in the record */
+    CHECK(A.users.n == 4 && disk_count() == 4 && disk_role("newop") == HMI_ROLE_OPERATOR);
+    CHECK(hmi_auth_role(&A, t) == HMI_ROLE_ADMIN);                                  /* the session is unchanged */
+    CHECK(hmi_auth_user_count(&A, t) == 4);
+
+    /* the new account works after a restart of the device, and for the running one */
+    hmi_auth_logout(&A, t);
+    t += 5000;
+    CHECK(login_as("newop", "newop-pass-1", t) && hmi_auth_role(&A, t) == HMI_ROLE_OPERATOR);
+    hmi_auth_logout(&A, t);
+    hmi_auth_deinit(&A);
+    init_at(t + 1000);
+    CHECK(hmi_auth_store_state(&A) == HMI_AUTH_STORE_READY && A.users.n == 4);
+    CHECK(login_as("newop", "newop-pass-1", t + 9000));
+    hmi_auth_logout(&A, t + 9000);
+
+    /* every refusal: nothing is hashed, nothing is written */
+    t += 20000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    sink_reset();
+    CHECK(hmi_auth_user_add(&A, "Bad Name", HMI_ROLE_OPERATOR, "whatever-pass-1", t) == HMI_UADM_NAME);
+    CHECK(hmi_auth_user_add(&A, "ab", HMI_ROLE_OPERATOR, "whatever-pass-1", t) == HMI_UADM_NAME);
+    CHECK(hmi_auth_user_add(&A, NULL, HMI_ROLE_OPERATOR, "whatever-pass-1", t) == HMI_UADM_NAME);
+    CHECK(hmi_auth_user_add(&A, "viewerx", HMI_ROLE_VIEWER, "whatever-pass-1", t) == HMI_UADM_ROLE);
+    CHECK(hmi_auth_user_add(&A, "viewerx", (hmi_role_t)9, "whatever-pass-1", t) == HMI_UADM_ROLE);
+    CHECK(hmi_auth_user_add(&A, "op1", HMI_ROLE_OPERATOR, "whatever-pass-1", t) == HMI_UADM_EXISTS);
+    CHECK(hmi_auth_user_add(&A, "shortpw", HMI_ROLE_OPERATOR, "short", t) == HMI_UADM_PASSWORD);
+    CHECK(strlen(hmi_auth_setup_reason(&A)) > 0);
+    CHECK(hmi_auth_user_add(&A, "samename1", HMI_ROLE_OPERATOR, "samename1", t) == HMI_UADM_PASSWORD);
+    CHECK(hmi_auth_user_add(&A, "nopw", HMI_ROLE_OPERATOR, NULL, t) == HMI_UADM_PASSWORD);
+    CHECK(sink_count("USER_ADD") == 0 && A.users.n == 4 && disk_count() == 4);
+
+    /* the store holds sixteen accounts at most */
+    char nm[16];
+    for (int i = 4; i < HMI_USERS_MAX; i++) {
+        snprintf(nm, sizeof(nm), "extra%02d", i);
+        CHECK(hmi_auth_user_add(&A, nm, HMI_ROLE_OPERATOR, "extra-account-pw", t) == HMI_UADM_OK);
+    }
+    CHECK(A.users.n == (size_t)HMI_USERS_MAX && disk_count() == (size_t)HMI_USERS_MAX);
+    CHECK(hmi_auth_user_add(&A, "onetoomany", HMI_ROLE_OPERATOR, "extra-account-pw", t) == HMI_UADM_FULL);
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_audit_and_save(void)
+{
+    SECTION("auth: no record, no change; a failed save changes nothing");
+    uint64_t t = 1000;
+    seeded(t);
+    CHECK(login_as("admin", "admin-pass-1", t));
+
+    S.fail = true;                                          /* the audit trail is unavailable */
+    CHECK(hmi_auth_user_add(&A, "newone", HMI_ROLE_OPERATOR, "newone-pass-1", t) == HMI_UADM_AUDIT_FAILED);
+    CHECK(hmi_auth_user_password(&A, "op1", "another-pass-9", t) == HMI_UADM_AUDIT_FAILED);
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ENGINEER, t) == HMI_UADM_AUDIT_FAILED);
+    CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_AUDIT_FAILED);
+    S.fail = false;
+    CHECK(A.users.n == 3 && disk_count() == 3 && disk_role("op1") == HMI_ROLE_OPERATOR && hmi_users_find(&A.users, "newone") < 0);
+    hmi_auth_logout(&A, t);
+    CHECK(login_as("op1", "operator-pass-1", t + 5000));   /* the old password still works */
+    hmi_auth_logout(&A, t + 5000);
+    t += 20000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+
+    /* the account file cannot be written: the old accounts stay in force, and it is recorded */
+    char saved[sizeof(A.users_path)];
+    memcpy(saved, A.users_path, sizeof(saved));
+    snprintf(A.users_path, sizeof(A.users_path), "no_such_dir_p99/users.bin");
+    sink_reset();
+    CHECK(hmi_auth_user_add(&A, "newone", HMI_ROLE_OPERATOR, "newone-pass-1", t) == HMI_UADM_SAVE_FAILED);
+    CHECK(hmi_auth_user_password(&A, "op1", "another-pass-9", t) == HMI_UADM_SAVE_FAILED);
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ENGINEER, t) == HMI_UADM_SAVE_FAILED);
+    CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_SAVE_FAILED);
+    CHECK(sink_count("USER_CHANGE_FAILED") == 4 && sink_count("by=admin") >= 8);
+    CHECK(A.users.n == 3 && hmi_users_find(&A.users, "newone") < 0 && A.users.u[1].role == HMI_ROLE_OPERATOR);
+    memcpy(A.users_path, saved, sizeof(saved));
+    CHECK(disk_count() == 3);
+    hmi_auth_logout(&A, t);
+    CHECK(login_as("op1", "operator-pass-1", t + 5000));   /* the account file and the memory still agree */
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_password_and_role(void)
+{
+    SECTION("auth: password reset (which releases a lock) and role change");
+    uint64_t t = 1000;
+    seeded(t);
+    /* lock op1 */
+    for (int i = 0; i < 5; i++) {
+        CHECK(hmi_auth_login(&A, "op1", "bad-password-x", t).result == HMI_LOGIN_BAD);
+        t += 1000;
+    }
+    CHECK(hmi_auth_wait_ms(&A, "op1", t) > 0);
+    t += 2000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    hmi_user_info_t info;
+    CHECK(hmi_auth_user_info(&A, 1, t, &info) && strcmp(info.name, "op1") == 0 && info.wait_ms > 0);   /* the lock is visible */
+
+    sink_reset();
+    CHECK(hmi_auth_user_password(&A, "op1", "reset-pass-777", t) == HMI_UADM_OK);
+    CHECK(sink_count("USER_PASSWORD user=op1 role=operator by=admin") == 1 && sink_count("reset-pass") == 0);
+    CHECK(hmi_auth_user_info(&A, 1, t, &info) && info.wait_ms == 0);
+    hmi_auth_logout(&A, t);
+    t += 3000;
+    CHECK(hmi_auth_login(&A, "op1", "operator-pass-1", t).result == HMI_LOGIN_BAD);     /* the old password is gone */
+    t += 3000;
+    CHECK(login_as("op1", "reset-pass-777", t) && hmi_auth_role(&A, t) == HMI_ROLE_OPERATOR);  /* and the lock with it */
+    hmi_auth_logout(&A, t);
+    hmi_auth_deinit(&A);
+    init_at(t + 100);                                          /* the released lock survives a restart */
+    CHECK(hmi_auth_wait_ms(&A, "op1", t + 100) == 0 || hmi_auth_wait_ms(&A, "op1", t + 100) <= HMI_AUTH_GAP_MS);
+
+    /* policy and lookup */
+    t += 20000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    CHECK(hmi_auth_user_password(&A, "nobody", "reset-pass-777", t) == HMI_UADM_NOT_FOUND);
+    CHECK(hmi_auth_user_password(&A, "op1", "short", t) == HMI_UADM_PASSWORD);
+    CHECK(hmi_auth_user_password(&A, "op1", "op1", t) == HMI_UADM_PASSWORD);
+    CHECK(hmi_auth_user_password(&A, "Bad Name", "reset-pass-777", t) == HMI_UADM_NAME);
+    CHECK(hmi_auth_user_password(&A, "admin", "admin-pass-2b", t) == HMI_UADM_OK);       /* an administrator may reset their own */
+    CHECK(hmi_auth_logged_in(&A, t) && hmi_auth_role(&A, t) == HMI_ROLE_ADMIN);         /* and stays logged in */
+
+    /* role */
+    sink_reset();
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ENGINEER, t) == HMI_UADM_OK);
+    CHECK(sink_count("USER_ROLE user=op1 role=engineer by=admin") == 1);
+    CHECK(disk_role("op1") == HMI_ROLE_ENGINEER && A.users.u[1].role == HMI_ROLE_ENGINEER);
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ENGINEER, t) == HMI_UADM_OK);       /* the same role: nothing to record */
+    CHECK(sink_count("USER_ROLE") == 1);
+    CHECK(hmi_auth_user_set_role(&A, "admin", HMI_ROLE_OPERATOR, t) == HMI_UADM_SELF);   /* never one's own role */
+    CHECK(hmi_auth_user_set_role(&A, "nobody", HMI_ROLE_OPERATOR, t) == HMI_UADM_NOT_FOUND);
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_VIEWER, t) == HMI_UADM_ROLE);
+    CHECK(hmi_auth_user_set_role(&A, "op1", (hmi_role_t)-3, t) == HMI_UADM_ROLE);
+    CHECK(hmi_auth_user_set_role(&A, NULL, HMI_ROLE_OPERATOR, t) == HMI_UADM_NAME);
+    CHECK(disk_role("admin") == HMI_ROLE_ADMIN);
+    hmi_auth_logout(&A, t);
+    t += 5000;
+    CHECK(login_as("op1", "reset-pass-777", t) && hmi_auth_role(&A, t) == HMI_ROLE_ENGINEER);   /* the new role applies */
+    hmi_auth_logout(&A, t);
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_remove(void)
+{
+    SECTION("auth: removing an account keeps the other accounts' failure counts in place");
+    uint64_t t = 1000;
+    seeded(t);
+    /* eng1 (position 2) fails five times and is locked */
+    for (int i = 0; i < 5; i++) {
+        CHECK(hmi_auth_login(&A, "eng1", "bad-password-x", t).result == HMI_LOGIN_BAD);
+        t += 1000;
+    }
+    CHECK(hmi_auth_wait_ms(&A, "eng1", t) > 5000);
+    t += 2000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+
+    sink_reset();
+    CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_OK);                           /* position 1: eng1 moves up */
+    CHECK(sink_count("USER_REMOVE user=op1 by=admin") == 1);
+    CHECK(A.users.n == 2 && disk_count() == 2 && hmi_users_find(&A.users, "op1") < 0);
+    CHECK(hmi_auth_wait_ms(&A, "eng1", t) > 5000);                                      /* still locked */
+    CHECK(hmi_auth_wait_ms(&A, "admin", t) == 0);                                       /* not locked by eng1's failures */
+    CHECK(A.fail[1] >= HMI_AUTH_FAILS_BEFORE_LOCK && A.fail[2] == 0);                   /* counters followed the accounts */
+    hmi_user_info_t info;
+    CHECK(hmi_auth_user_info(&A, 1, t, &info) && strcmp(info.name, "eng1") == 0 && info.wait_ms > 0);
+    CHECK(!hmi_auth_user_info(&A, 2, t, &info));
+
+    CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_NOT_FOUND);
+    CHECK(hmi_auth_user_remove(&A, "admin", t) == HMI_UADM_SELF);                       /* never one's own account */
+    CHECK(hmi_auth_user_remove(&A, "Bad Name", t) == HMI_UADM_NAME);
+    CHECK(hmi_auth_user_remove(&A, NULL, t) == HMI_UADM_NAME);
+    CHECK(A.users.n == 2 && disk_count() == 2);
+
+    hmi_auth_logout(&A, t);
+    hmi_auth_deinit(&A);
+    init_at(t + 100);                                                                   /* the counters on disk follow too */
+    CHECK(A.users.n == 2 && hmi_auth_wait_ms(&A, "eng1", t + 100) > 5000 && hmi_auth_wait_ms(&A, "admin", t + 100) == 0);
+
+    /* the last administrator cannot go: with a second one, the first can be removed, never the only one */
+    t += 40000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    CHECK(hmi_auth_user_add(&A, "second", HMI_ROLE_ADMIN, "second-admin-pw", t) == HMI_UADM_OK);
+    hmi_auth_logout(&A, t);
+    t += 5000;
+    CHECK(login_as("second", "second-admin-pw", t));
+    CHECK(hmi_auth_user_remove(&A, "admin", t) == HMI_UADM_OK);                         /* now "second" is the only one */
+    CHECK(hmi_auth_user_remove(&A, "second", t) == HMI_UADM_SELF);
+    CHECK(hmi_auth_user_set_role(&A, "second", HMI_ROLE_OPERATOR, t) == HMI_UADM_SELF);
+    CHECK(disk_role("second") == HMI_ROLE_ADMIN && disk_count() == 2);
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_async(void)
+{
+    SECTION("auth: the account hash runs on a worker, and the session is judged when it is done");
+    uint64_t t = 1000;
+    seeded(t);
+    CHECK(login_as("admin", "admin-pass-1", t));
+    hmi_auth_done_t d;
+    memset(&d, 0, sizeof(d));
+    CHECK(hmi_auth_user_add_begin(&A, "newop", HMI_ROLE_OPERATOR, "newop-pass-1", t) == HMI_UADM_PENDING);
+    CHECK(hmi_auth_busy(&A));
+    CHECK(hmi_auth_user_add_begin(&A, "other1", HMI_ROLE_OPERATOR, "other1-pass-1", t) == HMI_UADM_BUSY);
+    CHECK(hmi_auth_user_password_begin(&A, "op1", "another-pass-9", t) == HMI_UADM_BUSY);
+    CHECK(hmi_auth_user_set_role(&A, "op1", HMI_ROLE_ENGINEER, t) == HMI_UADM_BUSY);
+    CHECK(hmi_auth_user_remove(&A, "op1", t) == HMI_UADM_BUSY);
+    CHECK(hmi_auth_login_begin(&A, "op1", "operator-pass-1", t).result == HMI_LOGIN_BUSY);
+    int spins = 0;
+    while (!hmi_auth_poll(&A, t, &d) && spins++ < 5000) hmi_sleep_ms(1);
+    CHECK(d.kind == HMI_AUTH_JOB_USER_ADD && d.uadm == HMI_UADM_OK);
+    CHECK(A.users.n == 4 && disk_count() == 4);
+
+    CHECK(hmi_auth_user_password_begin(&A, "op1", "another-pass-9", t) == HMI_UADM_PENDING);
+    spins = 0;
+    while (!hmi_auth_poll(&A, t, &d) && spins++ < 5000) hmi_sleep_ms(1);
+    CHECK(d.kind == HMI_AUTH_JOB_USER_PASSWORD && d.uadm == HMI_UADM_OK);
+
+    /* logged out while the password was being hashed: the change is not made */
+    sink_reset();
+    CHECK(hmi_auth_user_add_begin(&A, "late01", HMI_ROLE_OPERATOR, "late01-pass-1", t) == HMI_UADM_PENDING);
+    hmi_auth_logout(&A, t + 1);
+    spins = 0;
+    while (!hmi_auth_poll(&A, t + 2, &d) && spins++ < 5000) hmi_sleep_ms(1);
+    CHECK(d.kind == HMI_AUTH_JOB_USER_ADD && d.uadm == HMI_UADM_DENIED);
+    CHECK(A.users.n == 4 && disk_count() == 4 && hmi_users_find(&A.users, "late01") < 0);
+    CHECK(sink_count("USER_DENIED user=late01 by=?") == 1 && sink_count("USER_ADD") == 0);
+
+    /* the session idled out while the password was being hashed */
+    t += 10000;
+    CHECK(login_as("admin", "admin-pass-1", t));
+    CHECK(hmi_auth_user_password_begin(&A, "op1", "third-pass-123", t) == HMI_UADM_PENDING);
+    spins = 0;
+    while (!hmi_auth_poll(&A, t + IDLE, &d) && spins++ < 5000) hmi_sleep_ms(1);
+    CHECK(d.uadm == HMI_UADM_DENIED);
+    hmi_auth_logout(&A, t + IDLE);
+    CHECK(login_as("op1", "another-pass-9", t + IDLE + 5000));                          /* the earlier password is the one in force */
+
+    /* a job still running at deinit does not leak or crash */
+    hmi_auth_logout(&A, t + IDLE + 5000);
+    CHECK(login_as("admin", "admin-pass-1", t + IDLE + 10000));
+    CHECK(hmi_auth_user_add_begin(&A, "late02", HMI_ROLE_OPERATOR, "late02-pass-1", t + IDLE + 10000) == HMI_UADM_PENDING);
+    hmi_auth_deinit(&A);
+    clean();
+}
+
+static void test_user_admin_audit_format(void)
+{
+    SECTION("auth: audit lines of account changes name the administrator");
+    hmi_auth_audit_rec_t rec;
+    char line[160];
+    memset(&rec, 0, sizeof(rec));
+    rec.t_ms = 7;
+    rec.user = "op1";
+    rec.by = "admin";
+    rec.role = HMI_ROLE_ENGINEER;
+    rec.ev = HMI_AUTH_EV_USER_ADD;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_ADD user=op1 role=engineer by=admin\n") == 0);
+    rec.ev = HMI_AUTH_EV_USER_REMOVE;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_REMOVE user=op1 by=admin\n") == 0);
+    rec.ev = HMI_AUTH_EV_USER_PASSWORD;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_PASSWORD user=op1 role=engineer by=admin\n") == 0);
+    rec.ev = HMI_AUTH_EV_USER_ROLE;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_ROLE user=op1 role=engineer by=admin\n") == 0);
+    rec.ev = HMI_AUTH_EV_USER_DENIED;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_DENIED user=op1 by=admin\n") == 0);
+    rec.ev = HMI_AUTH_EV_USER_CHANGE_FAILED;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_CHANGE_FAILED user=op1 by=admin\n") == 0);
+
+    rec.by = NULL;                                           /* the offline tool: no administrator on the line */
+    rec.ev = HMI_AUTH_EV_USER_ADD;
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strcmp(line, "7 USER_ADD user=op1 role=engineer\n") == 0);
+    rec.by = "evil\nname by=admin";                          /* a hostile name never reaches the file */
+    CHECK(hmi_auth_format_audit(&rec, line, sizeof(line)) > 0 && strstr(line, "by=?\n") && !strstr(line, "evil"));
+    rec.by = "admin";
+    size_t full = hmi_auth_format_audit(&rec, line, sizeof(line));
+    CHECK(full > 0);
+    for (size_t cap = 1; cap < full + 1; cap++) {            /* too small: nothing is written that is not a whole line */
+        char small[160];
+        memset(small, 'x', sizeof(small));
+        size_t n = hmi_auth_format_audit(&rec, small, cap);
+        CHECK((cap <= full && n == 0) || (cap > full && n == full));
+    }
+}
+
 int main(void)
 {
+    test_user_admin_denied();
+    test_user_admin_add();
+    test_user_admin_audit_and_save();
+    test_user_admin_password_and_role();
+    test_user_admin_remove();
+    test_user_admin_async();
+    test_user_admin_audit_format();
     test_delay();
     test_first_boot();
     test_invalid_store();

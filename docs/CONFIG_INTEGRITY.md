@@ -112,6 +112,7 @@ It does not stop someone who holds the key.
 - Replacement of the whole device software.
 - Deleting the serial state file as the service user (see above).
 - Time: there is no wall clock on the device, so there is no expiry.
+- A compromised service asking `p99_cfg` for a change inside the whitelist (see the section on changing the configuration on the device).
 
 ## Test-only escape
 
@@ -143,6 +144,64 @@ longest stall of the comms thread fits the service watchdog and stop timeout.
 A configuration signed before M3 with a larger timeout is now rejected as
 `config_invalid` and the device starts in safe mode.
 
+## Changing the configuration on the device (M4)
+
+The service cannot write its configuration, so an Engineer who changes a setting on the screen
+does not change it. The service writes a small request file into a spool directory
+(`--spool`, for example `/var/spool/prometheus99`, owned by the service user, mode 0750, under
+a directory that only root can change). A systemd path unit
+(`deploy/prometheus99-config.path`) starts `p99_cfg` (`src/app/p99_cfg.c`) as root when
+`<spool>/request` exists. The request text and the whitelist are in `src/hmi/hmi_cfgedit.h`.
+
+What a request can change: `plc.host` (only to a host already in `plc.allowed_hosts`),
+`plc.port`, `plc.unit`, and per tag the four alarm limits (each can be switched off), the
+deadband, the on and off delays and the priority. Nothing else. A change that makes the
+configuration invalid for the strict parser, or that changes nothing, refuses the whole request.
+
+What the service does (`hmi_cfgreq_submit`): the core checks the role (Engineer and above),
+the audit line `CONFIG_REQUEST by=<user> changes=<n> base_serial=<s>` is made durable first (if
+that fails nothing is written), then `<spool>/request` is written atomically. A second request
+while one is waiting is refused.
+
+What `p99_cfg apply` does, in this order, stopping at the first failure:
+1. Opens the spool directory without following links (it must belong to the service user or
+   root and must not be writable by others) and opens the request without following links. The
+   request must be a regular file with one link, owned by the service user or root, not writable
+   by group or others, and at most 8 KiB.
+2. Verifies the current configuration exactly as the device does, without touching the rollback
+   state.
+3. Parses the request strictly, requires `base_serial` to equal the serial of the signature on
+   disk, refuses serial 4294967295 (it cannot be increased), and applies the changes with the
+   whitelist and bounds. The changed configuration is written out, read back with the strict
+   parser and compared, so the result is exactly what the device will load.
+4. Appends `<ms> CONFIG_CHANGED serial=<new> from_serial=<old> changes=<n> by=<user> wall=... sync=...`
+   to the audit file BEFORE anything is changed. The audit file must be a regular file with one
+   link and owned by the service user or root, opened without following links. If the line
+   cannot be written, nothing is changed.
+5. Keeps `<config>.prev` and `<config>.sig.prev`, then replaces the configuration and the
+   signature (temporary file, flush, rename, mode 0644, owner and group of the old files, serial
+   plus one). If the signature cannot be written the old configuration is put back.
+6. Writes `<spool>/result` (`applied serial=N changes=K by=U` or `rejected: reason`), removes the
+   request (also after every refusal), and with `--restart UNIT` runs `systemctl restart UNIT`.
+   The screen shows the first line of the result.
+
+Exit status: 0 applied, 1 refused (the result says why), 2 wrong usage, 3 failed without leaving a
+result. The unit accepts status 1 as success.
+
+Stated limits:
+- The helper cannot tell who is really logged in on the screen. A compromised service could ask
+  for any change on the whitelist, for example to raise an alarm limit. The whitelist, the
+  bounds, the audit lines and the result are the protection, not proof of identity. A
+  compromised service cannot change the write switch, who may write, write limits, the allow-list
+  or add a PLC host that is not already allowed.
+- The service group can read the key (it must verify the signature). What stops a compromised
+  service from signing is that it cannot write the configuration directory.
+- The configuration and the signature are replaced by two renames. If the service restarted
+  between the two it would see a mismatch and start in safe mode. The window is a few
+  milliseconds and was not measured.
+- Audit time stamps of the helper use the same monotonic clock as the service
+  (`CLOCK_MONOTONIC`), so the lines order together.
+
 ## Evidence (host only)
 
 | Item | Environment | Result |
@@ -157,10 +216,15 @@ A configuration signed before M3 with a larger timeout is now rejected as
 | Real executables: signing tool, accepted case, 11 kinds of rejection, no PLC connection in safe mode | WSL2 | `config-exec` passes; a loopback listener saw 0 connections in every safe mode run and 2 in the accepted run |
 | Mutation check: MAC check, CRC check, rollback, allow-list, empty allow-list, key mode, config mode, signature mode each disabled in turn | Windows and WSL2 | each made the suite fail, then restored |
 | ASan with UBSan, and TSan, every core module | WSL2 | 0 reports |
+| Writing a configuration out and reading it back; request format, parser, whitelist, bounds, spool hand-off | Windows and WSL2 | 868 `cfgedit` checks, 0 failed; all 58 accepted corpus configurations read back identically |
+| `p99_cfg` against real files, as root | WSL2 | `cfgedit-exec` passes (every refusal listed in `ROADMAP_STATUS.md`), also with the helper built with ASan and UBSan (0 reports) |
+| Mutation checks of the new rules | WSL2 | 33 of 34 caught (the survivor is an internal read-back assertion that no input can trigger) |
 | Audit identity | both | 28 new write checks, 22 new alarm checks, runtime line formats, UI scenario (84 assertions) names `user=admin` on an acknowledgement and a write |
 
 ## Not verified
 
+- The helper and its path unit under real systemd, including the restart of the service (the units pass `systemd-analyze verify`, which only checks syntax).
+- A power cut during the replacement of the configuration and the signature.
 - Behaviour under real systemd as the `prometheus` user with root-owned files.
 - A power cut while the serial state is written.
 - Timing on a Raspberry Pi (the check is a few kilobytes of hashing and is not

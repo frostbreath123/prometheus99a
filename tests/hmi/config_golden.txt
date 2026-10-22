@@ -657,6 +657,111 @@ case 188 ok=1 err=''
     write allowed=0 role=2 min=0 max=0
 case 189 ok=0 err='out of range: connect_timeout_ms'
   host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 190 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    priority=0
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 191 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 192 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    priority=2
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 193 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    priority=3
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 194 ok=0 err='unknown priority: urgent'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 195 ok=0 err='unknown priority: HIGH'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 196 ok=0 err='expected string: priority'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 197 ok=0 err='string length: priority'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 198 ok=0 err='duplicate key in alarm'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 199 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    priority=3
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 200 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    trend=1
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 201 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 202 ok=0 err='expected bool: trend'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 203 ok=0 err='expected bool: trend'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 204 ok=0 err='duplicate key in tag'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 205 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  trend_bucket_ms=1000
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 206 ok=0 err='out of range: trend_bucket_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 207 ok=1 err=''
+  host='127.0.0.1' port=502 unit=1 rto=500 cto=1000 writes=1 wmin=1000 wmax=30 n=2
+  trend_bucket_ms=60000
+  tag[0] name='A' units='%' area=0 addr=0 dt=0 wo=0 bo=0 scale=0.10000000000000001 off=0 emin=0 emax=100 poll=200
+    alarm en=1111 hi=80 hihi=95 lo=10 lolo=5 db=2 on=1000 off=1000
+    write allowed=1 role=1 min=0 max=100
+  tag[1] name='B' units='C' area=1 addr=100 dt=4 wo=1 bo=1 scale=1 off=1.5 emin=-1000000000000 emax=1000000000000 poll=1000
+    alarm en=0000 hi=0 hihi=0 lo=0 lolo=0 db=0 on=0 off=0
+    write allowed=0 role=2 min=0 max=0
+case 208 ok=0 err='out of range: trend_bucket_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 209 ok=0 err='out of range: trend_bucket_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 210 ok=0 err='out of range: trend_bucket_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
+case 211 ok=0 err='duplicate key: trend_bucket_ms'
+  host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
 doc empty ok=0 err='size'
   host='' port=0 unit=0 rto=0 cto=0 writes=0 wmin=0 wmax=0 n=0
 doc NULL-len0 ok=0 err='size'

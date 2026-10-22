@@ -460,6 +460,54 @@ size_t hmi_alarm_count_unacked(hmi_alarm_t *a)
     return n;
 }
 
+hmi_priority_t hmi_alarm_priority(const hmi_alarm_t *a, size_t point)
+{
+    if (!a->ready || point >= hmi_tagdb_count(a->db)) return HMI_PRI_HIGH; /* comms alarm, or out of range */
+    return hmi_tagdb_cfg(a->db, point)->alarm.priority;
+}
+
+static bool row_unacked(const hmi_alarm_row_t *r)
+{
+    return r->pt.state == HMI_AL_ACTIVE_UNACK || r->pt.state == HMI_AL_RTN_UNACK;
+}
+
+/* True when x must be listed before y. */
+static bool row_before(const hmi_alarm_row_t *x, const hmi_alarm_row_t *y)
+{
+    if (x->priority != y->priority) return x->priority > y->priority;
+    if (row_unacked(x) != row_unacked(y)) return row_unacked(x);
+    if (x->pt.since_ms != y->pt.since_ms) return x->pt.since_ms > y->pt.since_ms;
+    return x->point < y->point;
+}
+
+size_t hmi_alarm_list(hmi_alarm_t *a, hmi_alarm_row_t *out, size_t cap)
+{
+    hmi_alarm_row_t all[HMI_MAX_TAGS + 1];
+    size_t n = 0;
+    hmi_mutex_lock(&a->lock);
+    for (size_t i = 0; i <= hmi_tagdb_count(a->db); i++) {
+        if (a->pt[i].state == HMI_AL_NORMAL) continue;
+        all[n].point = (uint8_t)i;
+        all[n].priority = hmi_alarm_priority(a, i);
+        all[n].pt = a->pt[i];
+        n++;
+    }
+    hmi_mutex_unlock(&a->lock);
+    /* insertion sort: at most 65 rows, no allocation, stable and deterministic */
+    for (size_t i = 1; i < n; i++) {
+        hmi_alarm_row_t key = all[i];
+        size_t j = i;
+        while (j > 0 && row_before(&key, &all[j - 1])) {
+            all[j] = all[j - 1];
+            j--;
+        }
+        all[j] = key;
+    }
+    if (n > cap) n = cap;
+    for (size_t i = 0; i < n; i++) out[i] = all[i];
+    return n;
+}
+
 /* ---- persistence ---- */
 
 typedef struct {

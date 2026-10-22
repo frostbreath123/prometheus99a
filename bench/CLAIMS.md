@@ -45,7 +45,7 @@ UI loop 30 Hz, 800x480 RGB565, LVGL partial render mode, 76,800-byte draw buffer
 | Flushes while nothing changes (2 s) | 0 |
 | Heap allocation calls in 2 s steady state | 0 (link-level count: app + LVGL + libmodbus objects) |
 | Heap allocation calls over whole scenario | 1 (the harness's own sample array) |
-| LVGL heap used / peak | 20 KB / 21 KB of a 128 KB pool (`LV_MEM_SIZE`) |
+| LVGL heap used / peak | 20 KB / 21 KB of a 128 KB pool (`LV_MEM_SIZE`), measured with the single screen of that time. Since M4 the pool is 192 KB and the harness reports 119 KB in use (peak 122 KB) with every screen and the login layer built; that later number is from one run, not three (see `docs/SCREENS.md`) |
 | Poll latency (loopback fake PLC) | max 203-215 ms, only during the injected hang (= response timeout) |
 | Process private bytes at end | about 2.3 MB (includes the 768 KB RGB565 harness framebuffer) |
 | Binary size, stripped, `--gc-sections`, LVGL default config | 1,551,872 B (harness + fake server + all default LVGL widgets) |

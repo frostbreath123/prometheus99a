@@ -1,0 +1,55 @@
+# systemd unit that applies one configuration change requested from the screen.
+# It is started by prometheus99-config.path when the HMI service leaves a request
+# file in /var/spool/prometheus99, and it runs once per request, as root.
+#
+# What it does is described in src/app/p99_cfg.c: it checks the request file, verifies
+# the current signed configuration, applies the change within a fixed whitelist, writes
+# the audit record first, then the new configuration and signature, then the result
+# file, and restarts prometheus99.service so that the new configuration is used.
+# Exit status 1 means "refused" (the result file says why) and is not a failure of the unit.
+#
+# Install (as root, after the steps in prometheus99.service):
+#   install -m 0755 build-linux/p99_cfg /usr/local/bin/p99_cfg
+#   install -d -o root -g root -m 0755 /var/spool          # normally exists
+#   install -d -o prometheus -g prometheus -m 0750 /var/spool/prometheus99
+#   install -m 0644 deploy/prometheus99-config.service deploy/prometheus99-config.path /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now prometheus99-config.path
+#
+# Status: written and statically checked only. It has not been run under real systemd,
+# nor on a Raspberry Pi. The restart at the end needs the system manager and has not been tried.
+
+[Unit]
+Description=Apply a Prometheus99 configuration change requested from the screen
+# The HMI service itself is not a dependency: a request is dealt with whether or not it runs.
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/p99_cfg apply \
+    --spool /var/spool/prometheus99 \
+    --config /etc/prometheus99/hmi.json --key /etc/prometheus99/config.key \
+    --audit /var/lib/prometheus99/audit.log --owner prometheus \
+    --restart prometheus99.service
+SuccessExitStatus=1
+TimeoutStartSec=120
+
+# Hardening. The program reads a file that the HMI user owns, so it needs to override
+# file permission checks; it needs nothing else.
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ReadWritePaths=/etc/prometheus99 /var/spool/prometheus99 /var/lib/prometheus99
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0022

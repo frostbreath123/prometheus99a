@@ -11,6 +11,7 @@
 #   install -m 0755 build-linux/p99_sign /usr/local/bin/p99_sign   # offline signing tool
 #   install -d -o root -g root -m 0755 /etc/prometheus99
 #   install -d -o prometheus -g prometheus -m 0750 /var/lib/prometheus99
+#   install -d -o prometheus -g prometheus -m 0750 /var/spool/prometheus99   # requests for p99_cfg (see prometheus99-config.service)
 #   install -m 0644 -o root -g root config/hmi.example.json /etc/prometheus99/hmi.json   # edit plc.host AND plc.allowed_hosts
 #   p99_sign keygen --key /etc/prometheus99/config.key
 #   chown root:prometheus /etc/prometheus99/config.key && chmod 0440 /etc/prometheus99/config.key
@@ -51,6 +52,7 @@ ExecStart=/usr/local/bin/prometheus99 --config /etc/prometheus99/hmi.json \
     --audit /var/lib/prometheus99/audit.log --alarms /var/lib/prometheus99/alarms.bin \
     --users /var/lib/prometheus99/users.bin \
     --config-key /etc/prometheus99/config.key --config-state /var/lib/prometheus99/config.serial \
+    --spool /var/spool/prometheus99 \
     --fb /dev/fb0 --touch /dev/input/event0
 Restart=on-failure
 RestartSec=2
@@ -72,7 +74,7 @@ PrivateTmp=yes
 # file and the config serial (docs/STORAGE.md). If a SystemCallFilter is added
 # later it must still allow adjtimex (read only), which gives the clock state
 # written to every audit line.
-ReadWritePaths=/var/lib/prometheus99
+ReadWritePaths=/var/lib/prometheus99 /var/spool/prometheus99
 DeviceAllow=/dev/fb0 rw
 DeviceAllow=char-input rw
 ProtectKernelTunables=yes

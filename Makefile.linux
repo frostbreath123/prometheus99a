@@ -15,6 +15,8 @@
 # libmodbus: the SYSTEM library (apt libmodbus-dev, any 3.1.x) is linked
 # dynamically (LGPL-2.1+). Record the version used in docs/LINUX_VALIDATION.md.
 
+# Presentation layer: one file per screen plus the shared header (see src/ui/ui_priv.h).
+UI_SRC := src/ui/hmi_ui.c src/ui/ui_login.c src/ui/ui_ack.c src/ui/ui_nav.c src/ui/ui_overview.c src/ui/ui_alarms.c src/ui/ui_trends.c src/ui/ui_settings.c src/ui/ui_users.c src/ui/ui_config.c
 CC ?= gcc
 BUILD = build-linux
 LVGL = third_party/lvgl
@@ -28,7 +30,7 @@ MB_CFLAGS = $(shell pkg-config --cflags libmodbus)
 MB_LIBS = $(shell pkg-config --libs libmodbus)
 
 HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c src/hmi/hmi_store.c src/hmi/hmi_auditfmt.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
+           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_kdf.c src/hmi/hmi_users.c src/hmi/hmi_auth.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c src/hmi/hmi_store.c src/hmi/hmi_auditfmt.c src/hmi/hmi_trend.c src/hmi/hmi_config_write.c src/hmi/hmi_cfgedit.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
 FAKE_PLC = tests/hmi/fake_modbus_server_posix.c
 WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
 
@@ -45,7 +47,7 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec store auditfmt
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli kdf platform users auth mac cfgsec store auditfmt trend cfgedit
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
@@ -58,22 +60,22 @@ $(BUILD)/test_e2e: tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus
 	$(CC) $(CFLAGS) $(MB_CFLAGS) -Isrc/hmi tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus.c \
 	  $(HMI_CORE) -o $@ $(MB_LIBS) -lm -lpthread
 
-$(BUILD)/ui_headless: tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC) src/ui/hmi_ui.c src/ui/hmi_view.c \
+$(BUILD)/ui_headless: tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC) $(UI_SRC) src/ui/hmi_view.c \
                       src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_H)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(MB_CFLAGS) tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC) \
-	  src/ui/hmi_ui.c src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_H) -o $@ \
+	  $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_H) -o $@ \
 	  $(LDFLAGS) $(MB_LIBS) -lm -lpthread $(WRAP)
 
-$(BUILD)/prometheus99: src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L)
+$(BUILD)/prometheus99: src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c \
+	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c \
 	  src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
 
 # Simulation / test build: honours --role and authenticates nothing. NEVER deploy it.
-$(BUILD)/prometheus99-sim: src/app/main_linux.c src/ui/hmi_ui.c src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L)
+$(BUILD)/prometheus99-sim: src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/ui/hmi_ui.c \
+	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c $(UI_SRC) \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
 
 # Configuration signing tool (see src/app/p99_sign.c).
@@ -86,14 +88,19 @@ $(BUILD)/p99_user: src/app/p99_user.c $(HMI_CORE)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) src/app/p99_user.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
 
+# Root helper that applies a configuration change requested from the screen (see src/app/p99_cfg.c).
+$(BUILD)/p99_cfg: src/app/p99_cfg.c $(HMI_CORE)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) src/app/p99_cfg.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
+
 $(BUILD)/test_view: tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE) -o $@ -lm -lpthread
 
-$(BUILD)/config_golden: tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_tags.c src/hmi/hmi_decode.c \
+$(BUILD)/config_golden: tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_config_write.c src/hmi/hmi_tags.c src/hmi/hmi_decode.c \
                         src/hmi/hmi_platform_posix.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_tags.c \
+	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_config_write.c src/hmi/hmi_tags.c \
 	  src/hmi/hmi_decode.c src/hmi/hmi_platform_posix.c -o $@ -lm -lpthread
 
 # Every accept/reject verdict, error text and parsed field must match the
@@ -114,7 +121,7 @@ e2e: $(BUILD)/test_e2e
 ui-host: $(BUILD)/ui_headless
 	./$(BUILD)/ui_headless $(BUILD)/shot $(BUILD)/ui_audit.log
 
-hmi: $(BUILD)/prometheus99 $(BUILD)/p99_user $(BUILD)/p99_sign
+hmi: $(BUILD)/prometheus99 $(BUILD)/p99_user $(BUILD)/p99_sign $(BUILD)/p99_cfg
 
 hmi-sim: $(BUILD)/prometheus99-sim
 
@@ -123,7 +130,7 @@ hmi-sim: $(BUILD)/prometheus99-sim
 hmi-run-sim: $(BUILD)/prometheus99-sim
 	./$(BUILD)/prometheus99-sim --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
 
-test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec auth-exec config-exec
+test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host liveness cli-exec auth-exec config-exec cfgedit-exec
 
 clean:
 	rm -rf $(BUILD)
@@ -179,7 +186,12 @@ auth-exec: $(BUILD)/prometheus99 $(BUILD)/p99_user $(BUILD)/p99_sign
 config-exec: $(BUILD)/prometheus99 $(BUILD)/p99_sign
 	bash tests/hmi/config_exec_test.sh $(BUILD) config/hmi.example.json
 
-.PHONY: cli-exec auth-exec config-exec
+# The root helper p99_cfg against real files: applied, tampered configuration, wrong key,
+# stale serial, forbidden keys, allow-list, symlink, owner, size, missing END. Run as root.
+cfgedit-exec: $(BUILD)/p99_cfg $(BUILD)/p99_sign
+	bash tests/hmi/cfgedit_exec_test.sh $(BUILD) config/hmi.example.json
+
+.PHONY: cli-exec auth-exec config-exec cfgedit-exec
 
 # The runtime is killed with SIGKILL at random moments while it writes the
 # audit file, the alarm journal and the alarm state; the files must be valid

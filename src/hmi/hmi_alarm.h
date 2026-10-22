@@ -204,6 +204,23 @@ void hmi_alarm_get(hmi_alarm_t *a, size_t point, hmi_alarm_point_t *out);
 size_t hmi_alarm_journal_copy(hmi_alarm_t *a, hmi_alarm_log_t *out, size_t cap); /* oldest first */
 size_t hmi_alarm_count_unacked(hmi_alarm_t *a);
 
+/* Priority of a point (a tag index, or the tag count for the communications
+ * alarm, which is always HIGH). Constant after start, so it takes no lock. */
+hmi_priority_t hmi_alarm_priority(const hmi_alarm_t *a, size_t point);
+
+typedef struct {
+    uint8_t point;               /* tag index, or the tag count for the comms alarm */
+    hmi_priority_t priority;
+    hmi_alarm_point_t pt;        /* copy of the point as of the call */
+} hmi_alarm_row_t;
+
+/* The points that are not NORMAL, most urgent first: by priority (CRITICAL
+ * first), then those waiting for acknowledgement before those already
+ * acknowledged, then the most recent change first, then the lower point index.
+ * One consistent copy is taken under the lock. Returns the number of rows
+ * written, at most cap; if cap is too small the least urgent rows are left out. */
+size_t hmi_alarm_list(hmi_alarm_t *a, hmi_alarm_row_t *out, size_t cap);
+
 /* Persistence of alarm state across restarts (CRC-protected, atomic file). */
 bool hmi_alarm_save(hmi_alarm_t *a, const char *path);
 bool hmi_alarm_load(hmi_alarm_t *a, const char *path);

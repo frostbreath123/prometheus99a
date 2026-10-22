@@ -67,10 +67,26 @@ size_t hmi_auth_format_audit(const hmi_auth_audit_rec_t *r, char *line, size_t c
         case HMI_AUTH_EV_USER_PASSWORD:
             n = snprintf(line, cap, "%llu USER_PASSWORD user=%s role=%s\n", t, u, hmi_role_name(r->role));
             break;
+        case HMI_AUTH_EV_USER_ROLE:
+            n = snprintf(line, cap, "%llu USER_ROLE user=%s role=%s\n", t, u, hmi_role_name(r->role));
+            break;
+        case HMI_AUTH_EV_USER_DENIED:
+            n = snprintf(line, cap, "%llu USER_DENIED user=%s\n", t, u);
+            break;
+        case HMI_AUTH_EV_USER_CHANGE_FAILED:
+            n = snprintf(line, cap, "%llu USER_CHANGE_FAILED user=%s\n", t, u);
+            break;
         default:
             return 0;
     }
-    return (n > 0 && (size_t)n < cap) ? (size_t)n : 0;
+    if (n <= 0 || (size_t)n >= cap) return 0;
+    if (r->by) { /* the administrator who made the change, before the line break */
+        size_t at = (size_t)n - 1u;
+        int m = snprintf(line + at, cap - at, " by=%s\n", safe_user(r->by));
+        if (m <= 0 || (size_t)m >= cap - at) return 0;
+        n = (int)(at + (size_t)m);
+    }
+    return (size_t)n;
 }
 
 bool hmi_auth_file_audit(void *user, const hmi_auth_audit_rec_t *rec)
@@ -82,18 +98,25 @@ bool hmi_auth_file_audit(void *user, const hmi_auth_audit_rec_t *rec)
 }
 
 /* Returns false only when an audit sink exists and did not durably store it. */
-static bool emit(hmi_auth_t *a, hmi_auth_event_t ev, uint64_t now, const char *user, hmi_role_t role,
-                 uint32_t failures, uint32_t lock_ms)
+static bool emit_by(hmi_auth_t *a, hmi_auth_event_t ev, uint64_t now, const char *user, const char *by,
+                    hmi_role_t role, uint32_t failures, uint32_t lock_ms)
 {
     if (!a->audit) return true;
     hmi_auth_audit_rec_t r;
     r.t_ms = now;
     r.ev = ev;
     r.user = safe_user(user);
+    r.by = by;
     r.role = role;
     r.failures = failures;
     r.lock_ms = lock_ms;
     return a->audit(a->audit_user, &r);
+}
+
+static bool emit(hmi_auth_t *a, hmi_auth_event_t ev, uint64_t now, const char *user, hmi_role_t role,
+                 uint32_t failures, uint32_t lock_ms)
+{
+    return emit_by(a, ev, now, user, NULL, role, failures, lock_ms);
 }
 
 /* ------------------------------------------------------- lockout file */
@@ -490,6 +513,249 @@ static hmi_setup_result_t setup_complete(hmi_auth_t *a, uint64_t now)
     return HMI_SETUP_OK;
 }
 
+/* ------------------------------------------------------------- accounts */
+static bool admin_now(const hmi_auth_t *a, uint64_t now)
+{
+    return hmi_authz_allows(hmi_auth_role(a, now), HMI_ACT_MANAGE_USERS, HMI_ROLE_VIEWER);
+}
+
+static const char *actor_name(const hmi_auth_t *a, uint64_t now)
+{
+    return hmi_auth_logged_in(a, now) ? a->session_name : "?";
+}
+
+static bool emit_admin(hmi_auth_t *a, hmi_auth_event_t ev, uint64_t now, const char *user, hmi_role_t role)
+{
+    return emit_by(a, ev, now, user, actor_name(a, now), role, 0, 0);
+}
+
+/* The role check of every account operation; a refusal is recorded (best effort). */
+static hmi_uadm_result_t uadm_gate(hmi_auth_t *a, uint64_t now, const char *target)
+{
+    if (admin_now(a, now)) return HMI_UADM_OK;
+    emit_admin(a, HMI_AUTH_EV_USER_DENIED, now, target, HMI_ROLE_VIEWER);
+    return HMI_UADM_DENIED;
+}
+
+static hmi_uadm_result_t uadm_from(hmi_users_err_t e)
+{
+    switch (e) {
+        case HMI_USERS_OK: return HMI_UADM_OK;
+        case HMI_USERS_ERR_NAME: return HMI_UADM_NAME;
+        case HMI_USERS_ERR_PASSWORD: return HMI_UADM_PASSWORD;
+        case HMI_USERS_ERR_ROLE: return HMI_UADM_ROLE;
+        case HMI_USERS_ERR_EXISTS: return HMI_UADM_EXISTS;
+        case HMI_USERS_ERR_NOT_FOUND: return HMI_UADM_NOT_FOUND;
+        case HMI_USERS_ERR_FULL: return HMI_UADM_FULL;
+        case HMI_USERS_ERR_LAST_ADMIN: return HMI_UADM_LAST_ADMIN;
+        default: return HMI_UADM_ERROR;
+    }
+}
+
+size_t hmi_auth_user_count(const hmi_auth_t *a, uint64_t now_ms)
+{
+    return (a->store == HMI_AUTH_STORE_READY && admin_now(a, now_ms)) ? a->users.n : 0u;
+}
+
+bool hmi_auth_user_info(const hmi_auth_t *a, size_t index, uint64_t now_ms, hmi_user_info_t *out)
+{
+    if (!out || index >= hmi_auth_user_count(a, now_ms)) return false;
+    snprintf(out->name, sizeof(out->name), "%s", a->users.u[index].name);
+    out->role = a->users.u[index].role;
+    out->wait_ms = remaining(a->lock_until[index], now_ms);
+    return true;
+}
+
+static bool role_assignable(hmi_role_t role)
+{
+    return (int)role >= (int)HMI_ROLE_OPERATOR && (int)role <= (int)HMI_ROLE_ADMIN;
+}
+
+static hmi_uadm_result_t user_job_prepare(hmi_auth_t *a, hmi_auth_job_kind_t kind, const char *name, hmi_role_t role,
+                                          const char *pw, bool threaded)
+{
+    hmi_auth_job_t *j = &a->job;
+    memset(j, 0, sizeof(*j));
+    j->kind = kind;
+    j->params = a->kdf;
+    j->role = role;
+    j->user_index = -1;
+    snprintf(j->name, sizeof(j->name), "%s", name);
+    if (!hmi_random_bytes(j->salt, sizeof(j->salt))) {
+        job_clear(a);
+        return HMI_UADM_ERROR;
+    }
+    memcpy(j->pw, pw, strlen(pw) + 1u);
+    if (!job_start(a, threaded)) return HMI_UADM_ERROR;
+    return HMI_UADM_PENDING;
+}
+
+static hmi_uadm_result_t user_add_start(hmi_auth_t *a, const char *name, hmi_role_t role, const char *pw, uint64_t now,
+                                        bool threaded)
+{
+    hmi_uadm_result_t g = uadm_gate(a, now, name);
+    if (g != HMI_UADM_OK) return g;
+    if (a->job.active) return HMI_UADM_BUSY;
+    if (a->store != HMI_AUTH_STORE_READY) return HMI_UADM_NO_STORE;
+    if (!name || !hmi_user_name_valid(name)) return HMI_UADM_NAME;
+    if (!pw) return HMI_UADM_PASSWORD;
+    if (!role_assignable(role)) return HMI_UADM_ROLE;
+    if (hmi_users_find(&a->users, name) >= 0) return HMI_UADM_EXISTS;
+    if (a->users.n >= HMI_USERS_MAX) return HMI_UADM_FULL;
+    a->setup_reason = "";
+    if (!hmi_password_policy(name, pw, &a->setup_reason)) return HMI_UADM_PASSWORD;
+    return user_job_prepare(a, HMI_AUTH_JOB_USER_ADD, name, role, pw, threaded);
+}
+
+static hmi_uadm_result_t user_password_start(hmi_auth_t *a, const char *name, const char *pw, uint64_t now, bool threaded)
+{
+    hmi_uadm_result_t g = uadm_gate(a, now, name);
+    if (g != HMI_UADM_OK) return g;
+    if (a->job.active) return HMI_UADM_BUSY;
+    if (a->store != HMI_AUTH_STORE_READY) return HMI_UADM_NO_STORE;
+    if (!name || !hmi_user_name_valid(name)) return HMI_UADM_NAME;
+    if (!pw) return HMI_UADM_PASSWORD;
+    int idx = hmi_users_find(&a->users, name);
+    if (idx < 0) return HMI_UADM_NOT_FOUND;
+    a->setup_reason = "";
+    if (!hmi_password_policy(name, pw, &a->setup_reason)) return HMI_UADM_PASSWORD;
+    return user_job_prepare(a, HMI_AUTH_JOB_USER_PASSWORD, name, a->users.u[idx].role, pw, threaded);
+}
+
+hmi_uadm_result_t hmi_auth_user_add_begin(hmi_auth_t *a, const char *name, hmi_role_t role, const char *pw, uint64_t now_ms)
+{
+    return user_add_start(a, name, role, pw, now_ms, true);
+}
+
+hmi_uadm_result_t hmi_auth_user_password_begin(hmi_auth_t *a, const char *name, const char *pw, uint64_t now_ms)
+{
+    return user_password_start(a, name, pw, now_ms, true);
+}
+
+/* The hash is ready. The session is judged as it is now, not as it was at begin(). */
+static hmi_uadm_result_t user_job_complete(hmi_auth_t *a, uint64_t now)
+{
+    hmi_auth_job_t *j = &a->job;
+    bool add = j->kind == HMI_AUTH_JOB_USER_ADD;
+    if (!j->hash_ok) return HMI_UADM_ERROR;
+    hmi_uadm_result_t g = uadm_gate(a, now, j->name);
+    if (g != HMI_UADM_OK) return g;
+    if (a->store != HMI_AUTH_STORE_READY) return HMI_UADM_NO_STORE;
+
+    hmi_user_t u;
+    memset(&u, 0, sizeof(u));
+    snprintf(u.name, sizeof(u.name), "%s", j->name);
+    u.role = j->role;
+    u.kdf = j->params;
+    memcpy(u.salt, j->salt, HMI_KDF_SALT_LEN);
+    memcpy(u.hash, j->out, HMI_KDF_HASH_LEN);
+
+    hmi_users_t s = a->users;
+    int idx = hmi_users_find(&s, u.name);
+    hmi_users_err_t e;
+    if (add) {
+        if (idx >= 0) return HMI_UADM_EXISTS;
+        e = hmi_users_add(&s, &u);
+    } else {
+        if (idx < 0) return HMI_UADM_NOT_FOUND;
+        u.role = s.u[idx].role;     /* the role the account has now */
+        e = hmi_users_replace(&s, &u);
+    }
+    if (e != HMI_USERS_OK) return uadm_from(e);
+    if (!emit_admin(a, add ? HMI_AUTH_EV_USER_ADD : HMI_AUTH_EV_USER_PASSWORD, now, u.name, u.role))
+        return HMI_UADM_AUDIT_FAILED;
+    if (!hmi_users_save(a->users_path, &s)) {
+        emit_admin(a, HMI_AUTH_EV_USER_CHANGE_FAILED, now, u.name, u.role);
+        return HMI_UADM_SAVE_FAILED;
+    }
+    a->users = s;
+    if (!add) { /* a new password releases a locked account */
+        a->fail[idx] = 0u;
+        a->lock_until[idx] = 0u;
+        lock_save(a);
+    }
+    return HMI_UADM_OK;
+}
+
+hmi_uadm_result_t hmi_auth_user_set_role(hmi_auth_t *a, const char *name, hmi_role_t role, uint64_t now_ms)
+{
+    hmi_uadm_result_t g = uadm_gate(a, now_ms, name);
+    if (g != HMI_UADM_OK) return g;
+    if (a->job.active) return HMI_UADM_BUSY;
+    if (a->store != HMI_AUTH_STORE_READY) return HMI_UADM_NO_STORE;
+    if (!name || !hmi_user_name_valid(name)) return HMI_UADM_NAME;
+    if (!role_assignable(role)) return HMI_UADM_ROLE;
+    int idx = hmi_users_find(&a->users, name);
+    if (idx < 0) return HMI_UADM_NOT_FOUND;
+    if (strcmp(name, a->session_name) == 0) return HMI_UADM_SELF;
+    if (a->users.u[idx].role == role) return HMI_UADM_OK;     /* nothing to change, nothing to record */
+
+    hmi_users_t s = a->users;
+    hmi_user_t u = s.u[idx];
+    u.role = role;
+    hmi_users_err_t e = hmi_users_replace(&s, &u);
+    if (e != HMI_USERS_OK) return uadm_from(e);
+    if (!emit_admin(a, HMI_AUTH_EV_USER_ROLE, now_ms, name, role)) return HMI_UADM_AUDIT_FAILED;
+    if (!hmi_users_save(a->users_path, &s)) {
+        emit_admin(a, HMI_AUTH_EV_USER_CHANGE_FAILED, now_ms, name, role);
+        return HMI_UADM_SAVE_FAILED;
+    }
+    a->users = s;
+    return HMI_UADM_OK;
+}
+
+hmi_uadm_result_t hmi_auth_user_remove(hmi_auth_t *a, const char *name, uint64_t now_ms)
+{
+    hmi_uadm_result_t g = uadm_gate(a, now_ms, name);
+    if (g != HMI_UADM_OK) return g;
+    if (a->job.active) return HMI_UADM_BUSY;
+    if (a->store != HMI_AUTH_STORE_READY) return HMI_UADM_NO_STORE;
+    if (!name || !hmi_user_name_valid(name)) return HMI_UADM_NAME;
+    int idx = hmi_users_find(&a->users, name);
+    if (idx < 0) return HMI_UADM_NOT_FOUND;
+    if (strcmp(name, a->session_name) == 0) return HMI_UADM_SELF;
+
+    hmi_users_t s = a->users;
+    hmi_users_err_t e = hmi_users_remove(&s, name);
+    if (e != HMI_USERS_OK) return uadm_from(e);
+    hmi_role_t role = a->users.u[idx].role;
+    if (!emit_admin(a, HMI_AUTH_EV_USER_REMOVE, now_ms, name, role)) return HMI_UADM_AUDIT_FAILED;
+    if (!hmi_users_save(a->users_path, &s)) {
+        emit_admin(a, HMI_AUTH_EV_USER_CHANGE_FAILED, now_ms, name, role);
+        return HMI_UADM_SAVE_FAILED;
+    }
+    size_t old_n = a->users.n;
+    a->users = s;
+    /* the failure counters are kept by position: close the gap */
+    for (size_t k = (size_t)idx; k + 1u < old_n; k++) {
+        a->fail[k] = a->fail[k + 1u];
+        a->lock_until[k] = a->lock_until[k + 1u];
+    }
+    a->fail[old_n - 1u] = 0u;
+    a->lock_until[old_n - 1u] = 0u;
+    if (a->session_active && a->session_user > idx) a->session_user--;
+    lock_save(a);
+    return HMI_UADM_OK;
+}
+
+hmi_uadm_result_t hmi_auth_user_add(hmi_auth_t *a, const char *name, hmi_role_t role, const char *pw, uint64_t now_ms)
+{
+    hmi_uadm_result_t b = user_add_start(a, name, role, pw, now_ms, false);
+    if (b != HMI_UADM_PENDING) return b;
+    hmi_auth_done_t d;
+    hmi_auth_poll(a, now_ms, &d);
+    return d.uadm;
+}
+
+hmi_uadm_result_t hmi_auth_user_password(hmi_auth_t *a, const char *name, const char *pw, uint64_t now_ms)
+{
+    hmi_uadm_result_t b = user_password_start(a, name, pw, now_ms, false);
+    if (b != HMI_UADM_PENDING) return b;
+    hmi_auth_done_t d;
+    hmi_auth_poll(a, now_ms, &d);
+    return d.uadm;
+}
+
 /* ----------------------------------------------------------------- poll */
 bool hmi_auth_poll(hmi_auth_t *a, uint64_t now_ms, hmi_auth_done_t *out)
 {
@@ -502,7 +768,8 @@ bool hmi_auth_poll(hmi_auth_t *a, uint64_t now_ms, hmi_auth_done_t *out)
     memset(&d, 0, sizeof(d));
     d.kind = a->job.kind;
     if (a->job.kind == HMI_AUTH_JOB_LOGIN) d.login = login_complete(a, now_ms);
-    else d.setup = setup_complete(a, now_ms);
+    else if (a->job.kind == HMI_AUTH_JOB_SETUP) d.setup = setup_complete(a, now_ms);
+    else d.uadm = user_job_complete(a, now_ms);
     job_clear(a);
     if (out) *out = d;
     return true;

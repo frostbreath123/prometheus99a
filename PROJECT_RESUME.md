@@ -2,9 +2,43 @@
 
 ## START HERE (handoff for a new session, 2026-10-22)
 
+**M4 is implemented and uncommitted.** Read `docs/ROADMAP_STATUS.md` (its newest "Update"
+section is M4), then `docs/SCREENS.md`, then section V at the end of this file. Section U and
+the older ones describe M1 to M3 and are still true for them, except where section V says
+otherwise.
+
+State, checked on the development host only (Windows MSYS2 and WSL2; nothing on a Raspberry
+Pi, a real PLC, a real display or real systemd): steps 4.0 to 4.6 are done. The screens
+(overview, alarms, trends, settings with system, accounts and configuration views), alarm
+priority, trends, account management, the configuration writer and request format
+(`hmi_config_write`, `hmi_cfgedit`), the root helper `p99_cfg`, the two systemd units for it
+and `--spool` exist. Last verified numbers (rerun, do not trust): Windows core 3887 checks,
+WSL2 core 3925, view-model 313, headless UI scenario 277 assertions, config golden identical,
+`cfgedit-exec` passes as root, ASan and TSan clean on the new modules, 33 of 34 mutations
+caught. Three intermittent Windows failures (`runtime` at `test_runtime.c:606` and line 226,
+`auth` at lines 881 to 891) were explained and fixed: two test timing margins, and a retry of the
+file replace in `hmi_platform_win32.c` (a scanner holding the file open); see the M4 section of
+`docs/ROADMAP_STATUS.md`.
+The three stray files that were in the repository root at the start of M4 (`cs_cfg.json`,
+`cs_cfg.json.sig`, `cs_key.bin`) are fixtures of `tests/hmi/test_cfgsec.c`; they were gone after
+the 4.6 test runs, so the test's own cleanup removed them. Nothing was deleted by hand.
+
+Exact next steps:
+1. The owner reviews M4, then commits when they say so (no commit, push or GitHub change
+   unless asked).
+2. CI (GitHub Actions on Ubuntu plus a `.gitmodules` fix) was approved by the owner but is not
+   started and is outside M4.
+3. When a Raspberry Pi and a real systemd are available: run the units, the helper and its
+   restart of the service, then the display and touch (the number pad), then row 50 of the
+   roadmap.
+Rules unchanged: no commit, push or GitHub change unless asked; no real PLC; do not touch the
+frozen legacy prototype; chat in caveman style, files in plain sentences. Repository source
+files are LF, not CRLF (the older instruction said CRLF; this was reported). Write patch
+scripts with the Write tool, not shell heredocs.
+
 Read in this order: `docs/ROADMAP_STATUS.md` (requirements matrix of 55 rows
 against the mentor's document, discrepancies, milestones M1 to M9, blockers,
-acceptance criteria; the three "Update" sections at its top, for M1, M2 and M3,
+acceptance criteria; the four "Update" sections at its top, for M1, M2, M3 and M4,
 are the current state),
 then sections S, T and U at the end of this file, then `docs/ADR-0001-runtime-boundaries.md`
 (read its addenda), then `docs/AUTHENTICATION.md`, `docs/CONFIG_INTEGRITY.md`
@@ -23,14 +57,12 @@ Current state, checked against the repository on 2026-10-22:
   (persistence and storage: storage worker, audit file with wall-clock stamps and
   rotation, alarm journal on disk, alarm state saved on change, write rate limit,
   second check before sending, shutdown budget fix).
-- Git: branch `feature/authorization-hardening`, three commits (`2ca7c75`, `fe165c2`
-  for M1, `e858465` for M2), pushed to `origin`
-  (`https://github.com/frostbreath123/prometheus99a.git`). **M3 is not committed**:
-  the working tree holds the M3 changes (modified sources, tests and documents, and
-  new files `src/hmi/hmi_store.*`, `src/hmi/hmi_auditfmt.*`, `docs/STORAGE.md`,
-  `tests/hmi/test_store.c`, `test_auditfmt.c`, `killloop_*`), nothing is committed
-  or pushed for it. The four empty stray files were deleted on 2026-10-22 with the
-  owner's permission.
+- Git: branch `feature/authorization-hardening`, four commits (`2ca7c75`, `fe165c2`
+  for M1, `e858465` for M2, `defa45f` for M3), pushed to `origin`
+  (`https://github.com/frostbreath123/prometheus99a.git`); the branch was in sync
+  with `origin` and the tree clean when this was written (the owner committed and
+  pushed M3; this file's own last edit is the only change since). The four empty
+  stray files were deleted on 2026-10-22 with the owner's permission.
   `third_party/lvgl` and `third_party/libmodbus` are still gitlinks without a
   `.gitmodules` file, so a fresh clone lacks them. No CI exists.
 - Nothing has run on a Raspberry Pi, against a real PLC, or under real systemd as
@@ -66,8 +98,8 @@ planned, approved with the recommended option for each of its five decisions, an
 implemented (section U).
 
 Exact next steps:
-1. Ask the owner whether to commit M3 (it is not committed) and whether the CI plan
-   is approved. Do neither without being asked.
+1. Ask the owner whether the CI plan is approved (and the Raspberry Pi status). Do not
+   commit, push or touch GitHub without being asked.
 2. Plan M4 (screens, trends, alarm priority, settings and the configuration helper;
    `docs/ROADMAP_STATUS.md` section 7) and wait for approval before implementing, as
    for M1 to M3. M5 (Raspberry Pi) waits for the hardware; the power-cut test of the
@@ -995,7 +1027,7 @@ dies are lost; each record is flushed on its own.
 Defect found on the way: a torn last line would have swallowed the next boot's first
 record; fixed in the store (a line break is written first) with tests.
 
-Working tree: M3 is uncommitted (see START HERE). Documents updated: README,
+Working tree: M3 is committed as `defa45f` and pushed (see START HERE). Documents updated: README,
 `docs/ROADMAP_STATUS.md` (rows 2, 22, 26, 27, 28, 40, 41, 42, 43), ADR-0001 addendum,
 `docs/LINUX_VALIDATION.md`, `docs/AUTHENTICATION.md`, `docs/CONFIG_INTEGRITY.md`,
 `deploy/prometheus99.service` (comment only), `docs/STORAGE.md` (new).
@@ -1012,3 +1044,54 @@ loop, mutation script) were kept in the session scratchpad and are not in the re
 Next: M4 (screens, trends, alarm priority, settings and the configuration helper),
 then M5 (Raspberry Pi) as in `docs/ROADMAP_STATUS.md`. GitHub and CI setup waits for
 the owner's approval of the plan given in the chat.
+
+## V. Milestone M4 (screens, trends, priority, settings, configuration changes) implemented (2026-10-22)
+
+Read `docs/SCREENS.md` for the screens and `docs/CONFIG_INTEGRITY.md` (the section on changing
+the configuration on the device) for the helper. This section is the state summary. Sections S
+and T say that users are managed only with the offline tool and that the configuration is
+changed only offline; since M4 an administrator manages accounts on the screen and an Engineer
+sends configuration changes to a root helper.
+
+Owner decisions for M4 (the plan was approved with the recommended option for each): D1 a root
+helper started by a systemd path unit, with a narrow whitelist; D2 trend data in RAM only; D3
+one alarm priority per tag; D4 a paged overview; D5 the whitelist (alarm limits, deadband,
+delays, priority, PLC host from the allow-list, port, unit); D6 account management on the
+device for an Administrator.
+
+What exists now (host evidence only):
+- UI: `src/ui/ui_nav.c`, `ui_overview.c`, `ui_alarms.c`, `ui_ack.c`, `ui_trends.c`,
+  `ui_settings.c`, `ui_users.c`, `ui_config.c`, `ui_login.c`, shared header `ui_priv.h`;
+  `hmi_ui.c` keeps the shared state and the test seams.
+- `hmi_trend` (RAM only), alarm priority (`alarm.priority`, `hmi_alarm_list`), config fields
+  `trend` and `trend_bucket_ms`.
+- `hmi_auth` account management (add, password, role, remove) with `by=<admin>` in the lines.
+- `hmi_config_write.c` (`hmi_config_serialize`, `hmi_config_equal`), `hmi_cfgedit.*`, `p99_cfg`
+  (`src/app/p99_cfg.c`), `deploy/prometheus99-config.path` and `.service`, `--spool DIR`.
+- Tests: `test_trend`, `test_cfgedit`, `cfgedit_exec_test.sh` (`make -f Makefile.linux
+  cfgedit-exec`, as root), additions to the view-model, cli, auth, alarm, config and UI tests.
+- Results (rerun, do not trust): see the top of `docs/ROADMAP_STATUS.md`.
+
+Defects found while finishing: a glibc macro `BYTE_ORDER` collided with an array name (Linux
+build only); the writer wrote members that hold their default, which overran the parser's
+1024-token budget for 64 tags; the request parser left `base_serial` set on some refusals. The
+mutation run first had 4 survivors; 3 tests were added; the last survivor is an internal
+read-back assertion that no input can reach.
+
+Not verified: the units under real systemd and the restart of the service by the helper, the two
+renames across a power cut, the display and touch (the number pad keys are 96 by 46 pixels), the
+helper exiting with status 3 and leaving a request (the path unit would start it again until the
+start limit), anything on a Raspberry Pi or with a real PLC. The LVGL pool is 192 KB with about
+119 KB in use on the host.
+
+Working tree: nothing of M4 is committed. Documents updated: README, `docs/ROADMAP_STATUS.md`,
+`docs/SCREENS.md` (new), `docs/CONFIG_INTEGRITY.md`, `docs/AUTHENTICATION.md`, ADR-0001 addendum,
+`docs/LINUX_VALIDATION.md`, `docs/M4_HANDOFF.md`, `bench/CLAIMS.md` (a note only),
+`deploy/prometheus99.service`. `walkthrough.md` was not checked and may quote older counts.
+
+Tool notes: Git Bash rewrites path arguments, so start Linux scripts with `MSYS_NO_PATHCONV=1
+wsl -d Ubuntu-24.04 -u root bash /mnt/c/.../script.sh` and write the scripts with the file tools;
+shell and Python heredocs mangle backslashes and `\n`, so write patch scripts with the Write tool.
+The helper scripts used for the WSL2 runs, the sanitizer loop and the mutation script were kept in
+the session scratchpad and are not in the repository. A user named `prometheus` was created in
+the WSL2 distribution only if it did not exist already, to run `systemd-analyze verify`.

@@ -18,6 +18,7 @@
 #define HMI_WRITE_QUEUE_LEN 8
 #define HMI_AUDIT_LEN       32
 #define HMI_JOURNAL_LEN     64
+#define HMI_TREND_MAX_SERIES 8      /* tags that may have "trend": true */
 
 typedef enum {
     HMI_Q_UNAVAILABLE = 0, /* never received a value */
@@ -73,6 +74,17 @@ typedef enum {
     HMI_ROLE_ENGINEER,
     HMI_ROLE_ADMIN
 } hmi_role_t;
+
+/* How urgent an alarm is (ISA-18.2 calls it priority). Configured per tag; the
+ * communications alarm is always HIGH. A larger value is more urgent. The value
+ * zero is LOW, so a configuration structure that was only cleared has the lowest
+ * priority; the configuration parser sets MEDIUM unless the file says otherwise. */
+typedef enum {
+    HMI_PRI_LOW = 0,
+    HMI_PRI_MEDIUM,
+    HMI_PRI_HIGH,
+    HMI_PRI_CRITICAL
+} hmi_priority_t;
 
 /* Who performed a privileged action, for the audit trail: the name of a logged-in
  * account (hmi_auth.h). Only a valid account name (3 to 24 characters from

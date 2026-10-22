@@ -29,6 +29,7 @@ typedef struct {
     bool writes_enabled;          /* global write master switch, default false */
     uint32_t write_min_interval_ms; /* at least this long between two accepted writes to one tag (100 .. 3600000, default 1000) */
     uint32_t write_max_per_minute;  /* at most this many accepted writes in any 60 s window (1 .. 600, default 30) */
+    uint32_t trend_bucket_ms;       /* length of one trend bucket (1000 .. 60000, default 5000) */
     char allowed_hosts[HMI_MAX_ALLOWED][HMI_HOST_LEN]; /* plc.allowed_hosts, optional here */
     size_t n_allowed;
     hmi_tag_cfg_t tags[HMI_MAX_TAGS];
@@ -42,6 +43,15 @@ bool hmi_config_parse(const char *json, size_t len, hmi_app_cfg_t *out, char *er
  * that has verified its configuration (hmi_cfgsec) refuses any other host. */
 bool hmi_config_host_allowed(const hmi_app_cfg_t *cfg);
 bool hmi_config_load_file(const char *path, hmi_app_cfg_t *out, char *err, size_t err_cap);
+
+/* The configuration as text that hmi_config_parse accepts and reads back as the
+ * same structure (compact JSON, one tag per line; a value that holds its default
+ * is left out). Returns the length, without a terminating zero counted but one is
+ * written, or 0 if cap is too small, there are no tags, or a string holds a
+ * character the parser would not accept. */
+size_t hmi_config_serialize(const hmi_app_cfg_t *cfg, char *buf, size_t cap);
+/* Every field the parser fills, compared. The allowed hosts and the tags count only up to their counts. */
+bool hmi_config_equal(const hmi_app_cfg_t *a, const hmi_app_cfg_t *b);
 
 /* Persist the raw config text atomically (temp + fsync + rename). The text
  * is validated first, so an invalid config can never replace a good one. */

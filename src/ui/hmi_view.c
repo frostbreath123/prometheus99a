@@ -70,6 +70,66 @@ hmi_tone_t hmi_view_alarm_tone(const hmi_alarm_point_t *p)
     return p->state == HMI_AL_ACTIVE_UNACK ? HMI_TONE_BAD : p->state == HMI_AL_NORMAL ? HMI_TONE_MUTED : HMI_TONE_WARN;
 }
 
+const char *hmi_view_alarm_point_name(const char *const *names, size_t n_names, size_t point)
+{
+    return point < n_names ? names[point] : "PLC LINK";
+}
+
+void hmi_view_age_text(uint64_t ms, char *buf, size_t cap)
+{
+    uint64_t s = ms / 1000u;
+    if (s < 60u) snprintf(buf, cap, "%us", (unsigned)s);
+    else if (s < 3600u) snprintf(buf, cap, "%um%02us", (unsigned)(s / 60u), (unsigned)(s % 60u));
+    else if (s < 100u * 3600u) snprintf(buf, cap, "%uh%02um", (unsigned)(s / 3600u), (unsigned)((s % 3600u) / 60u));
+    else snprintf(buf, cap, ">99h");
+}
+
+void hmi_view_page_text(size_t page, size_t pages, char *buf, size_t cap)
+{
+    if (pages == 0) snprintf(buf, cap, "0/0");
+    else snprintf(buf, cap, "%u/%u", (unsigned)(page + 1), (unsigned)pages);
+}
+
+const char *hmi_view_no_alarms_text(void) { return "no active alarms"; }
+
+const char *hmi_view_ack_changed_text(void) { return "ALARM CHANGED: check the list"; }
+
+void hmi_view_axis_text(double v, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "%.4g", v);
+}
+
+void hmi_view_trend_status_text(const char *name, const char *units, int decimals, bool any, double lo, double hi,
+                                const char *span, char *buf, size_t cap)
+{
+    if (decimals < 0) decimals = 0;
+    if (decimals > 3) decimals = 3;
+    if (!any) snprintf(buf, cap, "%s: no good data in the last %s", name, span);
+    else snprintf(buf, cap, "%s  min %.*f  max %.*f %s  (last %s)", name, decimals, lo, decimals, hi, units, span);
+}
+
+const char *hmi_view_no_trend_text(void)
+{
+    return "No tag is trended. Set \"trend\": true on a tag in the configuration.";
+}
+
+const char *hmi_view_priority_text(hmi_priority_t p)
+{
+    switch (p) {
+        case HMI_PRI_LOW: return "LOW";
+        case HMI_PRI_MEDIUM: return "MED";
+        case HMI_PRI_HIGH: return "HIGH";
+        case HMI_PRI_CRITICAL: return "CRIT";
+    }
+    return "?";
+}
+
+hmi_tone_t hmi_view_priority_tone(hmi_priority_t p)
+{
+    return p == HMI_PRI_CRITICAL ? HMI_TONE_BAD : p == HMI_PRI_HIGH ? HMI_TONE_WARN
+         : p == HMI_PRI_MEDIUM ? HMI_TONE_TEXT : HMI_TONE_MUTED;
+}
+
 void hmi_view_link_text(hmi_link_health_t h, char *buf, size_t cap)
 {
     snprintf(buf, cap, "PLC: %s", hmi_link_health_text(h));
@@ -298,6 +358,154 @@ hmi_tone_t hmi_view_setup_tone(hmi_setup_result_t r)
 }
 
 const char *hmi_view_setup_mismatch_text(void) { return "The two passwords do not match"; }
+
+void hmi_view_uadm_text(hmi_uadm_result_t r, hmi_view_user_action_t action, const char *reason, char *buf, size_t cap)
+{
+    static const char *const done[] = { "Account added", "Password changed", "Role changed", "Account removed" };
+    switch (r) {
+        case HMI_UADM_OK: snprintf(buf, cap, "%s", (unsigned)action < 4u ? done[action] : "Done"); break;
+        case HMI_UADM_PENDING: snprintf(buf, cap, "Working, please wait"); break;
+        case HMI_UADM_DENIED: snprintf(buf, cap, "Not allowed: log in as an administrator"); break;
+        case HMI_UADM_BUSY: snprintf(buf, cap, "Busy, please try again"); break;
+        case HMI_UADM_NO_STORE: snprintf(buf, cap, "There is no usable account store"); break;
+        case HMI_UADM_NAME: snprintf(buf, cap, "User name: 3 to 24 characters, a-z 0-9 _ . -"); break;
+        case HMI_UADM_PASSWORD: snprintf(buf, cap, "%s", (reason && reason[0]) ? reason : "Password rejected"); break;
+        case HMI_UADM_ROLE: snprintf(buf, cap, "That role cannot be given"); break;
+        case HMI_UADM_EXISTS: snprintf(buf, cap, "That account already exists"); break;
+        case HMI_UADM_NOT_FOUND: snprintf(buf, cap, "There is no such account"); break;
+        case HMI_UADM_FULL: snprintf(buf, cap, "No room: %d accounts is the most", HMI_USERS_MAX); break;
+        case HMI_UADM_LAST_ADMIN: snprintf(buf, cap, "The last administrator cannot be removed or changed"); break;
+        case HMI_UADM_SELF: snprintf(buf, cap, "Not allowed on your own account"); break;
+        case HMI_UADM_AUDIT_FAILED: snprintf(buf, cap, "Not changed: the audit log cannot be written"); break;
+        case HMI_UADM_SAVE_FAILED: snprintf(buf, cap, "Not changed: the account file cannot be saved"); break;
+        case HMI_UADM_ERROR: snprintf(buf, cap, "Internal error, please try again"); break;
+        default: snprintf(buf, cap, "Account change: unknown result"); break;
+    }
+}
+
+hmi_tone_t hmi_view_uadm_tone(hmi_uadm_result_t r)
+{
+    switch (r) {
+        case HMI_UADM_OK: return HMI_TONE_GOOD;
+        case HMI_UADM_PENDING: return HMI_TONE_TEXT;
+        case HMI_UADM_BUSY: case HMI_UADM_NAME: case HMI_UADM_PASSWORD: case HMI_UADM_ROLE: case HMI_UADM_EXISTS:
+        case HMI_UADM_NOT_FOUND: case HMI_UADM_FULL: case HMI_UADM_LAST_ADMIN: case HMI_UADM_SELF:
+            return HMI_TONE_WARN;
+        default: return HMI_TONE_BAD;
+    }
+}
+
+void hmi_view_cfgreq_text(hmi_cfgreq_result_t r, char *buf, size_t cap)
+{
+    switch (r) {
+        case HMI_CFGREQ_OK: snprintf(buf, cap, "Request sent. Waiting for the configuration helper"); break;
+        case HMI_CFGREQ_DENIED: snprintf(buf, cap, "Not allowed: log in as an engineer or administrator"); break;
+        case HMI_CFGREQ_EMPTY: snprintf(buf, cap, "Nothing to send: no change was made"); break;
+        case HMI_CFGREQ_BUSY: snprintf(buf, cap, "An earlier request has not been dealt with yet"); break;
+        case HMI_CFGREQ_AUDIT_FAILED: snprintf(buf, cap, "Not sent: the audit log cannot be written"); break;
+        case HMI_CFGREQ_WRITE_FAILED: snprintf(buf, cap, "Not sent: the spool directory cannot be written"); break;
+        case HMI_CFGREQ_TOO_LARGE: snprintf(buf, cap, "Not sent: too many changes in one request"); break;
+        default: snprintf(buf, cap, "Request: unknown result"); break;
+    }
+}
+
+hmi_tone_t hmi_view_cfgreq_tone(hmi_cfgreq_result_t r)
+{
+    switch (r) {
+        case HMI_CFGREQ_OK: return HMI_TONE_GOOD;
+        case HMI_CFGREQ_EMPTY: case HMI_CFGREQ_BUSY: return HMI_TONE_WARN;
+        default: return HMI_TONE_BAD;
+    }
+}
+
+void hmi_view_cfgstate_text(hmi_cfgreq_state_t s, const char *line, char *buf, size_t cap)
+{
+    switch (s) {
+        case HMI_CFGREQ_PENDING: snprintf(buf, cap, "Waiting for the configuration helper"); break;
+        case HMI_CFGREQ_APPLIED: snprintf(buf, cap, "%s. The service restarts to use it", (line && line[0]) ? line : "applied"); break;
+        case HMI_CFGREQ_REJECTED: snprintf(buf, cap, "%s", (line && line[0]) ? line : "rejected"); break;
+        default: buf[0] = '\0'; break;
+    }
+}
+
+hmi_tone_t hmi_view_cfgstate_tone(hmi_cfgreq_state_t s)
+{
+    return s == HMI_CFGREQ_APPLIED ? HMI_TONE_GOOD : s == HMI_CFGREQ_REJECTED ? HMI_TONE_BAD : HMI_TONE_TEXT;
+}
+
+void hmi_view_cfg_number_text(double v, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "%.6g", v);
+}
+
+const char *hmi_view_priority_caps(hmi_priority_t p)
+{
+    switch (p) {
+        case HMI_PRI_LOW: return "LOW";
+        case HMI_PRI_MEDIUM: return "MEDIUM";
+        case HMI_PRI_HIGH: return "HIGH";
+        case HMI_PRI_CRITICAL: return "CRITICAL";
+        default: return "?";
+    }
+}
+
+const char *hmi_view_config_need_engineer_text(void) { return "Changing settings needs an engineer or an administrator. Log in first."; }
+const char *hmi_view_config_unavailable_text(void) { return "Changing settings from the screen is not set up on this device (no spool directory was given)."; }
+
+const char *hmi_view_role_caps(hmi_role_t role)
+{
+    switch (role) {
+        case HMI_ROLE_VIEWER: return "VIEWER";
+        case HMI_ROLE_OPERATOR: return "OPERATOR";
+        case HMI_ROLE_ENGINEER: return "ENGINEER";
+        case HMI_ROLE_ADMIN: return "ADMIN";
+    }
+    return "?";
+}
+
+void hmi_view_account_state_text(uint32_t wait_ms, char *buf, size_t cap)
+{
+    if (wait_ms == 0) {
+        if (cap) buf[0] = '\0';
+        return;
+    }
+    char w[16];
+    hmi_view_wait_text(wait_ms, w, sizeof(w));
+    snprintf(buf, cap, "LOCKED %s", w);
+}
+
+const char *hmi_view_users_need_admin_text(void) { return "Log in as an administrator to manage accounts."; }
+const char *hmi_view_users_unavailable_text(void) { return "Accounts are not available in this test build."; }
+
+void hmi_view_plc_text(const char *host, unsigned port, unsigned unit, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "PLC %s:%u  unit %u", host, port, unit);
+}
+
+void hmi_view_writes_text(bool master, bool effective, char *buf, size_t cap)
+{
+    if (effective) snprintf(buf, cap, "Writes: enabled");
+    else if (!master) snprintf(buf, cap, "Writes: off (switched off in the configuration)");
+    else snprintf(buf, cap, "Writes: off (no audit trail to record them in)");
+}
+
+void hmi_view_storage_text(bool fault, uint32_t written, uint32_t failed, char *buf, size_t cap)
+{
+    if (fault) snprintf(buf, cap, "Storage: FAULT, records are not saved (%u failed)", (unsigned)failed);
+    else snprintf(buf, cap, "Storage: ok, %u records written", (unsigned)written);
+}
+
+void hmi_view_clock_text(bool valid, bool synced, char *buf, size_t cap)
+{
+    if (!valid) snprintf(buf, cap, "Clock: cannot be read");
+    else if (synced) snprintf(buf, cap, "Clock: synchronised with a time source");
+    else snprintf(buf, cap, "Clock: NOT synchronised, dates are not reliable");
+}
+
+void hmi_view_tags_text(size_t tags, size_t trended, size_t with_alarm, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "Tags: %u   with alarms: %u   trended: %u", (unsigned)tags, (unsigned)with_alarm, (unsigned)trended);
+}
 
 void hmi_view_test_role_banner(hmi_role_t role, char *buf, size_t cap)
 {
