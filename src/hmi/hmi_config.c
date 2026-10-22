@@ -1,5 +1,6 @@
 #include "hmi_config.h"
 #include "hmi_decode.h"
+#include "hmi_trend.h"
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -282,7 +283,14 @@ static bool expect_object(ctx_t *c, int obj, const char *what)
 
 /* ---- alarm ---- */
 
-enum { AL_HI, AL_HIHI, AL_LO, AL_LOLO, AL_DEADBAND, AL_ON, AL_OFF };
+enum { AL_HI, AL_HIHI, AL_LO, AL_LOLO, AL_DEADBAND, AL_ON, AL_OFF, AL_PRIORITY };
+
+static const enum_opt_t PRIORITY_OPTS[] = {
+    { "low", HMI_PRI_LOW }, { "medium", HMI_PRI_MEDIUM },
+    { "high", HMI_PRI_HIGH }, { "critical", HMI_PRI_CRITICAL }, { NULL, 0 }
+};
+
+ENUM_IS_INT(hmi_alarm_cfg_t, priority);
 
 static const field_t ALARM_FIELDS[] = {
     { "high", K_DBL, offsetof(hmi_alarm_cfg_t, hi), 0, 0, 0, NULL, NULL, offsetof(hmi_alarm_cfg_t, en_hi), 0, NULL },
@@ -292,6 +300,7 @@ static const field_t ALARM_FIELDS[] = {
     { "deadband", K_DBL, offsetof(hmi_alarm_cfg_t, deadband), 0, 0, 0, NULL, NULL, NO_FLAG_OFF, FL_NONNEG, NULL },
     { "on_ms", K_U32, offsetof(hmi_alarm_cfg_t, on_ms), 0, 0, 600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "off_ms", K_U32, offsetof(hmi_alarm_cfg_t, off_ms), 0, 0, 600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "priority", K_ENUM, offsetof(hmi_alarm_cfg_t, priority), 16, 0, 0, PRIORITY_OPTS, "unknown priority", NO_FLAG_OFF, 0, NULL },
 };
 static const section_t ALARM_SECTION = { "alarm", ALARM_FIELDS, sizeof(ALARM_FIELDS) / sizeof(ALARM_FIELDS[0]), false };
 
@@ -383,6 +392,7 @@ static const field_t TAG_FIELDS[] = {
     { "poll_ms", K_U32, offsetof(hmi_tag_cfg_t, poll_ms), 0, 50, 3600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "alarm", K_DEFER, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "write", K_DEFER, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "trend", K_BOOL, offsetof(hmi_tag_cfg_t, trend), 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
 };
 static const section_t TAG_SECTION = { "tag", TAG_FIELDS, sizeof(TAG_FIELDS) / sizeof(TAG_FIELDS[0]), false };
 
@@ -396,6 +406,7 @@ static bool parse_tag(ctx_t *c, int obj, hmi_tag_cfg_t *t)
     t->eng_min = -1e12;
     t->eng_max = 1e12;
     t->write_role = HMI_ROLE_ENGINEER;
+    t->alarm.priority = HMI_PRI_MEDIUM;
     if (!parse_object(c, obj, &TAG_SECTION, t, &st)) return false;
     if (!(st.seen & (1u << TG_NAME))) return fail(c, "tag without name", NULL);
     if (!(st.seen & (1u << TG_ADDRESS))) return fail(c, "tag without address", t->name);
@@ -464,6 +475,7 @@ typedef struct {
     bool writes_enabled;
     uint32_t write_min_interval_ms;
     uint32_t write_max_per_minute;
+    uint32_t trend_bucket_ms;
 } top_t;
 
 static bool top_plc(ctx_t *c, int val, void *base)
@@ -486,7 +498,7 @@ static bool top_tags(ctx_t *c, int val, void *base)
     return true;
 }
 
-enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS, TOP_WMIN, TOP_WMAX };
+enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS, TOP_WMIN, TOP_WMAX, TOP_TREND };
 
 static const field_t TOP_FIELDS[] = {
     { "version", K_U32, offsetof(top_t, version), 0, 1, 1, NULL, NULL, NO_FLAG_OFF, 0, NULL },
@@ -495,6 +507,7 @@ static const field_t TOP_FIELDS[] = {
     { "tags", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, top_tags },
     { "write_min_interval_ms", K_U32, offsetof(top_t, write_min_interval_ms), 0, 100, 3600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "write_max_per_minute", K_U32, offsetof(top_t, write_max_per_minute), 0, 1, 600, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "trend_bucket_ms", K_U32, offsetof(top_t, trend_bucket_ms), 0, HMI_TREND_BUCKET_MIN_MS, HMI_TREND_BUCKET_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
 };
 static const section_t TOP_SECTION = { NULL, TOP_FIELDS, sizeof(TOP_FIELDS) / sizeof(TOP_FIELDS[0]), true };
 
@@ -509,7 +522,7 @@ static bool parse_document(ctx_t *c, size_t len, hmi_app_cfg_t *out)
     if (c->t[0].type != JSMN_OBJECT) return fail(c, "top level must be object", NULL);
     if (skip(c, 0) != n) return fail(c, "trailing data", NULL);
 
-    top_t top = { out, 0, false, 1000u, 30u }; /* defaults of the two optional write limits */
+    top_t top = { out, 0, false, 1000u, 30u, HMI_TREND_BUCKET_DEFAULT_MS }; /* defaults of the optional fields */
     seen_t st;
     if (!parse_object(c, 0, &TOP_SECTION, &top, &st)) return false;
     unsigned all = (1u << TOP_VERSION) | (1u << TOP_PLC) | (1u << TOP_TAGS);
@@ -517,6 +530,11 @@ static bool parse_document(ctx_t *c, size_t len, hmi_app_cfg_t *out)
     out->writes_enabled = top.writes_enabled;
     out->write_min_interval_ms = top.write_min_interval_ms;
     out->write_max_per_minute = top.write_max_per_minute;
+    out->trend_bucket_ms = top.trend_bucket_ms;
+    size_t n_trend = 0;
+    for (size_t i = 0; i < out->n_tags; i++)
+        if (out->tags[i].trend) n_trend++;
+    if (n_trend > HMI_TREND_MAX_SERIES) return fail(c, "too many trend tags", NULL);
 
     /* cross-tag checks (names unique, register spans, group building) */
     hmi_tagdb_t *db = (hmi_tagdb_t *)malloc(sizeof(*db));

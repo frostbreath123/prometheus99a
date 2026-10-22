@@ -36,6 +36,11 @@ static void test_config(void)
     CHECK(c.response_timeout_ms == 300 && c.connect_timeout_ms == 1000 && c.writes_enabled);
     CHECK(c.tags[0].write_allowed && c.tags[0].write_role == HMI_ROLE_OPERATOR && c.tags[0].alarm.en_hi);
     CHECK(c.tags[1].area == HMI_AREA_INPUT && c.tags[1].dtype == HMI_DT_F32 && c.tags[1].word_order == HMI_WORD_LOW_FIRST);
+    /* alarm priority: medium unless the file says otherwise, with or without an alarm section */
+    CHECK(c.tags[0].alarm.priority == HMI_PRI_MEDIUM && c.tags[1].alarm.priority == HMI_PRI_MEDIUM);
+    CHECK(parse(replace(GOOD_CFG, "\"alarm\":{", "\"alarm\":{\"priority\":\"critical\","), &c, err));
+    CHECK(c.tags[0].alarm.priority == HMI_PRI_CRITICAL && c.tags[1].alarm.priority == HMI_PRI_MEDIUM);
+    expect_reject(replace(GOOD_CFG, "\"alarm\":{", "\"alarm\":{\"priority\":\"urgent\","), "unknown priority");
 
     expect_reject("", "empty");
     expect_reject("{", "truncated");
@@ -240,8 +245,34 @@ static void test_write_limits_and_timeouts(void)
     CHECK(HMI_CONNECT_TIMEOUT_MAX_MS + 2000u < 10000u);
 }
 
+static void test_trend_fields(void)
+{
+    SECTION("config: trend fields");
+    static hmi_app_cfg_t c;
+    static char json[4096];
+    char err[128];
+    CHECK(parse(GOOD_CFG, &c, err));
+    CHECK(c.trend_bucket_ms == HMI_TREND_BUCKET_DEFAULT_MS && !c.tags[0].trend && !c.tags[1].trend);
+    CHECK(parse(replace(GOOD_CFG, "\"version\":1,", "\"version\":1,\"trend_bucket_ms\":2000,"), &c, err));
+    CHECK(c.trend_bucket_ms == 2000);
+
+    /* eight trended tags are accepted, nine are not */
+    for (int count = HMI_TREND_MAX_SERIES; count <= HMI_TREND_MAX_SERIES + 1; count++) {
+        size_t off = (size_t)snprintf(json, sizeof(json),
+            "{\"version\":1,\"plc\":{\"host\":\"127.0.0.1\",\"port\":502,\"unit\":1},\"tags\":[");
+        for (int i = 0; i < count; i++)
+            off += (size_t)snprintf(json + off, sizeof(json) - off, "%s{\"name\":\"T%d\",\"address\":%d,\"type\":\"u16\",\"trend\":true}",
+                                    i ? "," : "", i, i);
+        snprintf(json + off, sizeof(json) - off, "]}");
+        bool ok = parse(json, &c, err);
+        if (count == HMI_TREND_MAX_SERIES) CHECK(ok && c.n_tags == (size_t)count && c.tags[7].trend);
+        else CHECK(!ok && strstr(err, "too many trend tags") != NULL && c.n_tags == 0);
+    }
+}
+
 int main(void)
 {
+    test_trend_fields();
     test_write_limits_and_timeouts();
     test_allowed_hosts();
     test_config();

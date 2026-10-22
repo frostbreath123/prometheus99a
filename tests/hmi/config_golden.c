@@ -234,6 +234,30 @@ static const mut_t MUTS[] = {
     { "\"response_timeout_ms\":500", "\"response_timeout_ms\":2001" },
     { "\"connect_timeout_ms\":1000", "\"connect_timeout_ms\":3000" },
     { "\"connect_timeout_ms\":1000", "\"connect_timeout_ms\":3001" },
+    /* alarm priority */
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"low\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"medium\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"high\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"critical\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"urgent\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"HIGH\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":2" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"\"" },
+    { "\"off_ms\":1000", "\"off_ms\":1000,\"priority\":\"high\",\"priority\":\"low\"" },
+    { "\"alarm\":{", "\"alarm\":{\"priority\":\"critical\"," },
+    /* trend */
+    { "\"poll_ms\":200,", "\"poll_ms\":200,\"trend\":true," },
+    { "\"poll_ms\":200,", "\"poll_ms\":200,\"trend\":false," },
+    { "\"poll_ms\":200,", "\"poll_ms\":200,\"trend\":1," },
+    { "\"poll_ms\":200,", "\"poll_ms\":200,\"trend\":\"true\"," },
+    { "\"poll_ms\":200,", "\"poll_ms\":200,\"trend\":true,\"trend\":true," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":1000," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":999," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":60000," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":60001," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":0," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":5.5," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"trend_bucket_ms\":2000,\"trend_bucket_ms\":2000," },
 };
 
 static void dump(const char *tag, const hmi_app_cfg_t *c, bool ok, const char *err)
@@ -242,6 +266,7 @@ static void dump(const char *tag, const hmi_app_cfg_t *c, bool ok, const char *e
     printf("  host='%s' port=%u unit=%u rto=%u cto=%u writes=%d wmin=%u wmax=%u n=%zu\n", c->host, c->port, c->unit,
            c->response_timeout_ms, c->connect_timeout_ms, c->writes_enabled ? 1 : 0, c->write_min_interval_ms,
            c->write_max_per_minute, c->n_tags);
+    if (c->trend_bucket_ms != 5000u && c->trend_bucket_ms != 0u) printf("  trend_bucket_ms=%u\n", c->trend_bucket_ms);   /* only when set; a rejected file leaves 0 */
     for (size_t i = 0; i < c->n_tags; i++) {
         const hmi_tag_cfg_t *t = &c->tags[i];
         printf("  tag[%zu] name='%s' units='%s' area=%d addr=%u dt=%d wo=%d bo=%d scale=%.17g off=%.17g "
@@ -252,8 +277,63 @@ static void dump(const char *tag, const hmi_app_cfg_t *c, bool ok, const char *e
                t->alarm.en_hi, t->alarm.en_hihi, t->alarm.en_lo, t->alarm.en_lolo, t->alarm.hi,
                t->alarm.hihi, t->alarm.lo, t->alarm.lolo, t->alarm.deadband, t->alarm.on_ms,
                t->alarm.off_ms);
+        /* only printed when it is not the default, so the earlier cases stay byte for byte as they were */
+        if (t->alarm.priority != HMI_PRI_MEDIUM) printf("    priority=%d\n", (int)t->alarm.priority);
+        if (t->trend) printf("    trend=1\n");
         printf("    write allowed=%d role=%d min=%.17g max=%.17g\n", t->write_allowed ? 1 : 0,
                (int)t->write_role, t->write_min, t->write_max);
+    }
+}
+
+/* ---- round trip: whatever the parser accepts can be written out and read back identically ---- */
+static int g_rt_ok, g_rt_fail;
+
+static bool tag_equal(const hmi_tag_cfg_t *a, const hmi_tag_cfg_t *b)
+{
+    return strcmp(a->name, b->name) == 0 && strcmp(a->units, b->units) == 0 && a->area == b->area &&
+           a->address == b->address && a->dtype == b->dtype && a->word_order == b->word_order &&
+           a->byte_order == b->byte_order && a->scale == b->scale && a->offset == b->offset &&
+           a->eng_min == b->eng_min && a->eng_max == b->eng_max && a->poll_ms == b->poll_ms && a->trend == b->trend &&
+           a->alarm.en_hi == b->alarm.en_hi && a->alarm.en_hihi == b->alarm.en_hihi &&
+           a->alarm.en_lo == b->alarm.en_lo && a->alarm.en_lolo == b->alarm.en_lolo &&
+           a->alarm.hi == b->alarm.hi && a->alarm.hihi == b->alarm.hihi && a->alarm.lo == b->alarm.lo &&
+           a->alarm.lolo == b->alarm.lolo && a->alarm.deadband == b->alarm.deadband &&
+           a->alarm.on_ms == b->alarm.on_ms && a->alarm.off_ms == b->alarm.off_ms &&
+           a->alarm.priority == b->alarm.priority && a->write_allowed == b->write_allowed &&
+           a->write_role == b->write_role && a->write_min == b->write_min && a->write_max == b->write_max;
+}
+
+static bool cfg_equal(const hmi_app_cfg_t *a, const hmi_app_cfg_t *b)
+{
+    if (strcmp(a->host, b->host) != 0 || a->port != b->port || a->unit != b->unit ||
+        a->response_timeout_ms != b->response_timeout_ms || a->connect_timeout_ms != b->connect_timeout_ms ||
+        a->writes_enabled != b->writes_enabled || a->write_min_interval_ms != b->write_min_interval_ms ||
+        a->write_max_per_minute != b->write_max_per_minute || a->trend_bucket_ms != b->trend_bucket_ms ||
+        a->n_allowed != b->n_allowed || a->n_tags != b->n_tags)
+        return false;
+    for (size_t i = 0; i < a->n_allowed; i++)
+        if (strcmp(a->allowed_hosts[i], b->allowed_hosts[i]) != 0) return false;
+    for (size_t i = 0; i < a->n_tags; i++)
+        if (!tag_equal(&a->tags[i], &b->tags[i])) return false;
+    return true;
+}
+
+static void roundtrip(const char *tag, const hmi_app_cfg_t *c)
+{
+    static char text[HMI_CONFIG_MAX_BYTES + 64], text2[HMI_CONFIG_MAX_BYTES + 64];
+    static hmi_app_cfg_t back;
+    char err[160];
+    size_t n = hmi_config_serialize(c, text, sizeof(text));
+    bool ok = n > 0 && hmi_config_parse(text, n, &back, err, sizeof(err)) && cfg_equal(c, &back);
+    if (ok) { /* writing it again gives the same text: nothing drifts */
+        size_t n2 = hmi_config_serialize(&back, text2, sizeof(text2));
+        ok = n2 == n && memcmp(text, text2, n) == 0;
+    }
+    if (ok) {
+        g_rt_ok++;
+    } else {
+        g_rt_fail++;
+        fprintf(stderr, "round trip FAILED for %s (serialised %zu bytes)\n", tag, n);
     }
 }
 
@@ -265,6 +345,7 @@ static void run(const char *tag, const char *json, size_t len)
     err[0] = '\0';
     bool ok = hmi_config_parse(json, len, &c, err, sizeof(err));
     dump(tag, &c, ok, err);
+    if (ok) roundtrip(tag, &c);
 }
 
 int main(void)
@@ -324,5 +405,7 @@ int main(void)
         off += (size_t)snprintf(buf + off, sizeof(buf) - off, "]}");
         run("doc tokens-60x8", buf, off);
     }
-    return 0;
+    fprintf(stderr, "config round trip: %d accepted configurations written out and read back identically, %d failed\n",
+            g_rt_ok, g_rt_fail);
+    return g_rt_fail ? 1 : 0;
 }

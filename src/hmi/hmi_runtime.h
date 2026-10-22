@@ -17,6 +17,7 @@
 #include "hmi_writes.h"
 #include "hmi_alarm.h"
 #include "hmi_store.h"
+#include "hmi_trend.h"
 
 /* Defaults for the size cap and the number of rotated files of the audit file
  * and the alarm journal. */
@@ -63,6 +64,7 @@ typedef struct {
     hmi_writes_t writes;
     hmi_alarm_t alarms;
     hmi_store_t store;
+    hmi_trend_t trend;       /* history for the trend screen; written by the supervisor thread */
     hmi_thread_t th_comms, th_super;
     hmi_atomic_flag_t stop;
     /* Incremented once per loop iteration by the owning thread only. */

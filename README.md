@@ -74,13 +74,13 @@ plus end-to-end against real libmodbus):
 
 | Feature | State |
 |---|---|
-| Decode/scaling/order, quality, versions, scheduling, backoff | host-tested (the core test modules total 2597 checks on the Windows host, 2635 on WSL2, which also runs the POSIX file-mode tests) |
+| Decode/scaling/order, quality, versions, scheduling, backoff | host-tested (the core test modules total 3887 checks on the Windows host, 3925 on WSL2, which also runs the POSIX file-mode tests) |
 | Writes: confirm, exception, lost reply, verify, expiry, audit failure, queue/audit capacity | host-tested (mock) and 2 scenarios against libmodbus |
 | Alarms: debounce, hysteresis, ack, escalation, RTN, persistence, frozen on BAD | host-tested |
 | Config validation + atomic save | host-tested (30+ rejection cases) |
 | Real Modbus TCP framing/timeouts/exceptions via libmodbus 3.1.10 | host-tested against in-process fake server (75 checks) |
 | LVGL rendering, binder, buttons | rendered headless on host; screenshots in `bench/results/` |
-| POSIX platform file, POSIX fake PLC, libmodbus 3.1.10, `Makefile.linux` | built and tested on WSL2 (Ubuntu 24.04, gcc 13.3): 2635 core + 168 view-model + 75 end-to-end checks, 89 UI scenario assertions pass (WSL2 host, not Raspberry Pi) |
+| POSIX platform file, POSIX fake PLC, libmodbus 3.1.10, `Makefile.linux` | built and tested on WSL2 (Ubuntu 24.04, gcc 13.3): 3925 core + 313 view-model + 75 end-to-end checks, 277 UI scenario assertions pass (WSL2 host, not Raspberry Pi) |
 | Linux executable `prometheus99` | links on WSL2; with a missing framebuffer path it prints an error and exits 2. A path that opens but is not a framebuffer (e.g. `/dev/null`) is not detected |
 | Linux fbdev + evdev touch on a real display | **never executed**; no framebuffer exists on the development host |
 | Real PLC interoperability, word/byte order of real devices | **not tested** |
@@ -88,10 +88,10 @@ plus end-to-end against real libmodbus):
 | Sanitizers (WSL2 gcc) | ASan+UBSan and TSan clean on core and e2e (TSan first found 3 races in the core test code itself, fixed; none in `src/hmi`) |
 | Authentication, password hashing, lockout, idle logout, first-boot administrator, `p99_user` | implemented and host-tested (Windows and WSL2, see [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)); **not run on a Raspberry Pi or a real touchscreen**, hash time on the target not measured |
 | Storage worker, audit file with wall-clock stamps and rotation, alarm journal on disk, alarm state saved on change, write rate limit, second check before sending, shutdown budget | implemented and host-tested (Windows and WSL2; kill-loop of 150 SIGKILL/stop rounds; sanitizers; see [docs/STORAGE.md](docs/STORAGE.md)); **no power-cut test, nothing run on the storage of a Raspberry Pi** |
-| Trend chart, multiple screens, settings UI | **not implemented** |
+| Trend chart, overview, alarm list, settings (system, accounts, configuration) | implemented and host-tested in the headless UI harness (see [docs/SCREENS.md](docs/SCREENS.md)); **not shown on a real display or touched** |
 | Liveness supervision (sd_notify READY and WATCHDOG, `HB nn` header mark, `deploy/prometheus99.service`) | tested on WSL2 with a fake notify socket (SIGSTOP, SIGCONT, SIGKILL, hung PLC) and with a transient real-systemd unit; **not run on a Raspberry Pi**, unit not installed under its real user and paths |
 | Configuration integrity (detached HMAC-SHA-512 signature, key file, rollback serial, PLC allow-list, safe mode), `p99_sign` | implemented and host-tested (Windows and WSL2, see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)); **not run under real systemd as the service user, nor on a Raspberry Pi** |
-| Config reload at runtime, saving configuration from the HMI | **not implemented** (the configuration is changed offline by root and re-signed) |
+| Changing alarm settings and the PLC address from the screen (request to the root helper `p99_cfg`, new signature, restart) | implemented and host-tested (WSL2 as root, `cfgedit-exec`; see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)); **units checked with `systemd-analyze verify` only, never run under real systemd**. Config reload without a restart is not implemented |
 
 ## Build and test (Windows host, MSYS2 UCRT64 GCC + GNU make)
 

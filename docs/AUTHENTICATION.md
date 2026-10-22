@@ -143,7 +143,7 @@ account (so a password typed into the wrong field never reaches the file).
 | `LOGOUT`, `IDLE_LOGOUT` | session ends | best effort |
 | `USER_CREATE user=... role=admin` | first administrator | nothing is created |
 | `USER_CREATE_FAILED` | the account file could not be saved | best effort |
-| `USER_ADD`, `USER_REMOVE`, `USER_PASSWORD` | offline tool | the change is refused |
+| `USER_ADD`, `USER_REMOVE`, `USER_PASSWORD`, `USER_ROLE` | offline tool, or the ACCOUNTS view (an administrator); the screen lines end with `by=<administrator>` | the change is refused |
 
 Without `--audit` logins work and are not recorded, as for acknowledgements. Since
 milestone M2 the acknowledgement and write lines also end with `user=<name>`
@@ -170,7 +170,18 @@ The keyboard's hide-keyboard key cancels the screen.
 The password text box overwrites its contents before clearing. LVGL may keep
 copies in its memory pool, so the time a password stays in memory is shortened
 but not proven to be zero. On the host the LVGL pool use grows from 21 KB to 29
-KB of 121 KB with the login layer built.
+KB of 121 KB with the login layer built (measured at M1, with one screen; since M4 the pool is 192 KB and about 119 KB is in use with every screen and the login layer built, see `docs/SCREENS.md`).
+
+## Managing accounts on the device (M4)
+
+Since milestone M4 an administrator can add an account, set a password, change a role and
+remove an account on the ACCOUNTS view of the settings screen (`docs/SCREENS.md`). The core
+(`hmi_auth_user_add_begin`, `hmi_auth_user_password_begin`, `hmi_auth_user_set_role`, `hmi_auth_user_remove`) decides: only an administrator
+session, never the administrator's own account for role and removal, never the last
+administrator, and the audit line is made durable first (a failed record refuses the change).
+Accounts the screen can add are Operator, Engineer or Admin with the same password policy and
+hash as the first administrator. A password reset releases a lock. An Operator or Engineer
+cannot change their own password on the device. The offline tool stays available.
 
 ## `--role`
 

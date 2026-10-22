@@ -689,8 +689,77 @@ static void test_ack_async(void)
     fx_free(f, true);
 }
 
+/* ---- priority and the alarm list ---- */
+static void set_pt(fx_t *f, size_t point, hmi_alarm_state_t st, uint64_t since)
+{
+    hmi_mutex_lock(&f->al.lock);
+    f->al.pt[point].state = st;
+    f->al.pt[point].kind = point == f->db.n_tags ? HMI_ALK_COMMS : HMI_ALK_HI;
+    f->al.pt[point].since_ms = since;
+    hmi_mutex_unlock(&f->al.lock);
+}
+
+static void test_alarm_priority_list(void)
+{
+    SECTION("alarms: priority and the sorted alarm list");
+    fx_t *f = fx_new(true);
+    size_t nt = hmi_tagdb_count(&f->db);
+    hmi_alarm_row_t r[HMI_MAX_TAGS + 1];
+
+    CHECK(hmi_alarm_list(&f->al, r, HMI_MAX_TAGS + 1) == 0);   /* nothing active */
+
+    f->db.cfg[0].alarm.priority = HMI_PRI_LOW;
+    f->db.cfg[1].alarm.priority = HMI_PRI_CRITICAL;
+    f->db.cfg[2].alarm.priority = HMI_PRI_MEDIUM;
+    f->db.cfg[3].alarm.priority = HMI_PRI_MEDIUM;
+    CHECK(hmi_alarm_priority(&f->al, 0) == HMI_PRI_LOW);
+    CHECK(hmi_alarm_priority(&f->al, 1) == HMI_PRI_CRITICAL);
+    CHECK(hmi_alarm_priority(&f->al, nt) == HMI_PRI_HIGH);       /* the comms alarm is always HIGH */
+    CHECK(hmi_alarm_priority(&f->al, nt + 5) == HMI_PRI_HIGH);   /* out of range is not LOW */
+
+    set_pt(f, 0, HMI_AL_ACTIVE_UNACK, 100);
+    set_pt(f, 1, HMI_AL_ACTIVE_ACK, 50);
+    set_pt(f, 2, HMI_AL_ACTIVE_UNACK, 300);
+    set_pt(f, 3, HMI_AL_ACTIVE_ACK, 400);
+    set_pt(f, nt, HMI_AL_RTN_UNACK, 200);
+    size_t n = hmi_alarm_list(&f->al, r, HMI_MAX_TAGS + 1);
+    CHECK(n == 5);
+    /* priority first (even an acknowledged CRITICAL alarm comes before a HIGH one), then unacknowledged
+     * before acknowledged, so tag 2 precedes tag 3, and LOW is last whatever its age. */
+    CHECK(r[0].point == 1 && r[0].priority == HMI_PRI_CRITICAL && r[0].pt.state == HMI_AL_ACTIVE_ACK);
+    CHECK(r[1].point == nt && r[1].priority == HMI_PRI_HIGH && r[1].pt.state == HMI_AL_RTN_UNACK);
+    CHECK(r[2].point == 2);
+    CHECK(r[3].point == 3);
+    CHECK(r[4].point == 0 && r[4].priority == HMI_PRI_LOW);
+
+    /* equal priority, both unacknowledged: the more recent change is first */
+    f->db.cfg[3].alarm.priority = HMI_PRI_MEDIUM;
+    set_pt(f, 3, HMI_AL_ACTIVE_UNACK, 350);
+    n = hmi_alarm_list(&f->al, r, HMI_MAX_TAGS + 1);
+    CHECK(n == 5 && r[2].point == 3 && r[3].point == 2);
+
+    /* equal in every respect: the lower point index is first, every time */
+    set_pt(f, 3, HMI_AL_ACTIVE_UNACK, 300);
+    for (int k = 0; k < 3; k++) {
+        n = hmi_alarm_list(&f->al, r, HMI_MAX_TAGS + 1);
+        CHECK(n == 5 && r[2].point == 2 && r[3].point == 3);
+    }
+
+    /* a small buffer keeps the most urgent rows */
+    hmi_alarm_row_t two[2];
+    CHECK(hmi_alarm_list(&f->al, two, 2) == 2);
+    CHECK(two[0].point == 1 && two[1].point == nt);
+
+    /* NORMAL points never appear */
+    set_pt(f, 1, HMI_AL_NORMAL, 0);
+    n = hmi_alarm_list(&f->al, r, HMI_MAX_TAGS + 1);
+    CHECK(n == 4 && r[0].point == nt);
+    fx_free(f, true);
+}
+
 int main(void)
 {
+    test_alarm_priority_list();
     test_alarm_sink();
     test_alarm_state_bytes();
     test_ack_async();

@@ -18,6 +18,7 @@
 #include "../hmi/hmi_alarm.h"
 #include "../hmi/hmi_writes.h"
 #include "../hmi/hmi_auth.h"
+#include "../hmi/hmi_cfgedit.h"
 
 /* Semantic colour of a piece of text; the binder owns the actual colours. */
 typedef enum {
@@ -42,6 +43,32 @@ hmi_tone_t hmi_view_quality_tone(hmi_quality_t q);
 /* Alarm cell; empty string when the point is NORMAL. */
 void hmi_view_alarm_text(const hmi_alarm_point_t *p, char *buf, size_t cap);
 hmi_tone_t hmi_view_alarm_tone(const hmi_alarm_point_t *p);
+
+/* Alarm priority: "LOW", "MED", "HIGH" or "CRIT" (a value outside the enum gives "?"). */
+const char *hmi_view_priority_text(hmi_priority_t p);
+hmi_tone_t hmi_view_priority_tone(hmi_priority_t p);
+
+/* Name of an alarm point in a list: the tag name, or "PLC LINK" for the
+ * communications alarm (any point at or beyond n_names). */
+const char *hmi_view_alarm_point_name(const char *const *names, size_t n_names, size_t point);
+/* Time since an alarm last changed, from a duration in milliseconds: "0s" to
+ * "59s", "1m00s" to "59m59s", "1h00m" to "99h59m", and ">99h" beyond. */
+void hmi_view_age_text(uint64_t ms, char *buf, size_t cap);
+/* "3/7" for the third of seven pages (page is counted from 0); "0/0" with no pages. */
+void hmi_view_page_text(size_t page, size_t pages, char *buf, size_t cap);
+const char *hmi_view_no_alarms_text(void);
+/* Shown instead of acknowledging when the alarm changed after it was drawn. */
+const char *hmi_view_ack_changed_text(void);
+
+/* A value on a chart axis, short enough for a 58 pixel label: at most four
+ * significant digits ("50.04", "1235", "0.0001235", "1.235e+07"). */
+void hmi_view_axis_text(double v, char *buf, size_t cap);
+/* The line under a trend chart. With data: "<name>  min <lo> max <hi> <units>
+ * (last <span>)", the numbers with `decimals` places. Without: "<name>: no good
+ * data in the last <span>". `span` is text such as "10m00s". */
+void hmi_view_trend_status_text(const char *name, const char *units, int decimals, bool any, double lo, double hi,
+                                const char *span, char *buf, size_t cap);
+const char *hmi_view_no_trend_text(void);   /* shown when no tag has "trend": true */
 
 /* Header link and alarm-summary labels. */
 void hmi_view_link_text(hmi_link_health_t h, char *buf, size_t cap);
@@ -98,6 +125,40 @@ hmi_tone_t hmi_view_login_tone(hmi_login_result_t r);
 void hmi_view_setup_text(hmi_setup_result_t r, const char *reason, char *buf, size_t cap);
 hmi_tone_t hmi_view_setup_tone(hmi_setup_result_t r);
 const char *hmi_view_setup_mismatch_text(void);
+/* ---- accounts on the settings screen ---- */
+typedef enum { HMI_VIEW_UA_ADD = 0, HMI_VIEW_UA_PASSWORD, HMI_VIEW_UA_ROLE, HMI_VIEW_UA_REMOVE } hmi_view_user_action_t;
+/* One line for the result of an account change. `reason` is the password policy
+ * text (for HMI_UADM_PASSWORD), `action` says what "done" means. */
+void hmi_view_uadm_text(hmi_uadm_result_t r, hmi_view_user_action_t action, const char *reason, char *buf, size_t cap);
+hmi_tone_t hmi_view_uadm_tone(hmi_uadm_result_t r);
+/* Role in capitals for a list ("OPERATOR"), and "LOCKED 0:45" or "" for the state column. */
+const char *hmi_view_role_caps(hmi_role_t role);
+void hmi_view_account_state_text(uint32_t wait_ms, char *buf, size_t cap);
+const char *hmi_view_users_need_admin_text(void);
+const char *hmi_view_users_unavailable_text(void);   /* a test build has no accounts */
+
+/* ---- changing settings from the screen (the CONFIG view) ---- */
+/* One line for the outcome of handing a request to the configuration helper. */
+void hmi_view_cfgreq_text(hmi_cfgreq_result_t r, char *buf, size_t cap);
+hmi_tone_t hmi_view_cfgreq_tone(hmi_cfgreq_result_t r);
+/* One line for what the spool directory shows afterwards. `line` is the first line of the
+ * result file as hmi_cfgreq_state() returned it. Empty for HMI_CFGREQ_NONE. */
+void hmi_view_cfgstate_text(hmi_cfgreq_state_t s, const char *line, char *buf, size_t cap);
+hmi_tone_t hmi_view_cfgstate_tone(hmi_cfgreq_state_t s);
+/* A number as the CONFIG view shows it: at most six significant digits, no trailing zeros. */
+void hmi_view_cfg_number_text(double v, char *buf, size_t cap);
+const char *hmi_view_priority_caps(hmi_priority_t p);   /* "LOW", "MEDIUM", "HIGH", "CRITICAL", "?" */
+const char *hmi_view_config_need_engineer_text(void);
+const char *hmi_view_config_unavailable_text(void);     /* no spool directory: not set up */
+
+/* ---- the system lines on the settings screen ---- */
+void hmi_view_plc_text(const char *host, unsigned port, unsigned unit, char *buf, size_t cap);
+/* Why writes are on or off. master: the "writes_enabled" switch of the configuration. */
+void hmi_view_writes_text(bool master, bool effective, char *buf, size_t cap);
+void hmi_view_storage_text(bool fault, uint32_t written, uint32_t failed, char *buf, size_t cap);
+void hmi_view_clock_text(bool valid, bool synced, char *buf, size_t cap);
+void hmi_view_tags_text(size_t tags, size_t trended, size_t with_alarm, char *buf, size_t cap);
+
 /* Shown permanently when the process runs with --role (a test build only). */
 void hmi_view_test_role_banner(hmi_role_t role, char *buf, size_t cap);
 

@@ -202,6 +202,8 @@ static bool same_state_on_disk(hmi_runtime_t *rt)
            memcmp(now_, disk, n) == 0;
 }
 
+static bool cond_same_state_on_disk(hmi_runtime_t *rt) { return same_state_on_disk(rt); }
+
 static void test_runtime_journal_and_state(void)
 {
     SECTION("runtime: alarm journal and state are written while running and reloaded at start");
@@ -223,7 +225,9 @@ static void test_runtime_journal_and_state(void)
     CHECK(hmi_runtime_start_ex(&rt, &cfg, &d, &st));
     CHECK(wait_unacked(&rt, 1, 4000));
     CHECK(wait_for(cond_state_saved, &rt, 4000));
-    CHECK(same_state_on_disk(&rt));     /* on disk without a clean shutdown */
+    /* On disk without a clean shutdown. A change that follows the first save is written once the minimum
+     * interval (50 ms here) has passed, so the file catches up shortly after the state settles. */
+    CHECK(wait_for(cond_same_state_on_disk, &rt, 2000));
     CHECK(slurp(RT_JRN, text, sizeof(text)) > 0 && strstr(text, " ALARM_EVENT seq=1 point=") != NULL);
     CHECK(strstr(text, " event=RAISED ") != NULL && strstr(text, " crc=") != NULL);
     hmi_alarm_log_t j[HMI_JOURNAL_LEN];
@@ -569,9 +573,15 @@ static void test_runtime_stop_during_write(void)
 }
 
 /* ---- the last alarm state is written at shutdown even when the storage queue is full ---- */
+/* The first few appends after the queue was filled are slow, so that the queue is still full when the
+ * runtime stops; the rest are quick. Making every append slow made the drain time (64 appends) equal to
+ * the stop budget on a host whose Sleep(40) takes 47 ms, and a stop that times out leaves the store
+ * thread running on memory the next test re-initialises. */
+static volatile int s_slow_appends = 1000;
 static bool slow_append_short(const char *path, const void *d, size_t n)
 {
-    hmi_sleep_ms(40);
+    hmi_sleep_ms(s_slow_appends < 4 ? 150u : 2u);
+    s_slow_appends++;
     return hmi_fs_append_sync(path, d, n);
 }
 static const hmi_store_io_t k_slow_short_io = { slow_append_short, hmi_fs_atomic_write, hmi_fs_size, hmi_fs_rename };
@@ -601,9 +611,11 @@ static void test_runtime_final_state_with_full_queue(void)
     hmi_sleep_ms(200);
     CHECK(!same_state_on_disk(&rt)); /* the acknowledged state is not on disk yet */
     int queued = 0;
+    s_slow_appends = 0;                                                                         /* the next four appends are slow */
     while (hmi_store_enqueue(&rt.store, 1, "filler line\n", 12, NULL, NULL, 0, NULL)) queued++; /* fill the queue; the disk is slow */
     CHECK(queued >= HMI_STORE_QUEUE_LEN - 2);
     CHECK(hmi_runtime_stop(&rt));
+    s_slow_appends = 1000;
     uint8_t disk[HMI_ALARM_STATE_MAX];
     size_t len = 0;
     CHECK(hmi_fs_read_all(RT_STATE, disk, sizeof(disk), &len) == HMI_FS_READ_OK && len > 0);
@@ -750,8 +762,54 @@ static void test_concurrent_consumers(void)
     CHECK(g_bad_reads == 0 && g_reads > 100);
 }
 
+/* ---- trend history is filled by the supervisor thread ---- */
+static void test_runtime_trend(void)
+{
+    SECTION("runtime: the supervisor records the history of trended tags only");
+    static hmi_app_cfg_t cfg;
+    char err[128];
+    CHECK(parse(GOOD_CFG, &cfg, err));
+    cfg.tags[0].trend = true;          /* tag 1 is not trended */
+    cfg.trend_bucket_ms = 1000;
+    static mock_t m;
+    mock_init(&m);
+    m.hold[0] = 500;
+    m.timeout_cost = 0;
+    hmi_plc_driver_t d = mock_drv(&m);
+    static hmi_runtime_t rt;
+    CHECK(hmi_runtime_start(&rt, &cfg, &d, NULL, NULL));
+    CHECK(hmi_trend_series_count(&rt.trend) == 1 && hmi_trend_series_tag(&rt.trend, 0) == 0);
+    CHECK(hmi_trend_bucket_ms(&rt.trend) == 1000);
+    hmi_sleep_ms(2700);
+    hmi_tag_value_t v;
+    hmi_tagdb_get(&rt.db, 0, &v);
+    hmi_trend_bucket_t b[8];
+    size_t n = hmi_trend_copy(&rt.trend, 0, b, 8);
+    CHECK(v.quality == HMI_Q_GOOD);
+    CHECK(n >= 1 && n <= 2);                                       /* buckets of one second: two have closed at most */
+    CHECK(n >= 1 && hmi_trend_bucket_valid(&b[n - 1]) && (double)b[n - 1].lo == (double)(float)v.eng && b[n - 1].lo == b[n - 1].hi);
+    CHECK(hmi_trend_rev(&rt.trend) >= 1);
+    CHECK(hmi_runtime_stop(&rt));
+    CHECK(!rt.trend.ready);                                        /* released with the rest */
+
+    /* the default bucket length applies when the configuration structure does not set one */
+    cfg.trend_bucket_ms = 0;
+    CHECK(hmi_runtime_start(&rt, &cfg, &d, NULL, NULL));
+    CHECK(hmi_trend_bucket_ms(&rt.trend) == HMI_TREND_BUCKET_DEFAULT_MS);
+    CHECK(hmi_runtime_stop(&rt));
+
+    /* nothing trended: no series, and the supervisor does not touch the history */
+    cfg.tags[0].trend = false;
+    CHECK(hmi_runtime_start(&rt, &cfg, &d, NULL, NULL));
+    CHECK(hmi_trend_series_count(&rt.trend) == 0);
+    hmi_sleep_ms(200);
+    CHECK(hmi_trend_rev(&rt.trend) == 0);
+    CHECK(hmi_runtime_stop(&rt));
+}
+
 int main(void)
 {
+    test_runtime_trend();
     test_runtime_lifecycle();
     test_runtime_beats();
     test_runtime_ack_audit();

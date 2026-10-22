@@ -15,6 +15,106 @@ HMI Runtime Architecture and Engineering Documentation" (design baseline v0.2,
 Section numbers below (§) refer to that document. `docs/ADR-0001-runtime-boundaries.md`
 records the intentional deviations from it.
 
+## Update 2026-10-22: milestone M4 (screens, trends, priority, settings) is implemented
+
+Status: steps 4.0 to 4.6 are implemented and verified on the development host only
+(Windows with MSYS2, and WSL2 Ubuntu 24.04). Nothing ran on a Raspberry Pi, on a real
+display, against a real PLC or under real systemd. Nothing is committed. The screens are
+described in [SCREENS.md](SCREENS.md); the helper that applies a configuration change is in
+[CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.md); the record of how the work went is
+[M4_HANDOFF.md](M4_HANDOFF.md).
+
+Owner decisions on 2026-10-22 (recommended option each): D1 a root helper started by a
+systemd path unit, with a narrow whitelist; D2 trend data in RAM only; D3 one alarm
+priority per tag; D4 a paged overview; D5 the whitelist (alarm limits, deadband, delays,
+priority, PLC host from the allow-list, port, unit); D6 account management on the device
+for an Administrator.
+
+What exists (host evidence): per-screen UI files and a tab framework; alarm priority
+(`alarm.priority`, `hmi_alarm_list`); paged overview; alarm list with a per-alarm
+acknowledgement that refuses an alarm that changed after it was drawn; `hmi_trend`
+(fixed rings, min and max per bucket, only GOOD data, gaps otherwise) with a chart screen
+and the config fields `trend` and `trend_bucket_ms`; a settings screen with a system view,
+an accounts view and a configuration view; account management in `hmi_auth` (Admin only,
+audit before effect, `by=<admin>` in the lines, own account protected, a password reset
+releases a lock); `hmi_config_serialize` and `hmi_config_equal` (all 58 accepted golden
+cases write out and read back identically); `hmi_cfgedit` (request format, whitelist,
+bounds, spool hand-off); `p99_cfg` (the root helper); the units
+`deploy/prometheus99-config.path` and `.service`; `--spool DIR` in the service.
+
+Row changes in M4 (rows not listed are unchanged): row 7 (screens) PI to CV (H); row 8
+(trend charts) NI to CV (H); row 21 (alarm priority) NI to CV (H); row 32 stays CV (H) and
+its open part changes (on-device saving now exists, host-tested; the real systemd run is
+still open); row 4 text updated for the larger pool. Tally by this count: 29 CV, 5 IU,
+9 PI, 9 NI, 2 BL, 1 OF (55 rows).
+
+Fresh host results after M4 (rerun them rather than trusting this list):
+
+| Item | Result |
+|---|---|
+| Core modules, Windows host (`mingw32-make test-hmi`) | 3887 checks, 0 failed (see the intermittent failures below, now fixed) |
+| Core modules, WSL2 (also runs the POSIX file-mode rules and the clock state) | 3925 checks, 0 failed |
+| View-model | 313 checks, 0 failed on both hosts; end to end 75 checks, 0 failed |
+| Config corpus | identical to the golden file; 58 accepted cases written out and read back identically |
+| Headless UI scenario | 277 assertions, 0 failed on both hosts |
+| Liveness, command line, authentication and configuration executable tests (WSL2) | pass |
+| `cfgedit-exec` (WSL2, as root): `p99_cfg` against real files | passes: applied, stale and future serial, unknown and forbidden keys, host outside the allow-list, limit outside the range, symlink, wrong owner, group-writable file, second hard link, oversized file, named pipe, directory in place of the request, edited configuration, wrong key, missing signature, writable configuration, missing, linked and wrongly owned audit file, unsafe spool directory, serial 4294967295 |
+| ASan with UBSan (WSL2) | 0 reports for `cfgedit`, `auth`, `users`, `config`, `cfgsec`, `cli`, `trend`, `alarm`, `store`, `runtime`, `auditfmt`, and for `p99_cfg` itself running the executable test |
+| TSan (WSL2) | 0 reports for `cfgedit`, `auth`, `runtime`, `trend` |
+| Mutation checks of the new rules (18 in the core, 16 in `p99_cfg`) | 33 of 34 caught; the survivor removes the final read-back assertion in `hmi_cfgedit_apply`, which no input can trigger because the writer is proven by the golden corpus (an equivalent change). The first run had 4 survivors; 3 tests were added for them |
+| `systemd-analyze verify` of the three units (WSL2) | no messages; this is a syntax check, not a run |
+| LVGL pool, headless harness | 119 KB of 172 KB in use with every screen and the login layer built, peak 122 KB; 0 heap calls in 2 s of steady state |
+
+Intermittent failures seen on the Windows host (explained and fixed afterwards):
+1. `runtime` failed at `tests/hmi/test_runtime.c:606` and sometimes crashed (4 of 20 runs). The
+   slow-disk test made all 64 queued appends 40 ms each; `Sleep(40)` takes 47 ms on this host, so
+   the drain (about 3.0 s) equalled the 3000 ms store stop budget and `hmi_runtime_stop` sometimes
+   timed out. A timed-out stop leaves the store thread running, by design, and the next test
+   re-initialised the same static memory under it. Fixed in the test: only the first four appends
+   after the queue is filled are slow, so the queue is still full at stop and the drain takes about
+   1 s. The product code is unchanged.
+2. `runtime` failed at line 226 (`same_state_on_disk`, 4 of 40 runs): the test read the state file
+   once, but a change after the first save is written only after the minimum interval (50 ms in
+   that test). The test now waits up to 2 s for the file to catch up. 0 failures in 60 runs after
+   both fixes (it was about 1 in 12 before).
+3. `auth` failed at lines 881 to 891 (a user change refused because the account file could not be
+   saved). A virus scanner or indexer that holds the file open for a few milliseconds without
+   `FILE_SHARE_DELETE` makes `MoveFileEx` fail with access denied or a sharing violation. Reproduced
+   with a small program that keeps opening the file: 20 of 30 `auth` runs failed. Fixed in
+   `src/hmi/hmi_platform_win32.c`: the replace is retried for at most 200 ms on those errors (a
+   code change, Windows development host only; the Linux layer is unchanged). With the same
+   program running, 0 of 30 failed after the fix. The real failure on the host was not captured,
+   so that it was the same cause is shown by reproduction, not by observation.
+
+Defects found and fixed while finishing 4.5: a glibc macro named `BYTE_ORDER` collided with an
+array name in `hmi_config_write.c` and broke the Linux build only; the writer wrote members
+that hold their default, which made a 64-tag file overrun the parser's 1024-token budget; the
+request parser left `base_serial` set on some refusal paths.
+
+Documentation conflicts found while doing M4 (reported, not hidden):
+1. The instruction that repository files use CRLF does not match the repository: the
+   index and working tree are LF for the portable code; only the legacy prototype files
+   are CRLF. New files were written as LF. `PROJECT_RESUME.md` section U also says "CRLF".
+2. The roadmap gives the settings screen to the Engineer role; the mentor's document gives
+   Engineer "setpoints, network settings" and Admin "users and security settings". M4 splits
+   them: accounts for Admin, configuration changes for Engineer and above.
+3. The mentor's document says the configuration holds screen templates; the code has none.
+   The screens are fixed and built from the tag table.
+4. `LV_MEM_SIZE` was raised from 128 KB to 192 KB. With every screen built the harness uses
+   119 KB (host measurement), of which about 20 KB is the CONFIG view.
+5. `hmi_cfgedit.h` said the service never holds the key. The deployment gives the service group
+   read access to the key (it must verify the signature), so the sentence was wrong and was
+   corrected. What protects the configuration is that the service cannot write it.
+6. `docs/AUTHENTICATION.md`, `README.md` and `bench/CLAIMS.md` quoted the old state; they were
+   updated in 4.6, except that `bench/CLAIMS.md` keeps its measured numbers and carries a note.
+   `walkthrough.md` was not checked.
+
+Not verified: the units under real systemd (including the restart of the service by the
+helper), the two-rename replacement of the configuration and signature across a power cut or
+a restart between the renames, rendering and touch of the CONFIG view on a device, behaviour
+when the helper exits with status 3 and leaves a request (the path unit would start it again
+until the start limit), and everything that needs a Raspberry Pi or a real PLC.
+
 ## Update 2026-10-22: milestone M1 (authentication and sessions) is implemented
 
 Decisions given by the project owner on 2026-10-22: roadmap order M1 to M5
@@ -259,7 +359,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | 1 | 2, 4.1 | Layered C99, OS access only through the platform layer | CV (H) | ADR-0001, `src/hmi/hmi_platform.h`, `check-tagdb-access`, builds on Windows and Linux | none |
 | 2 | 4.2 | Threads: UI, comms, storage worker | CV (H) | `hmi_store.*`: one storage worker with a bounded queue and a fault flag owns every durable write (M3); TSan clean; see STORAGE.md | Pi |
 | 3 | 4.3 | One lock discipline, no IO under a lock | CV (H) | locks never nested; TSan and ASan clean; ack audit runs outside the lock | none |
-| 4 | 4.4, 8.3 | Static tables, fixed LVGL pool, no steady-state heap | CV (H, app only) | `ui_headless`: 0 heap calls in 2 s, LVGL 20 KB of 128 KB | process PSS and Pi (row 50) |
+| 4 | 4.4, 8.3 | Static tables, fixed LVGL pool, no steady-state heap | CV (H, app only) | `ui_headless`: 0 heap calls in 2 s; LVGL pool 192 KB, 119 KB in use with every screen built (it was 20 KB of 128 KB with one screen) | process PSS and Pi (row 50) |
 | 5 | 8.7 | Release flags, strip, LVGL logs off | PI | -O2, -Wall -Wextra -Wpedantic, PIE, relro, fortify, `LV_USE_LOG 0` | `-Werror`, stripped release target, `size` report |
 | 23 | 4.2, 5.3 | Alarm evaluation in the comms thread | CV (H) | intentional deviation recorded in ADR-0001: a separate supervisor thread evaluates alarms | none |
 
@@ -268,8 +368,8 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | # | § | Requirement | Status | Evidence and files | Remaining |
 |---|---|---|---|---|---|
 | 6 | 7.3, 8.1 | Real LVGL v9, binder, update on change | CV (H, headless) | `src/ui/hmi_ui.c`, `ui_headless` 36 assertions, 0 idle flushes | on-target behaviour (rows 9, 10) |
-| 7 | 1, 7.1 | Screens: overview, alarms, trends, settings, login | PI | one screen only | M4 |
-| 8 | 8.1 | Trend charts | NI | none | M4 |
+| 7 | 1, 7.1 | Screens: overview, alarms, trends, settings, login | CV (H) | overview (paged), alarms, trends, settings (system, accounts, configuration) and login; headless UI scenario 277 assertions; see SCREENS.md | rendering and touch on a device (row 50) |
+| 8 | 8.1 | Trend charts | CV (H) | `hmi_trend`, `ui_trends.c`; min and max per bucket, only GOOD data, gaps; `test_trend` 90 checks, runtime test, UI scenario with the hung-PLC gap; ASan and TSan clean | Pi (rendering) |
 | 9 | 8.1 | Pixel-format match, DRM, SDL development backend | NI | `LV_COLOR_DEPTH 16` fixed; fbdev only; no SDL or DRM | probe bits per pixel, add what the Pi needs (M5) |
 | 10 | 6 | fbdev and evdev on a real device | IU, BL | compiled and linked; only `--fb /dev/null` was run | Pi hardware |
 
@@ -292,7 +392,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | 18 | 5.1, 5.2 | Quality and staleness (larger of 3 x poll interval or 1 s), per-group restore | CV (H) | `hmi_tag_stale_limit_ms`, `test_comms`, `test_tags` | none (initial state is UNAVAILABLE, not BAD) |
 | 19 | 7.2 | Dirty flag with deadband | PI | version counters and label-text comparison; deadband used only for alarms | decide whether the document's mechanism is required |
 | 20 | 5.3 | Alarm state machine | CV (H) | `test_alarm` 81 | none |
-| 21 | 5.3 | Alarm priority | NI | no field in the alarm configuration | M4 |
+| 21 | 5.3 | Alarm priority | CV (H) | `alarm.priority` in the signed configuration, `hmi_alarm_list` sorts by priority, then unacknowledged, then newest; golden cases added; alarm list screen | none for the host |
 | 22 | 5.3, 8.6 | Alarm persistence and journal | CV (H) | since M3 the alarm state is rewritten on change within an interval and an hourly limit and at shutdown; the journal is on disk with a CRC per line, rotated, and reloaded at start; kill-loop of 150 rounds; see STORAGE.md | power-cut test and flash behaviour on the Pi |
 
 ### Writes
@@ -312,7 +412,7 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | 29 | 10 | Roles enforced in the core | CV (H) | `hmi_authz`, `hmi_alarm`, `hmi_writes`; since M1 the role handed to the core is the session role (`hmi_auth_role`), and `--role` exists only in a test build | none for the host; Pi |
 | 30 | 10 | Authentication, password KDF, first-boot credentials, lockout, idle logout | CV (H) | `hmi_kdf`, `hmi_users`, `hmi_auth`, login screen in `hmi_ui.c`, `p99_user`; Argon2id RFC 9106 vector, 237 auth checks, UI scenario, executable tests; see AUTHENTICATION.md | hash time on the Pi, real touchscreen entry, power-cut test of the store write |
 | 31 | 5.4 | Strict configuration validation | CV (H) | config golden 184, `test_config` 89 | none |
-| 32 | 5.4, 10 | Configuration integrity (CRC, HMAC), safe defaults and banner | CV (H) | `hmi_mac`, `hmi_cfgsec`, `p99_sign`; detached HMAC-SHA-512 signature, key file, CRC to separate damage from tampering, rollback serial, safe mode with banner; 223 cfgsec checks, `config-exec`; see CONFIG_INTEGRITY.md | run under real systemd with root-owned files; on-device saving (M4) |
+| 32 | 5.4, 10 | Configuration integrity (CRC, HMAC), safe defaults and banner | CV (H) | `hmi_mac`, `hmi_cfgsec`, `p99_sign`; detached HMAC-SHA-512 signature, key file, CRC to separate damage from tampering, rollback serial, safe mode with banner; 223 cfgsec checks, `config-exec`; on-device changes through `p99_cfg` (`cfgedit-exec`, 868 `cfgedit` checks); see CONFIG_INTEGRITY.md | run under real systemd with root-owned files, including the helper and its path unit |
 | 33 | 10 | Allow-list of PLC addresses | CV (H) | `plc.allowed_hosts` in the signed configuration; the tool will not sign and the device will not run a host that is not in it | none for the host |
 | 34 | 10 | State that Modbus TCP is unauthenticated; threat model; IEC 62443 mapping | NI | README does not say it; no threat model | M8 |
 | 35 | 10 | Non-root systemd hardening | IU | `deploy/prometheus99.service`; not installed under its user; `systemd-analyze security` not run | M5 |

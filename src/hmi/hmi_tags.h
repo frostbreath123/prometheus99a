@@ -20,6 +20,7 @@ typedef struct {
     double deadband;     /* engineering units; value must retreat this far */
     uint32_t on_ms;      /* debounce before raising / escalating */
     uint32_t off_ms;     /* debounce before clearing */
+    hmi_priority_t priority; /* applies to every level of this tag's alarm */
 } hmi_alarm_cfg_t;
 
 typedef struct {
@@ -33,6 +34,7 @@ typedef struct {
     double scale, offset;            /* eng = raw_number * scale + offset */
     double eng_min, eng_max;         /* plausibility range */
     uint32_t poll_ms;
+    bool trend;                      /* keep a history of this tag for the trend screen (hmi_trend.h) */
     hmi_alarm_cfg_t alarm;
     bool write_allowed;
     hmi_role_t write_role;           /* minimum role to write */

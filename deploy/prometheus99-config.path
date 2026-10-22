@@ -1,0 +1,14 @@
+# Starts prometheus99-config.service when the HMI service leaves a configuration change
+# request in the spool directory. See prometheus99-config.service for installation and status.
+
+[Unit]
+Description=Watch for Prometheus99 configuration change requests
+
+[Path]
+PathExists=/var/spool/prometheus99/request
+Unit=prometheus99-config.service
+# p99_cfg always removes the request, also when it refuses it. If it cannot (exit status 3)
+# the unit would be started again at once; systemd stops that after the start limit.
+
+[Install]
+WantedBy=multi-user.target

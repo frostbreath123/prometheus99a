@@ -53,13 +53,17 @@ typedef enum {
     HMI_AUTH_EV_USER_CREATE_FAILED,
     HMI_AUTH_EV_USER_ADD,             /* offline tool: account added */
     HMI_AUTH_EV_USER_REMOVE,
-    HMI_AUTH_EV_USER_PASSWORD         /* offline tool: password or role changed */
+    HMI_AUTH_EV_USER_PASSWORD,        /* offline tool: password or role changed; on the device: a password reset */
+    HMI_AUTH_EV_USER_ROLE,            /* on the device: the role of an account was changed */
+    HMI_AUTH_EV_USER_DENIED,          /* on the device: a request to manage accounts from a session that may not */
+    HMI_AUTH_EV_USER_CHANGE_FAILED    /* on the device: the account file could not be saved after the record was made */
 } hmi_auth_event_t;
 
 typedef struct {
     uint64_t t_ms;
     hmi_auth_event_t ev;
     const char *user;     /* a valid user name, or "?" for an unknown or malformed name */
+    const char *by;       /* NULL, or the administrator who made the change on the device: the line then ends with by=<name> */
     hmi_role_t role;      /* meaningful for LOGIN_OK, LOGOUT, IDLE_LOGOUT, USER_CREATE */
     uint32_t failures;    /* meaningful for LOGIN_FAIL and LOCKOUT */
     uint32_t lock_ms;     /* meaningful for LOCKOUT */
@@ -118,12 +122,39 @@ typedef struct {
     uint32_t failures;         /* consecutive failures for this user after this attempt */
 } hmi_login_info_t;
 
-typedef enum { HMI_AUTH_JOB_NONE = 0, HMI_AUTH_JOB_LOGIN, HMI_AUTH_JOB_SETUP } hmi_auth_job_kind_t;
+/* Result of a change to the accounts made on the device (see "accounts" below). */
+typedef enum {
+    HMI_UADM_OK = 0,
+    HMI_UADM_PENDING,          /* accepted, the password is being hashed; poll for the result */
+    HMI_UADM_DENIED,           /* the session is not an administrator (or ended while the hash was computed) */
+    HMI_UADM_BUSY,             /* another hash is being computed */
+    HMI_UADM_NO_STORE,         /* there is no usable account store */
+    HMI_UADM_NAME,             /* not a valid user name */
+    HMI_UADM_PASSWORD,         /* password policy; see hmi_auth_setup_reason() */
+    HMI_UADM_ROLE,             /* a role other than Operator, Engineer or Admin */
+    HMI_UADM_EXISTS,
+    HMI_UADM_NOT_FOUND,
+    HMI_UADM_FULL,             /* HMI_USERS_MAX accounts already */
+    HMI_UADM_LAST_ADMIN,       /* would leave no administrator */
+    HMI_UADM_SELF,             /* an administrator may not remove or change the role of their own account */
+    HMI_UADM_AUDIT_FAILED,     /* the record could not be made durable: nothing was changed */
+    HMI_UADM_SAVE_FAILED,      /* the account file could not be written: nothing was changed */
+    HMI_UADM_ERROR             /* memory, thread, random source or KDF failure */
+} hmi_uadm_result_t;
+
+typedef enum {
+    HMI_AUTH_JOB_NONE = 0,
+    HMI_AUTH_JOB_LOGIN,
+    HMI_AUTH_JOB_SETUP,
+    HMI_AUTH_JOB_USER_ADD,
+    HMI_AUTH_JOB_USER_PASSWORD
+} hmi_auth_job_kind_t;
 
 typedef struct {
     hmi_auth_job_kind_t kind;
     hmi_login_info_t login;      /* valid when kind == HMI_AUTH_JOB_LOGIN */
     hmi_setup_result_t setup;    /* valid when kind == HMI_AUTH_JOB_SETUP */
+    hmi_uadm_result_t uadm;      /* valid when kind is HMI_AUTH_JOB_USER_ADD or _PASSWORD */
 } hmi_auth_done_t;
 
 typedef struct {
@@ -200,6 +231,47 @@ const char *hmi_auth_setup_reason(const hmi_auth_t *a); /* password policy text 
 /* Completes a begun job. Returns true once, when it finished, and fills *out. */
 bool hmi_auth_poll(hmi_auth_t *a, uint64_t now_ms, hmi_auth_done_t *out);
 bool hmi_auth_busy(const hmi_auth_t *a);
+
+/* ---- accounts, changed while the device runs ----
+ *
+ * Only a session whose role passes hmi_authz for HMI_ACT_MANAGE_USERS (Admin) may
+ * use these, and the check is made here in the core, again when a hash that
+ * took time is complete, against the session as it is then: a session that
+ * ended or idled out while the password was being hashed changes nothing. A
+ * refused request from a session that may not is recorded (USER_DENIED).
+ *
+ * Every change is recorded BEFORE it takes effect, with the account and the
+ * administrator who made it (by=<name>); if the record cannot be made durable
+ * nothing changes. The account file is then replaced atomically. If that fails
+ * the old accounts stay in force and a USER_CHANGE_FAILED record is made.
+ *
+ * An administrator cannot remove or change the role of their own account
+ * (HMI_UADM_SELF), and the last administrator can never be removed or demoted.
+ * A password reset clears that account's failed-login count and lock, which is
+ * how a locked account is released on the device. Changes take effect at once
+ * in the running device: the next login uses them. Hashing a new password runs
+ * on a worker thread like a login; the other calls return at once. All calls
+ * are for the UI thread, like the rest of this module. */
+typedef struct {
+    char name[HMI_USER_NAME_MAX + 1];
+    hmi_role_t role;
+    uint32_t wait_ms;            /* time until the account may try to log in again (0: not locked) */
+} hmi_user_info_t;
+
+/* Both return 0 / false unless the session is an administrator. */
+size_t hmi_auth_user_count(const hmi_auth_t *a, uint64_t now_ms);
+bool hmi_auth_user_info(const hmi_auth_t *a, size_t index, uint64_t now_ms, hmi_user_info_t *out);
+
+/* The _begin forms return HMI_UADM_PENDING when accepted and the result arrives from
+ * hmi_auth_poll() (kind HMI_AUTH_JOB_USER_ADD or _PASSWORD). The password is copied
+ * before they return; the caller wipes its own buffer. */
+hmi_uadm_result_t hmi_auth_user_add_begin(hmi_auth_t *a, const char *name, hmi_role_t role, const char *pw, uint64_t now_ms);
+hmi_uadm_result_t hmi_auth_user_password_begin(hmi_auth_t *a, const char *name, const char *pw, uint64_t now_ms);
+/* Synchronous forms of the two, for tests and tools: they block for the hash. */
+hmi_uadm_result_t hmi_auth_user_add(hmi_auth_t *a, const char *name, hmi_role_t role, const char *pw, uint64_t now_ms);
+hmi_uadm_result_t hmi_auth_user_password(hmi_auth_t *a, const char *name, const char *pw, uint64_t now_ms);
+hmi_uadm_result_t hmi_auth_user_set_role(hmi_auth_t *a, const char *name, hmi_role_t role, uint64_t now_ms);
+hmi_uadm_result_t hmi_auth_user_remove(hmi_auth_t *a, const char *name, uint64_t now_ms);
 
 /* ---- session ---- */
 /* The effective role: Viewer when logged out or idled out. Pure (no state change). */

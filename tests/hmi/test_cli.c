@@ -101,6 +101,22 @@ static void test_users_and_role_given(void)
     CHECK(!o.role_given && strcmp(o.users, "/var/lib/prometheus99/users.bin") == 0);   /* defaults after failure */
 }
 
+static void test_spool_option(void)
+{
+    SECTION("cli: --spool");
+    hmi_cli_t o;
+    char err[128];
+    CHECK(run(&o, err, sizeof(err), 1, 0, 0, 0, 0, 0, 0));
+    CHECK(o.spool == NULL);                                  /* no spool directory: settings cannot be changed from the screen */
+    CHECK(run(&o, err, sizeof(err), 3, "--spool", "/var/spool/prometheus99", 0, 0, 0, 0));
+    CHECK(strcmp(o.spool, "/var/spool/prometheus99") == 0);
+    CHECK(!run(&o, err, sizeof(err), 2, "--spool", 0, 0, 0, 0, 0));                         /* no value */
+    CHECK(!run(&o, err, sizeof(err), 3, "--spool", "", 0, 0, 0, 0));                        /* empty value */
+    CHECK(!run(&o, err, sizeof(err), 5, "--spool", "a", "--spool", "b", 0, 0));             /* repeated */
+    CHECK(!run(&o, err, sizeof(err), 3, "--spool", "--audit", 0, 0, 0, 0));                 /* the next flag is not a value */
+    CHECK(o.spool == NULL);                                  /* defaults after a failed parse */
+}
+
 static void test_config_security_options(void)
 {
     SECTION("cli: --config-key, --config-state and --unsigned-config");
@@ -138,6 +154,7 @@ static void test_config_security_options(void)
 int main(void)
 {
     test_config_security_options();
+    test_spool_option();
     test_defaults_and_valid();
     test_rejections();
     test_users_and_role_given();

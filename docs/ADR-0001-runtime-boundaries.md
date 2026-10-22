@@ -253,3 +253,43 @@ Consequences:
   that needed a record never took effect without it.
 - Nothing here was run on a Raspberry Pi, on real flash storage, or through a
   real power failure.
+
+## Addendum 2026-10-22: screens, trends and configuration changes from the device
+
+Context: roadmap milestone M4 adds screens (overview, alarms, trends, settings), alarm priority,
+account management and configuration changes from the screen. The signed configuration must
+stay unwritable by the service (the M2 decision), so changes from the screen need a separate
+process.
+
+Decision:
+- The UI is split into one file per screen plus `ui_priv.h`; `hmi_ui.c` keeps the shared state
+  and the test seams. A screen is a table of `reset`, `build` and `update` functions added to
+  one list. Only the visible screen is updated.
+- `hmi_trend` keeps min and max per bucket in fixed rings in RAM, fed by the supervisor from
+  GOOD readings only. Its lock is a leaf: it is never held across another lock, a file operation
+  or a callback. Trend data is lost at restart (owner decision D2).
+- Account management lives in `hmi_auth` (add, password, role, remove, with the role check, the
+  protection of one's own account and of the last administrator, and the audit record before the
+  effect) and the settings screen only calls it. The password hash runs as a job polled by
+  `hmi_auth_poll`, like the login hash.
+- Configuration changes use a request file and a root helper, not a write by the service:
+  - `hmi_config_write` writes a configuration as text that the strict parser reads back to the
+    same structure (`hmi_config_serialize`, `hmi_config_equal`). It leaves out members that hold
+    their default.
+  - `hmi_cfgedit` defines the request, a strict parser, the whitelist and bounds
+    (`hmi_cfgedit_apply`), and the service side (`hmi_cfgreq_submit`, `hmi_cfgreq_state`). The
+    role is checked in the core (`HMI_ACT_EDIT_SETTINGS`, Engineer and above) and the request is
+    recorded in the audit file before it leaves.
+  - `p99_cfg` (`src/app/p99_cfg.c`), started as root by a systemd path unit, re-checks everything,
+    records `CONFIG_CHANGED` before changing anything, replaces the configuration and signature
+    and writes a result. Details and limits are in `docs/CONFIG_INTEGRITY.md`.
+  - The shared-secret MAC is unchanged. A compromised service can still ask for any change on
+    the whitelist; it cannot change the write switch, who may write, the allow-list or the
+    tags' addresses and scaling.
+- `--spool DIR` turns the CONFIG view on. Without it the view says it is not set up.
+
+Consequences:
+- The service restarts to use a new configuration (the helper restarts it). There is no reload
+  without a restart.
+- The pool for the UI grew from 128 KB to 192 KB.
+- Nothing here ran under real systemd, on a Raspberry Pi, on a display or with a real PLC.

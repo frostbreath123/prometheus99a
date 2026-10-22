@@ -108,6 +108,7 @@ static bool record(const opts_t *o, hmi_auth_event_t ev, const char *user, hmi_r
     r.t_ms = hmi_now_ms();
     r.ev = ev;
     r.user = user;
+    r.by = NULL;
     r.role = role;
     r.failures = 0;
     r.lock_ms = 0;

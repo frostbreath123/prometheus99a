@@ -15,7 +15,9 @@
 
 typedef enum {
     HMI_ACT_ACK_ALARM,   /* acknowledge one alarm or all alarms: Operator and above */
-    HMI_ACT_WRITE_TAG    /* write a tag: role must reach that tag's configured minimum */
+    HMI_ACT_WRITE_TAG,   /* write a tag: role must reach that tag's configured minimum */
+    HMI_ACT_MANAGE_USERS,   /* add, remove, change the role or reset the password of an account: Admin only */
+    HMI_ACT_EDIT_SETTINGS   /* ask for a change of the device settings (alarm limits, PLC address): Engineer and above */
 } hmi_action_t;
 
 /* tag_min_role is only used for HMI_ACT_WRITE_TAG and ignored otherwise. */
