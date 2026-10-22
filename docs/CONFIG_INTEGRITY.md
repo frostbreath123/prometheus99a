@@ -127,8 +127,21 @@ Acknowledgement and write lines in the audit file now end with `user=<name>`,
 the logged-in account that performed the action (`user=-` when no account is
 known, for example in a test build). Names are validated, so a caller cannot put
 a space, a newline or `=` into a line. The existing prefix of each line is
-unchanged. Old value and wall-clock time are still not recorded; those belong to
-milestone M3.
+unchanged. Milestone M3 added the old value and a wall-clock time with the clock
+state to the write lines and a wall-clock time to the acknowledgement lines (see
+`docs/STORAGE.md`). The start-up `CONFIG_ACCEPTED` and `CONFIG_REJECTED` lines are
+written before the storage worker exists and receive the same wall-clock stamp.
+
+## Schema additions in M3
+
+Two optional top-level fields, `write_min_interval_ms` (100 to 3600000, default
+1000) and `write_max_per_minute` (1 to 600, default 30), set the write rate
+limit. They are part of the signed text like every other field, so they cannot
+be changed without signing again. The bounds of `plc.response_timeout_ms` and
+`plc.connect_timeout_ms` are now 2000 and 3000 (they were 30000), so that the
+longest stall of the comms thread fits the service watchdog and stop timeout.
+A configuration signed before M3 with a larger timeout is now rejected as
+`config_invalid` and the device starts in safe mode.
 
 ## Evidence (host only)
 

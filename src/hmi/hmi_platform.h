@@ -45,6 +45,20 @@ typedef struct {
 void hmi_flag_set(hmi_atomic_flag_t *f, int32_t value);
 int32_t hmi_flag_get(hmi_atomic_flag_t *f);
 
+/* Auto-reset wake-up event. hmi_event_signal() makes one pending wake-up
+ * available; hmi_event_wait() consumes it. Signals do not accumulate (two
+ * signals before a wait are one wake-up), so a waiter must re-check its own
+ * condition after every return. Intended for one waiting thread at a time. */
+typedef struct {
+    uint64_t opaque[16];
+} hmi_event_t;
+bool hmi_event_init(hmi_event_t *e);
+void hmi_event_signal(hmi_event_t *e);
+/* True if the event was signalled within timeout_ms (and is now cleared);
+ * false on timeout. The timeout uses the monotonic clock. */
+bool hmi_event_wait(hmi_event_t *e, uint32_t timeout_ms);
+void hmi_event_destroy(hmi_event_t *e);
+
 /* Supervisor notification in the systemd sd_notify format ("READY=1",
  * "WATCHDOG=1", "STOPPING=1"). Sent to the datagram socket named by the
  * NOTIFY_SOCKET environment variable. Returns false, harmlessly, when the
@@ -66,6 +80,12 @@ typedef enum {
 } hmi_fs_read_t;
 hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *len);
 
+/* Read the last min(file size, cap) bytes of a file into buf. *len receives
+ * the number of bytes read and *truncated is true when the file was longer
+ * (so buf starts in the middle of the file). Failure outcomes as above; for an
+ * absent file HMI_FS_READ_ABSENT. Used to reload the end of a log. */
+hmi_fs_read_t hmi_fs_read_tail(const char *path, void *buf, size_t cap, size_t *len, bool *truncated);
+
 /* The permission bits (rwxrwxrwx, 0..0777) of a file. On a platform without
  * POSIX permissions (the Windows development host) it reports 0600, so the
  * caller's "too open" checks never fire there. Returns false if the file
@@ -76,6 +96,25 @@ bool hmi_fs_mode(const char *path, uint32_t *mode);
  * compromise of the process could change it). Always false where the platform
  * cannot say (the Windows development host). */
 bool hmi_fs_writable_by_me(const char *path);
+
+/* Size in bytes of a file. Returns false if the file does not exist or cannot
+ * be examined; *size is then untouched. */
+bool hmi_fs_size(const char *path, uint64_t *size);
+
+/* Rename a file, replacing the target if it exists, and flush the change to
+ * stable storage (the directory entry on POSIX, write-through on Windows).
+ * Returns false on any failure; the source then still exists. Used to rotate
+ * log files. */
+bool hmi_fs_rename(const char *from, const char *to);
+
+/* Wall-clock time as milliseconds since 1970-01-01 UTC. *synced is true only
+ * if the operating system says the clock was set from a time source (on Linux
+ * the kernel's NTP status). A device without a battery clock starts near 1970
+ * or at the last saved time, so a record with synced == false must be marked
+ * as unsynchronised. The Windows development host always reports false, so
+ * host tests exercise the unsynchronised path. Returns false if the clock
+ * cannot be read. */
+bool hmi_wall_ms(uint64_t *unix_ms, bool *synced);
 
 /* Cryptographically secure random bytes from the operating system. Returns
  * false on any failure; the caller must then not continue (never fall back to

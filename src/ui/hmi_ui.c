@@ -27,6 +27,11 @@ static size_t s_n_rows;
 static lv_timer_t *s_timer;
 static lv_obj_t *s_link, *s_alarm_sum, *s_wr_status, *s_sp_label, *s_journal, *s_hb, *s_ack_status;
 static lv_obj_t *s_ack_btn, *s_role_lbl, *s_login_btn_lbl;
+static lv_obj_t *s_store_fault;   /* banner: the storage worker cannot write */
+static char t_store[TXT * 2];
+static uint32_t c_store;
+static bool s_ack_wait;           /* an acknowledgement is waiting for its audit record */
+static uint32_t s_ack_seq0;       /* hmi_alarm_last_ack() counter when it was requested */
 static bool s_hb_on;   /* set before hmi_ui_init; survives re-init */
 static char t_hb[TXT];
 static char t_ack[TXT * 2];
@@ -377,7 +382,10 @@ static void do_ack_all(void)
 {
     if (!s_rt || !s_ack_status) return;
     uint64_t now = hmi_now_ms();
+    uint32_t seq0 = hmi_alarm_last_ack(&s_rt->alarms, NULL);
     hmi_ack_result_t r = hmi_alarm_ack_all_as(&s_rt->alarms, now, current_role(now), current_actor(now));
+    s_ack_wait = (r == HMI_ACK_PENDING); /* the binder shows the outcome when the record is durable */
+    s_ack_seq0 = seq0;
     snprintf(t_ack, sizeof(t_ack), "%s", hmi_view_ack_result_text(r));
     lv_label_set_text(s_ack_status, t_ack);
     lv_obj_set_style_text_color(s_ack_status, tone_color(hmi_view_ack_result_tone(r)), 0);
@@ -500,6 +508,21 @@ static void binder_cb(lv_timer_t *t)
         }
         hmi_view_setpoint_text(c, s_sp_value, buf, sizeof(buf));
         set_text(s_sp_label, t_sp, sizeof(t_sp), buf);
+    }
+    if (s_ack_wait && s_ack_status) {
+        hmi_ack_result_t ar = HMI_ACK_PENDING;
+        if (hmi_alarm_last_ack(&s_rt->alarms, &ar) != s_ack_seq0) {
+            s_ack_wait = false;
+            snprintf(t_ack, sizeof(t_ack), "%s", hmi_view_ack_result_text(ar));
+            lv_label_set_text(s_ack_status, t_ack);
+            lv_obj_set_style_text_color(s_ack_status, tone_color(hmi_view_ack_result_tone(ar)), 0);
+        }
+    }
+    if (s_store_fault) {
+        if (hmi_runtime_storage_fault(s_rt)) hmi_view_storage_fault_text(buf, sizeof(buf));
+        else buf[0] = '\0';
+        set_text(s_store_fault, t_store, sizeof(t_store), buf);
+        set_color(s_store_fault, &c_store, tone_color(HMI_TONE_BAD));
     }
     if (s_last_write_id) {
         hmi_write_rec_t rec;
@@ -659,6 +682,11 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
     memset(t_ov_title, 0, sizeof(t_ov_title));
     memset(t_ov_status, 0, sizeof(t_ov_status));
     s_ack_status = NULL;
+    s_store_fault = NULL;
+    memset(t_store, 0, sizeof(t_store));
+    c_store = 0;
+    s_ack_wait = false;
+    s_ack_seq0 = 0;
     s_ack_btn = s_role_lbl = s_login_btn_lbl = NULL;
     s_ov = s_ov_title = s_ov_user = s_ov_pw = s_ov_conf = s_ov_conf_cap = s_ov_status = s_ov_kb = NULL;
     s_ov_mode = OV_HIDDEN;
@@ -749,6 +777,7 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
         }
         s_journal = mk_label(pnl, 560, 4, "no alarm events", C_MUTED);
         s_ack_status = mk_label(pnl, 270, 6, "", C_MUTED);
+        s_store_fault = mk_label(pnl, 270, 78, "", C_BAD);
         if (!s_auth) { /* test builds: the claimed role must never look like a login */
             char tb[TXT * 2];
             hmi_view_test_role_banner(s_fixed_role, tb, sizeof(tb));

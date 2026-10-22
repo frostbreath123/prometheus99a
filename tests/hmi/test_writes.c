@@ -368,8 +368,341 @@ static void test_write_actor(void)
     fx_free(f, false);
 }
 
+/* ---- rate limit and the second check before sending ---- */
+static void two_tag_db(hmi_tag_cfg_t *t, hmi_tagdb_t *db)
+{
+    memset(t, 0, 2 * sizeof(*t));
+    snprintf(t[0].name, HMI_NAME_LEN, "SP_A");
+    t[0].dtype = HMI_DT_U16; t[0].scale = 1; t[0].eng_max = 1000; t[0].poll_ms = 100;
+    t[0].write_allowed = true; t[0].write_role = HMI_ROLE_OPERATOR; t[0].write_max = 1000;
+    snprintf(t[1].name, HMI_NAME_LEN, "SP_B");
+    t[1].address = 10; t[1].dtype = HMI_DT_U16; t[1].scale = 1; t[1].eng_max = 1000; t[1].poll_ms = 100;
+    t[1].write_allowed = true; t[1].write_role = HMI_ROLE_OPERATOR; t[1].write_max = 1000;
+    CHECK(hmi_tagdb_init(db, t, 2, 0));
+}
+
+static hmi_wr_submit_t sub(hmi_writes_t *w, size_t tag, uint64_t now, uint32_t *id)
+{
+    return hmi_writes_submit(w, tag, 10, HMI_ROLE_OPERATOR, HMI_LINK_HEALTHY, now, id);
+}
+
+/* take and finish everything queued, so the queue never fills */
+static void drain(hmi_writes_t *w, uint64_t now)
+{
+    hmi_write_job_t job;
+    while (hmi_writes_take(w, now, &job)) hmi_writes_finish_exception(w, &job, 3, now);
+}
+
+static void test_write_rate_limit(void)
+{
+    SECTION("writes: rate limit per tag and per minute");
+    hmi_tag_cfg_t t[2];
+    hmi_tagdb_t db;
+    two_tag_db(t, &db);
+    hmi_writes_t w;
+    CHECK(hmi_writes_init(&w, &db, true, 100000));
+    uint32_t id, id2;
+    hmi_write_rec_t r;
+
+    /* without limits (the default of the bare module) nothing is refused */
+    for (int i = 0; i < 5; i++) CHECK(sub(&w, 0, 100, &id) == HMI_WRS_OK);
+    drain(&w, 100);
+
+    /* at least 1000 ms between two writes to the same tag; another tag is independent */
+    hmi_writes_set_limits(&w, 1000, 0);
+    CHECK(sub(&w, 0, 5000, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 5500, &id2) == HMI_WRS_ERR_RATE_LIMITED);
+    CHECK(sub(&w, 1, 5500, &id2) == HMI_WRS_OK);          /* a different tag has its own interval */
+    CHECK(sub(&w, 0, 5999, &id2) == HMI_WRS_ERR_RATE_LIMITED);
+    CHECK(sub(&w, 0, 6000, &id2) == HMI_WRS_OK);          /* exactly the interval: allowed */
+    CHECK(id2 == id + 2);                                  /* refused requests took no id and no audit slot */
+    CHECK(sub(&w, 0, 6500, &id) == HMI_WRS_ERR_RATE_LIMITED); /* the interval runs from the last ACCEPTED write */
+    hmi_writes_stats_t st;
+    hmi_writes_stats(&w, &st);
+    CHECK(st.rate_limited == 3);
+    drain(&w, 6600);
+
+    /* at most 3 in any 60 s window */
+    hmi_writes_set_limits(&w, 0, 3);
+    CHECK(sub(&w, 0, 1000, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 1, 2000, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 3000, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 1, 4000, &id) == HMI_WRS_ERR_RATE_LIMITED);
+    CHECK(sub(&w, 0, 60999, &id) == HMI_WRS_ERR_RATE_LIMITED); /* the write at 1000 is 59999 ms old */
+    CHECK(sub(&w, 0, 61000, &id) == HMI_WRS_OK);               /* it is exactly a minute old: forgotten */
+    CHECK(sub(&w, 0, 61500, &id) == HMI_WRS_ERR_RATE_LIMITED); /* 2000, 3000, 61000 count */
+    CHECK(sub(&w, 1, 62000, &id) == HMI_WRS_OK);               /* 2000 is forgotten */
+    drain(&w, 62500);
+    CHECK(sub(&w, 0, 500000, &id) == HMI_WRS_OK);              /* a long quiet time empties the window */
+    CHECK(sub(&w, 0, 500001, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 500002, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 500003, &id) == HMI_WRS_ERR_RATE_LIMITED);
+    drain(&w, 500004);
+
+    /* both limits together; a refused request uses up neither */
+    hmi_writes_set_limits(&w, 1000, 2);
+    CHECK(sub(&w, 0, 10000, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 10500, &id) == HMI_WRS_ERR_RATE_LIMITED);          /* too soon for the tag */
+    CHECK(sub(&w, 1, 10500, &id) == HMI_WRS_OK);
+    CHECK(sub(&w, 0, 11000, &id) == HMI_WRS_ERR_RATE_LIMITED);          /* window is full (2) although the tag is due */
+    CHECK(sub(&w, 0, 70000, &id) == HMI_WRS_OK);                        /* a minute later both are free */
+
+    /* the largest value is clamped, and set_limits starts from a clean state */
+    hmi_writes_set_limits(&w, 1, 1000000);
+    CHECK(w.max_per_minute == HMI_WRITE_RATE_MAX);
+    drain(&w, 70001);
+    hmi_writes_set_limits(&w, 1000, 1);
+    CHECK(sub(&w, 0, 70002, &id) == HMI_WRS_OK);                        /* earlier history does not count */
+
+    /* an unrelated refusal (role, range, queue) never counts as an accepted write */
+    drain(&w, 70003);
+    hmi_writes_set_limits(&w, 1000, 1);
+    CHECK(hmi_writes_submit(&w, 0, 10, HMI_ROLE_VIEWER, HMI_LINK_HEALTHY, 80000, &id) == HMI_WRS_ERR_ROLE);
+    CHECK(hmi_writes_submit(&w, 0, 5000, HMI_ROLE_OPERATOR, HMI_LINK_HEALTHY, 80000, &id) == HMI_WRS_ERR_RANGE);
+    CHECK(sub(&w, 0, 80001, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&w, id, &r) && r.state == HMI_WR_PENDING);
+    hmi_writes_destroy(&w);
+    hmi_tagdb_destroy(&db);
+}
+
+static char g_rv_events[8][32];
+static int g_rv_n;
+static bool rv_audit(void *u, const hmi_write_rec_t *r, const char *ev)
+{
+    (void)u; (void)r;
+    if (g_rv_n < 8) snprintf(g_rv_events[g_rv_n], sizeof(g_rv_events[0]), "%s", ev);
+    g_rv_n++;
+    return true;
+}
+
+static void test_write_revalidation(void)
+{
+    SECTION("writes: a queued request is checked again just before it is sent");
+    hmi_tag_cfg_t t[2];
+    hmi_tagdb_t db;
+    two_tag_db(t, &db);
+    hmi_writes_t w;
+    CHECK(hmi_writes_init(&w, &db, true, 100000));
+    hmi_writes_set_audit(&w, rv_audit, NULL);
+    uint32_t id;
+    hmi_write_job_t job;
+    hmi_write_rec_t r;
+    hmi_writes_stats_t st;
+
+    /* unchanged: it is sent */
+    CHECK(sub(&w, 0, 100, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_take(&w, 100, &job) && job.tag == 0);
+    hmi_writes_finish_exception(&w, &job, 3, 101);
+
+    /* master switch turned off while queued: not sent, said so in the audit trail */
+    g_rv_n = 0;
+    CHECK(sub(&w, 0, 200, &id) == HMI_WRS_OK);
+    hmi_writes_set_enabled(&w, false);
+    CHECK(!hmi_writes_take(&w, 200, &job));
+    CHECK(hmi_writes_status(&w, id, &r) && r.state == HMI_WR_REJECTED);
+    CHECK(g_rv_n == 2 && strcmp(g_rv_events[0], "RESERVED") == 0 && strcmp(g_rv_events[1], "REJECTED_REVALIDATION") == 0);
+    hmi_writes_stats(&w, &st);
+    CHECK(st.revalidation_failed == 1);
+    hmi_writes_set_enabled(&w, true);
+
+    /* one rejected request does not hide the next valid one */
+    CHECK(sub(&w, 0, 300, &id) == HMI_WRS_OK);
+    uint32_t id2;
+    CHECK(sub(&w, 1, 300, &id2) == HMI_WRS_OK);
+    hmi_mutex_lock(&w.lock);
+    for (int i = 0; i < HMI_AUDIT_LEN; i++) if (w.ring[i].state == HMI_WR_PENDING && w.ring[i].id == id) w.ring[i].raw ^= 1u; /* damaged entry */
+    hmi_mutex_unlock(&w.lock);
+    CHECK(hmi_writes_take(&w, 300, &job) && job.tag == 1);
+    CHECK(hmi_writes_status(&w, id, &r) && r.state == HMI_WR_REJECTED);
+    hmi_writes_finish_exception(&w, &job, 3, 301);
+
+    /* each fact that is checked again, changed one at a time */
+    struct { const char *what; int kind; } cases[] = {
+        { "role lowered below the tag's minimum", 0 }, { "value above the write limit", 1 }, { "value below the raised lower limit", 2 },
+        { "value not a number", 3 }, { "tag no longer writable", 4 }, { "tag now an input register", 5 },
+        { "tag index out of range", 6 }, { "encoding differs from the audited one", 7 },
+    };
+    for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
+        uint64_t now = 1000 + k * 10;
+        hmi_tagdb_destroy(&db);
+        two_tag_db(t, &db);
+        CHECK(sub(&w, 0, now, &id) == HMI_WRS_OK);
+        hmi_mutex_lock(&w.lock);
+        hmi_write_rec_t *e = NULL;
+        for (int i = 0; i < HMI_AUDIT_LEN; i++) if (w.ring[i].state == HMI_WR_PENDING && w.ring[i].id == id) e = &w.ring[i];
+        switch (cases[k].kind) {
+            case 0: e->role = HMI_ROLE_VIEWER; break;
+            case 1: e->eng = 1001; e->raw = 1001; break;       /* consistently encoded, so only the range fails */
+            case 2: db.cfg[0].write_min = 50; e->eng = 20; e->raw = 20; break;
+            case 3: e->eng = NAN; break;
+            case 4: db.cfg[0].write_allowed = false; break;
+            case 5: db.cfg[0].area = HMI_AREA_INPUT; break;
+            case 6: e->tag = 200; break;
+            case 7: e->raw += 1; break;
+        }
+        hmi_mutex_unlock(&w.lock);
+        CHECK(!hmi_writes_take(&w, now, &job));
+        CHECK(hmi_writes_status(&w, id, &r) && r.state == HMI_WR_REJECTED);
+        if (!(r.state == HMI_WR_REJECTED)) printf("  case: %s\n", cases[k].what);
+        hmi_tagdb_destroy(&db);
+        two_tag_db(t, &db);
+    }
+    hmi_writes_stats(&w, &st);
+    CHECK(st.revalidation_failed == 1 + 1 + sizeof(cases) / sizeof(cases[0]));
+    hmi_writes_destroy(&w);
+    hmi_tagdb_destroy(&db);
+}
+
+/* ---- asynchronous audit of the RESERVED record (storage worker) ---- */
+typedef struct {
+    int n;
+    uint32_t id[16];
+    hmi_write_rec_t rec[16];
+    bool ret;                 /* the hook's answer */
+    bool complete_inside;     /* report the record durable before the hook returns */
+    hmi_writes_t *w;
+    int sync_n;               /* calls of the synchronous hook */
+    char sync_ev[16][16];
+} async_log_t;
+
+static bool async_hook(void *u, const hmi_write_rec_t *r, const char *ev)
+{
+    async_log_t *l = (async_log_t *)u;
+    CHECK(strcmp(ev, "RESERVED") == 0);
+    if (!l->ret) return false;
+    if (l->n < 16) {
+        l->id[l->n] = r->id;
+        l->rec[l->n] = *r;
+        l->n++;
+    }
+    if (l->complete_inside) hmi_writes_audit_done(l->w, r->id, true, 0);
+    return true;
+}
+
+static bool sync_after(void *u, const hmi_write_rec_t *r, const char *ev)
+{
+    (void)r;
+    async_log_t *l = (async_log_t *)u;
+    if (l->sync_n < 16) snprintf(l->sync_ev[l->sync_n], sizeof(l->sync_ev[0]), "%s", ev);
+    l->sync_n++;
+    return true;
+}
+
+static void test_write_async_audit(void)
+{
+    SECTION("writes: asynchronous RESERVED record, request waits until it is durable");
+    fx_t *f = fx_new(false);
+    settle_connected(f);
+    async_log_t l;
+    memset(&l, 0, sizeof(l));
+    l.ret = true;
+    l.w = &f->w;
+    hmi_writes_set_audit(&f->w, sync_after, &l);
+    hmi_writes_set_audit_async(&f->w, async_hook, &l);
+    hmi_write_rec_t r;
+    uint32_t id = 0;
+
+    /* the call returns at once; the request is RESERVED and is not transmitted */
+    hmi_tag_value_t before = val(f, 0);
+    CHECK(submit(f, 0, 42.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(l.n == 1 && l.id[0] == id);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_RESERVED);
+    CHECK(l.rec[0].old_quality == HMI_Q_GOOD && l.rec[0].old_eng == before.eng); /* the value being overwritten */
+    CHECK(strcmp(l.rec[0].actor, "-") == 0 && l.rec[0].eng == 42.0);
+    uint64_t t0 = g_now;
+    run_until(f, g_now + 300);
+    CHECK(f->m.n_write == 0);                                      /* never sent while not durable */
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_RESERVED);
+    CHECK(l.sync_n == 0);                                          /* RESERVED does not use the synchronous hook */
+
+    /* durable: PENDING, then sent through the normal path */
+    hmi_writes_audit_done(&f->w, id, true, g_now);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_PENDING);
+    hmi_writes_audit_done(&f->w, id, true, g_now);                 /* a repeated report changes nothing */
+    run_until(f, g_now + 100);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_CONFIRMED);
+    CHECK(f->m.hold[0] == 420 && f->m.n_write == 1);
+    CHECK(l.sync_n >= 2 && strcmp(l.sync_ev[0], "SENT") == 0 && strcmp(l.sync_ev[l.sync_n - 1], "CONFIRMED") == 0);
+    (void)t0;
+
+    /* the record fails: REJECTED, never transmitted, counted */
+    uint32_t writes = f->m.n_write;
+    CHECK(submit(f, 0, 43.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    hmi_writes_audit_done(&f->w, id, false, g_now);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_REJECTED);
+    run_until(f, g_now + 100);
+    CHECK(f->m.n_write == writes);
+    hmi_writes_stats_t st;
+    hmi_writes_stats(&f->w, &st);
+    CHECK(st.rejected >= 1 && st.audit_failures >= 1);
+
+    /* the hook cannot queue the record: refused at once, no slot is leaked */
+    l.ret = false;
+    for (int i = 0; i < 100; i++) CHECK(submit(f, 0, 44.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_ERR_AUDIT);
+    l.ret = true;
+    CHECK(submit(f, 0, 44.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    hmi_writes_audit_done(&f->w, id, true, g_now);
+    run_until(f, g_now + 100);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_CONFIRMED);
+
+    /* a record that completes inside the hook (before the call returns) */
+    l.complete_inside = true;
+    CHECK(submit(f, 0, 45.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_PENDING);
+    run_until(f, g_now + 100);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_CONFIRMED);
+    l.complete_inside = false;
+
+    /* unknown ids are ignored */
+    hmi_writes_audit_done(&f->w, 999999, true, g_now);
+    hmi_writes_audit_done(&f->w, 0, true, g_now);
+    fx_free(f, false);
+}
+
+static void test_write_async_capacity_and_expiry(void)
+{
+    SECTION("writes: reserved requests count against the queue and expire if never made durable");
+    fx_t *f = fx_new(false);
+    settle_connected(f);
+    async_log_t l;
+    memset(&l, 0, sizeof(l));
+    l.ret = true;
+    l.w = &f->w;
+    hmi_writes_set_audit_async(&f->w, async_hook, &l);
+    uint32_t ids[HMI_WRITE_QUEUE_LEN], id;
+    hmi_write_rec_t r;
+
+    for (int i = 0; i < HMI_WRITE_QUEUE_LEN; i++) CHECK(submit(f, 0, (double)i, HMI_ROLE_OPERATOR, &ids[i]) == HMI_WRS_OK);
+    CHECK(submit(f, 0, 1.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_ERR_QUEUE_FULL); /* none is queued yet, all are reserved */
+    for (int i = 0; i < HMI_WRITE_QUEUE_LEN; i++) hmi_writes_audit_done(&f->w, ids[i], true, g_now);
+    for (int i = 0; i < HMI_WRITE_QUEUE_LEN; i++) CHECK(hmi_writes_status(&f->w, ids[i], &r) && r.state == HMI_WR_PENDING);
+    CHECK(f->w.q_len == HMI_WRITE_QUEUE_LEN); /* never more than the queue holds */
+    run_until(f, g_now + 500);
+    CHECK(f->m.n_write == HMI_WRITE_QUEUE_LEN); /* and they go out in order, once each */
+
+    /* a record that never completes: the request expires, untransmitted, and a late report is ignored */
+    CHECK(submit(f, 0, 77.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    uint32_t writes = f->m.n_write;
+    hmi_writes_expire(&f->w, g_now + 6000, false); /* time to live is 5000 ms */
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_EXPIRED);
+    hmi_writes_audit_done(&f->w, id, true, g_now + 6001);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_EXPIRED); /* not resurrected */
+    run_until(f, g_now + 500);
+    CHECK(f->m.n_write == writes);
+
+    /* link declared lost expires reserved requests too */
+    CHECK(submit(f, 0, 78.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    hmi_writes_expire(&f->w, g_now, true);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_EXPIRED);
+    fx_free(f, false);
+}
+
 int main(void)
 {
+    test_write_rate_limit();
+    test_write_revalidation();
+    test_write_async_audit();
+    test_write_async_capacity_and_expiry();
     test_write_actor();
     test_write_confirmed();
     test_write_disabled();

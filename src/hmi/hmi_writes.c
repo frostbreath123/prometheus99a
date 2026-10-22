@@ -29,7 +29,7 @@ static const char *state_event(hmi_wr_state_t s)
     }
 }
 
-bool hmi_writes_init(hmi_writes_t *w, const hmi_tagdb_t *db, bool enabled, uint32_t ttl_ms)
+bool hmi_writes_init(hmi_writes_t *w, hmi_tagdb_t *db, bool enabled, uint32_t ttl_ms)
 {
     memset(w, 0, sizeof(*w));
     if (!hmi_tagdb_is_ready(db) || ttl_ms == 0) return false;
@@ -56,11 +56,82 @@ void hmi_writes_set_audit(hmi_writes_t *w, hmi_audit_fn fn, void *user)
     hmi_mutex_unlock(&w->lock);
 }
 
+void hmi_writes_set_audit_async(hmi_writes_t *w, hmi_audit_submit_fn fn, void *user)
+{
+    hmi_mutex_lock(&w->lock);
+    w->audit_submit = fn;
+    w->audit_submit_user = user;
+    hmi_mutex_unlock(&w->lock);
+}
+
+void hmi_writes_audit_done(hmi_writes_t *w, uint32_t id, bool ok, uint64_t now_ms)
+{
+    hmi_mutex_lock(&w->lock);
+    for (int i = 0; i < HMI_AUDIT_LEN; i++) {
+        hmi_write_rec_t *r = &w->ring[i];
+        if (r->state != HMI_WR_RESERVED || r->id != id) continue;
+        if (ok) {
+            r->state = HMI_WR_PENDING;
+            w->queue[(w->q_head + w->q_len) % HMI_WRITE_QUEUE_LEN] = (uint8_t)i;
+            w->q_len++;
+            w->stats.submitted++;
+        } else {
+            r->state = HMI_WR_REJECTED; /* the record of intent is not durable: never transmit */
+            r->t_final_ms = now_ms;
+            w->stats.rejected++;
+            w->stats.audit_failures++;
+        }
+        break;
+    }
+    hmi_mutex_unlock(&w->lock);
+}
+
 void hmi_writes_set_enabled(hmi_writes_t *w, bool enabled)
 {
     hmi_mutex_lock(&w->lock);
     w->enabled = enabled;
     hmi_mutex_unlock(&w->lock);
+}
+
+void hmi_writes_set_limits(hmi_writes_t *w, uint32_t min_interval_ms, uint32_t max_per_minute)
+{
+    hmi_mutex_lock(&w->lock);
+    w->min_interval_ms = min_interval_ms;
+    w->max_per_minute = max_per_minute > HMI_WRITE_RATE_MAX ? HMI_WRITE_RATE_MAX : max_per_minute;
+    w->win_head = 0;
+    w->win_count = 0;
+    memset(w->last_valid, 0, sizeof(w->last_valid));
+    hmi_mutex_unlock(&w->lock);
+}
+
+/* Caller holds the lock. */
+static bool rate_allows_locked(hmi_writes_t *w, size_t tag, uint64_t now)
+{
+    if (w->min_interval_ms && w->last_valid[tag] && now - w->last_ms[tag] < w->min_interval_ms) return false;
+    if (w->max_per_minute) {
+        /* forget accepted writes older than a minute (oldest first) */
+        while (w->win_count > 0 && now - w->window[w->win_head] >= 60000u) {
+            w->win_head = (uint16_t)((w->win_head + 1u) % HMI_WRITE_RATE_MAX);
+            w->win_count--;
+        }
+        if (w->win_count >= w->max_per_minute) return false;
+    }
+    return true;
+}
+
+/* Caller holds the lock: the write was accepted. */
+static void rate_record_locked(hmi_writes_t *w, size_t tag, uint64_t now)
+{
+    w->last_ms[tag] = now;
+    w->last_valid[tag] = true;
+    if (w->max_per_minute) {
+        if (w->win_count == HMI_WRITE_RATE_MAX) {
+            w->win_head = (uint16_t)((w->win_head + 1u) % HMI_WRITE_RATE_MAX);
+            w->win_count--;
+        }
+        w->window[(w->win_head + w->win_count) % HMI_WRITE_RATE_MAX] = now;
+        w->win_count++;
+    }
 }
 
 void hmi_writes_stats(hmi_writes_t *w, hmi_writes_stats_t *out)
@@ -150,10 +221,27 @@ hmi_wr_submit_t hmi_writes_submit_as(hmi_writes_t *w, size_t tag, double eng, hm
     if (!hmi_number_to_raw(num, t->dtype, &raw)) return HMI_WRS_ERR_NOT_REPRESENTABLE;
     if (hmi_link_health_is_lost(link)) return HMI_WRS_ERR_LINK_DOWN;
 
+    /* The value the operator is about to overwrite, for the audit record. Read
+     * before this module's lock is taken: the locks are never nested. */
+    hmi_tag_value_t cur;
+    memset(&cur, 0, sizeof(cur));
+    hmi_tagdb_get(w->db, tag, &cur);
+
     hmi_mutex_lock(&w->lock);
-    if (w->q_len >= HMI_WRITE_QUEUE_LEN) {
+    /* Requests whose audit record is not yet durable count against the queue,
+     * so the queue can never overflow when their records complete. */
+    uint8_t reserved = 0;
+    for (int i = 0; i < HMI_AUDIT_LEN; i++) {
+        if (w->ring[i].state == HMI_WR_RESERVED) reserved++;
+    }
+    if (w->q_len + reserved >= HMI_WRITE_QUEUE_LEN) {
         hmi_mutex_unlock(&w->lock);
         return HMI_WRS_ERR_QUEUE_FULL;
+    }
+    if (!rate_allows_locked(w, tag, now_ms)) {
+        w->stats.rate_limited++;
+        hmi_mutex_unlock(&w->lock);
+        return HMI_WRS_ERR_RATE_LIMITED;
     }
     /* Reserve an audit slot: FREE, else the oldest final record. */
     int slot = -1;
@@ -183,22 +271,36 @@ hmi_wr_submit_t hmi_writes_submit_as(hmi_writes_t *w, size_t tag, double eng, hm
     r->eng = eng;
     r->raw = raw;
     r->t_submit_ms = now_ms;
+    r->old_eng = cur.eng;
+    r->old_quality = (uint8_t)cur.quality;
+    rate_record_locked(w, tag, now_ms);
     hmi_write_rec_t copy = *r;
+    hmi_audit_submit_fn submit = w->audit_submit;
+    void *submit_user = w->audit_submit_user;
     hmi_mutex_unlock(&w->lock);
+
+    if (submit) {
+        /* The record is queued, not yet durable. The slot stays RESERVED until
+         * hmi_writes_audit_done(); it may complete before this call returns, so
+         * nothing below touches the slot. */
+        if (!submit(submit_user, &copy, "RESERVED")) {
+            hmi_mutex_lock(&w->lock);
+            w->ring[slot].state = HMI_WR_FREE;
+            w->stats.audit_failures++;
+            hmi_mutex_unlock(&w->lock);
+            return HMI_WRS_ERR_AUDIT;
+        }
+        if (out_id) *out_id = copy.id;
+        return HMI_WRS_OK;
+    }
 
     if (!audit_call(w, &copy, "RESERVED")) {
         hmi_mutex_lock(&w->lock);
-        w->ring[slot].state = HMI_WR_FREE;
+        if (w->ring[slot].id == copy.id && w->ring[slot].state == HMI_WR_RESERVED) w->ring[slot].state = HMI_WR_FREE;
         hmi_mutex_unlock(&w->lock);
         return HMI_WRS_ERR_AUDIT;
     }
-
-    hmi_mutex_lock(&w->lock);
-    w->ring[slot].state = HMI_WR_PENDING;
-    w->queue[(w->q_head + w->q_len) % HMI_WRITE_QUEUE_LEN] = (uint8_t)slot;
-    w->q_len++;
-    w->stats.submitted++;
-    hmi_mutex_unlock(&w->lock);
+    hmi_writes_audit_done(w, copy.id, true, now_ms); /* PENDING, unless it expired meanwhile */
 
     if (out_id) *out_id = copy.id;
     return HMI_WRS_OK;
@@ -217,6 +319,25 @@ bool hmi_writes_status(hmi_writes_t *w, uint32_t id, hmi_write_rec_t *out)
     }
     hmi_mutex_unlock(&w->lock);
     return found;
+}
+
+/* The second check, just before a request may be sent. It repeats the
+ * decisions of submit that can have changed (see hmi_writes.h). */
+static bool revalidate(hmi_writes_t *w, const hmi_write_rec_t *rec)
+{
+    hmi_mutex_lock(&w->lock);
+    bool enabled = w->enabled;
+    hmi_mutex_unlock(&w->lock);
+    if (!enabled) return false;
+    if (rec->tag >= hmi_tagdb_count(w->db)) return false;
+    const hmi_tag_cfg_t *t = hmi_tagdb_cfg(w->db, rec->tag);
+    if (!t->write_allowed || t->area != HMI_AREA_HOLDING) return false;
+    if (!hmi_authz_allows(rec->role, HMI_ACT_WRITE_TAG, t->write_role)) return false;
+    if (isnan(rec->eng) || isinf(rec->eng) || rec->eng < t->write_min || rec->eng > t->write_max) return false;
+    double num = (rec->eng - t->offset) / t->scale;
+    if (t->dtype != HMI_DT_F32) num = floor(num + 0.5);
+    uint32_t raw;
+    return hmi_number_to_raw(num, t->dtype, &raw) && raw == rec->raw; /* the encoding is the one that was audited */
 }
 
 bool hmi_writes_take(hmi_writes_t *w, uint64_t now_ms, hmi_write_job_t *job)
@@ -240,6 +361,15 @@ bool hmi_writes_take(hmi_writes_t *w, uint64_t now_ms, hmi_write_job_t *job)
         }
         hmi_mutex_unlock(&w->lock);
         if (slot < 0) return false;
+
+        if (!revalidate(w, &rec)) {
+            hmi_write_rec_t f = finalize(w, (size_t)slot, HMI_WR_REJECTED, now_ms, 0, 0);
+            hmi_mutex_lock(&w->lock);
+            w->stats.revalidation_failed++;
+            hmi_mutex_unlock(&w->lock);
+            audit_call(w, &f, "REJECTED_REVALIDATION");
+            continue; /* never transmitted; look at the next request */
+        }
 
         /* Record intent durably BEFORE it can be transmitted. */
         if (!audit_call(w, &rec, "SENT")) {
@@ -301,6 +431,19 @@ void hmi_writes_expire(hmi_writes_t *w, uint64_t now_ms, bool all)
         }
     }
     if (n) compact_queue(w);
+    /* A request whose RESERVED record never became durable (a stuck or failed
+     * storage worker) is not left waiting for ever: it expires, untransmitted.
+     * A synchronous submit holds its slot RESERVED only for the duration of its
+     * own call, which is far shorter than the time to live. */
+    for (int i = 0; i < HMI_AUDIT_LEN && n < HMI_WRITE_QUEUE_LEN; i++) {
+        hmi_write_rec_t *r = &w->ring[i];
+        if (r->state == HMI_WR_RESERVED && (all || now_ms - r->t_submit_ms > w->ttl_ms)) {
+            r->state = HMI_WR_EXPIRED;
+            r->t_final_ms = now_ms;
+            w->stats.expired++;
+            done[n++] = *r;
+        }
+    }
     hmi_mutex_unlock(&w->lock);
     for (uint8_t i = 0; i < n; i++) audit_call(w, &done[i], "EXPIRED");
 }

@@ -226,6 +226,16 @@ static void test_ack_wording(void)
     CHECK(hmi_view_ack_result_tone(HMI_ACK_NOTHING) == HMI_TONE_MUTED);
     CHECK(hmi_view_ack_result_tone(HMI_ACK_DENIED) == HMI_TONE_BAD);
     CHECK(hmi_view_ack_result_tone(HMI_ACK_AUDIT_FAILED) == HMI_TONE_BAD);
+    CHECK_STR(hmi_view_ack_result_text(HMI_ACK_PENDING), "ACK PENDING: recording");
+    CHECK(hmi_view_ack_result_tone(HMI_ACK_PENDING) == HMI_TONE_WARN);
+    CHECK_STR(hmi_view_write_state_text(HMI_WR_RESERVED), "RECORDING (not sent yet)");
+    {
+        char sb[64];
+        hmi_view_storage_fault_text(sb, sizeof(sb));
+        CHECK_STR(sb, "STORAGE FAULT: records not saved");
+        hmi_view_storage_fault_text(sb, 8); /* truncates, stays terminated */
+        CHECK(strlen(sb) == 7);
+    }
 }
 
 static void test_heartbeat(void)

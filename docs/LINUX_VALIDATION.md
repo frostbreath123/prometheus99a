@@ -199,3 +199,33 @@ display, no real systemd. Design record: [CONFIG_INTEGRITY.md](CONFIG_INTEGRITY.
 Limits: no real systemd, no `prometheus` user, no root-owned files; the
 sanitizers were run on the core modules, not on the LVGL harness or the full
 executable.
+
+## Persistence and storage (2026-10-22)
+
+WSL2 host (Ubuntu 24.04, gcc 13.3), x86-64, not Raspberry Pi, no real PLC, no
+display, no real systemd, no power cut. Design record: [STORAGE.md](STORAGE.md).
+The source tree was synced to `/root/p99` as before.
+
+| Item | Command | Result |
+|---|---|---|
+| Core tests, all modules | `make -f Makefile.linux test` | 2635 checks, 0 failed (store 454, auditfmt 60, writes 632, alarm 188, runtime 162, config 137, platform 69, cli 107, users 131, auth 237, cfgsec 223) |
+| View-model, end to end, config corpus | `test-view`, `e2e`, `test-config-golden` | 168 checks, 75 checks, identical to the regenerated golden file |
+| Headless UI scenario, acknowledgement now pending then settled, audit line with old value and stamp | `make -f Makefile.linux ui-host` | 89 assertions, 0 failed |
+| Liveness, command line, authentication, configuration executables | `liveness`, `cli-exec`, `auth-exec`, `config-exec` | pass |
+| Kill-loop self test | `make -f Makefile.linux killloop` | 13 checks pass: the verifier accepts a healthy run and refuses each of 11 faults, and accepts one torn last line |
+| Kill-loop | `KILL_SEED=7 make -f Makefile.linux killloop KILL_ROUNDS=150` | 150 rounds (125 SIGKILL at random moments between 0.3 and 2.5 s, 25 clean SIGTERM stops), verifier passed after every round, rotation happened 9 times in the retained files |
+| ASan with UBSan, and TSan, every core module and the end-to-end test | `-fsanitize=address,undefined`, `-fsanitize=thread`, `setarch -R` | 0 reports |
+| Mutation checks of the new rules | local script | 33 of 34 caught; one equivalent change (dropping the partial first journal line, which fails its CRC anyway) |
+
+Windows host (MSYS2 UCRT64 GCC 13.2): `mingw32-make clean all test-all ui-host
+check-linux` exit 0; core 2597 checks, view-model 168, end to end 75, corpus
+identical, UI scenario 89 assertions, legacy suite 48 checks. The wall-clock
+state is always `sync=no` there.
+
+Limits: the kill-loop kills the process, not the power, and the operating
+system still writes what the process had handed to it. No unfinished audit line
+occurred in the runs; that path is covered by the store tests with injected
+torn writes. Whether `fsync` and the rename make records durable on the storage
+of a Raspberry Pi was not tested. The clock state (`adjtimex`) was read on WSL2
+only. The sanitizers were not run on the LVGL harness, the full executable or
+the kill-loop processes.

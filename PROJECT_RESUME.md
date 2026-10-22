@@ -1,7 +1,92 @@
 # PROJECT_RESUME.md: Prometheus99 handoff
 
-Last updated: 2026-10-22 (milestone M1, authentication, implemented; see section S,
-section R and `docs/ROADMAP_STATUS.md`). Earlier text: 2026-10-15, after the Linux execution and sanitizer session
+## START HERE (handoff for a new session, 2026-10-22)
+
+Read in this order: `docs/ROADMAP_STATUS.md` (requirements matrix of 55 rows
+against the mentor's document, discrepancies, milestones M1 to M9, blockers,
+acceptance criteria; the three "Update" sections at its top, for M1, M2 and M3,
+are the current state),
+then sections S, T and U at the end of this file, then `docs/ADR-0001-runtime-boundaries.md`
+(read its addenda), then `docs/AUTHENTICATION.md`, `docs/CONFIG_INTEGRITY.md`
+and `docs/STORAGE.md`.
+The requirements baseline is the mentor's document, kept outside the repository at
+`C:\Users\Admin\Downloads\Prometheus99 Industrial HMI Runtime Architecture and Engineering Documentation.md`.
+Sections A to R below are older history and are partly out of date.
+
+Current state, checked against the repository on 2026-10-22:
+- The original audit (matrix, discrepancies, roadmap) was read-only: it changed
+  no implementation code. It is kept in `docs/ROADMAP_STATUS.md`.
+- Since then three milestones were implemented, host-verified only: M1
+  (authentication, sessions, lockout, first-boot administrator, `p99_user`), M2
+  (signed configuration with HMAC-SHA-512, rollback serial, PLC allow-list,
+  `p99_sign`, user name in acknowledgement and write audit lines) and M3
+  (persistence and storage: storage worker, audit file with wall-clock stamps and
+  rotation, alarm journal on disk, alarm state saved on change, write rate limit,
+  second check before sending, shutdown budget fix).
+- Git: branch `feature/authorization-hardening`, three commits (`2ca7c75`, `fe165c2`
+  for M1, `e858465` for M2), pushed to `origin`
+  (`https://github.com/frostbreath123/prometheus99a.git`). **M3 is not committed**:
+  the working tree holds the M3 changes (modified sources, tests and documents, and
+  new files `src/hmi/hmi_store.*`, `src/hmi/hmi_auditfmt.*`, `docs/STORAGE.md`,
+  `tests/hmi/test_store.c`, `test_auditfmt.c`, `killloop_*`), nothing is committed
+  or pushed for it. The four empty stray files were deleted on 2026-10-22 with the
+  owner's permission.
+  `third_party/lvgl` and `third_party/libmodbus` are still gitlinks without a
+  `.gitmodules` file, so a fresh clone lacks them. No CI exists.
+- Nothing has run on a Raspberry Pi, against a real PLC, or under real systemd as
+  the service user. Every number is a host number.
+- Verified at the last run (Windows MSYS2 and WSL2 Ubuntu 24.04, 2026-10-22; rerun,
+  do not trust): core modules 2597 checks on Windows and 2635 on WSL2, view-model
+  168, end to end 75, config corpus identical (regenerated for M3), headless UI
+  scenario 89 assertions, legacy suite 48; WSL2 executable tests `liveness`,
+  `cli-exec`, `auth-exec` and `config-exec` pass; kill-loop of 150 rounds passes;
+  ASan with UBSan and TSan 0 reports on every core module and the end-to-end test.
+- Requirement tally after M3 (55 rows): 26 complete and verified (host evidence),
+  5 implemented but unverified, 10 partial, 11 not implemented, 2 blocked, 1 optional.
+- The frozen legacy prototype (`include/`, `src/layer*.c`, `src/main.c`,
+  `tests/test_core.c`, `tests/stub_layer0.c`) is unchanged.
+
+Decisions: all of the original open decisions were answered on 2026-10-22. Roadmap
+order M1 to M5 approved. D1 Monocypher (Argon2id for passwords, HMAC-SHA-512 for the
+configuration, so the mentor's "HMAC" is met literally). D2 configuration, signature
+and key owned by root and only read by the service. D3 coils and discrete inputs out
+of scope for now (the document's tag types have no boolean). D4 Raspberry Pi
+"soon, date unknown". Still open: D5, GitHub and CI setup (the remote exists but no
+CI definition was requested or written), and the mentor's rulings listed in section 8
+of the roadmap. One consequence was reported and accepted: the HMI cannot save its own
+configuration, so "configuration save restricted to Admin" moves to M4 and needs a
+privileged helper.
+
+Owner answers on 2026-10-22, at the start of the M3 session: the Raspberry Pi is
+**not** available yet; CI is wanted and a plan is to be written first. A CI plan
+was given in the chat (GitHub Actions on Ubuntu running the Linux tests and the
+sanitizers, plus a `.gitmodules` file or vendored sources for the two gitlinks) and
+is waiting for approval; nothing was written, committed or pushed for it. M3 was
+planned, approved with the recommended option for each of its five decisions, and
+implemented (section U).
+
+Exact next steps:
+1. Ask the owner whether to commit M3 (it is not committed) and whether the CI plan
+   is approved. Do neither without being asked.
+2. Plan M4 (screens, trends, alarm priority, settings and the configuration helper;
+   `docs/ROADMAP_STATUS.md` section 7) and wait for approval before implementing, as
+   for M1 to M3. M5 (Raspberry Pi) waits for the hardware; the power-cut test of the
+   storage layer and the flash behaviour belong there.
+3. Open M3 items for later: trace ring (row 42), grouping queued records into one
+   flush, a power-cut test on the target.
+
+Rules that still apply: complete major requirements first; no real PLC connection or
+real control writes; do not modify the legacy prototype; no commit, push or GitHub
+change unless the owner asks; keep ADR-0001 and the architecture unless a defect
+requires a change; report documentation conflicts instead of choosing silently;
+update documentation only with verified facts; chat in caveman style, files in plain
+full sentences. Tool notes: run Linux commands with `wsl.exe` from PowerShell and keep
+a rsync-to-`/root/p99` script; the shell tool in this environment mangled backslashes
+inside heredocs, so write files with the file tools and put patch scripts in files;
+`mingw32-make clean` deletes `build/`; TSan needs `setarch $(uname -m) -R`.
+
+Last updated: 2026-10-22 (milestone M3, persistence and storage, implemented; see
+section U, sections S and T, section R and `docs/ROADMAP_STATUS.md`). Earlier text: 2026-10-15, after the Linux execution and sanitizer session
 (see section K for what changed; sections E, F, G and J were updated to
 match). Written for a fresh session / a new
 engineer with no access to the earlier conversation. Everything was checked
@@ -698,7 +783,8 @@ the "Last updated" line.
 Current state
 - Git: local repository, branch `feature/authorization-hardening`, one commit
   `2ca7c75`. Four empty stray files (`BAD`, `DEGRADED`, `backoff`, `recovery`)
-  sit untracked in the project root; they are junk and can be deleted.
+  sat untracked in the project root; they were deleted on 2026-10-22 with the
+  owner's permission.
   `third_party/lvgl` and `third_party/libmodbus` are gitlinks without a
   `.gitmodules` file. No remote, no push, no CI.
 - Verified results (host only: Windows MSYS2 and WSL2; no Raspberry Pi, no
@@ -795,10 +881,8 @@ boot; deleting the counter file resets lockouts; the offline tool changes take
 effect after a restart; acknowledgement and write audit lines still carry the
 role but not the user name.
 
-Working tree: nothing is committed. Untracked or modified files are the M1 work
-plus the earlier audit documents. The four empty stray files `BAD`, `DEGRADED`,
-`backoff`, `recovery` are still there; the owner has not yet agreed to delete
-them.
+Working tree at the time of writing: M1 uncommitted. It was committed later as
+`fe165c2`. The four empty stray files were deleted on 2026-10-22.
 
 Next steps: GitHub and CI setup when the owner gives repository details; M2
 (configuration integrity and safe startup), then M3, M4 and M5 as in
@@ -851,9 +935,80 @@ sanitizers on the LVGL harness and the full executable.
 Known limits: anyone who holds the key or is root can sign; the serial state file
 can be deleted by the service user; a signed configuration is trusted as written.
 
-Working tree: M1 is committed and pushed (`fe165c2`); M2 is not committed. The
-four empty stray files are still there and the owner has not agreed to delete them.
+Working tree: M1 (`fe165c2`) and M2 (`e858465`) are committed and pushed; the tree
+is clean. The four empty stray files were deleted with the owner's permission.
 
 Next: M3 (persistence and storage), M4 (screens, including the on-device
 configuration helper), M5 (Raspberry Pi) as in `docs/ROADMAP_STATUS.md`.
 GitHub and CI setup still waits for repository details.
+
+## U. Milestone M3 (persistence and storage) implemented (2026-10-22)
+
+Read `docs/STORAGE.md` for the design, formats, limits, evidence and the list of
+what is not verified. This section is the state summary. Sections S and T above
+say that acknowledgement and write lines have no old value or wall-clock time,
+and that the audit file is unbounded; since M3 that is no longer true.
+
+Owner decisions for M3 (the plan was approved with the recommended option for
+each): (1) writes and acknowledgements are two-phase, the call returns before the
+record is durable; (2) the write rate limits are optional fields of the signed
+configuration; (3) the PLC timeouts are bounded (2000 and 3000 ms) so the longest
+stall fits `WatchdogSec=10` and `TimeoutStopSec=15`; (4) the audit file and the
+journal rotate at 1 MiB with four older files, a failed rotation refuses the
+record; (5) the trace ring is deferred. The Raspberry Pi is not available yet.
+
+What exists now (host evidence only, Windows MSYS2 and WSL2):
+- `src/hmi/hmi_store.*`: the storage worker (bounded queue of 64, outcome table,
+  fault flag, rotation, replace coalescing, torn-line repair). Platform additions:
+  `hmi_event_*`, `hmi_fs_size`, `hmi_fs_rename`, `hmi_fs_read_tail`, `hmi_wall_ms`.
+- `src/hmi/hmi_auditfmt.*`: line formats (write, acknowledgement, boot, journal with
+  a CRC) and the wall-clock stamp `wall=... sync=ok|no`.
+- `hmi_writes`: asynchronous RESERVED record (`hmi_writes_set_audit_async`,
+  `hmi_writes_audit_done`), old value and its quality in the record, rate limit
+  (`hmi_writes_set_limits`), second check before sending (`REJECTED_REVALIDATION`).
+- `hmi_alarm`: two-phase acknowledgement (`HMI_ACK_PENDING`,
+  `hmi_alarm_ack_audit_done`, `hmi_alarm_last_ack`), the journal sink called outside
+  the lock, state as bytes (`hmi_alarm_state_serialize` and `_apply`), journal restore.
+- `hmi_runtime`: owns the store; `hmi_runtime_start_ex` takes a storage struct;
+  journal on disk and reloaded at start; state saver (10 s interval, 120 saves an
+  hour, retry, always at shutdown); `hmi_runtime_stop` returns whether everything
+  stopped; stall bound `max(connect, 2 x response + 2000) + 2000`.
+- UI: "ACK PENDING: recording" then the result, "RECORDING (not sent yet)" for a
+  reserved write, a "STORAGE FAULT: records not saved" banner, "too many writes, wait".
+- `main_linux.c`: login records go through the worker once the runtime is up;
+  configuration records are stamped.
+- Tests: `test_store`, `test_auditfmt`, additions to the writes, alarm, runtime,
+  config, platform, view and UI tests; `killloop_child.c`, `killloop_verify.c`,
+  `killloop_test.sh`, `killloop_selftest.sh` (`make -f Makefile.linux killloop`).
+- Results (rerun, do not trust): core 2597 on Windows and 2635 on WSL2, view-model
+  168, end to end 75, UI scenario 89, kill-loop 150 rounds, sanitizers 0 reports,
+  33 of 34 mutations caught (one equivalent).
+- The golden configuration corpus was regenerated: one earlier case changed (case 040,
+  timeout bound) and 18 were added. The old file is in git history.
+
+Not verified: a power cut, `fsync` and rename on the storage of the target, the clock
+state with a real time source, the trace ring (not built), sanitizers on the LVGL
+harness and the full executable. Known limits are in `docs/STORAGE.md` section 9: a
+login still waits up to 2 s on the UI thread; records still queued when the process
+dies are lost; each record is flushed on its own.
+
+Defect found on the way: a torn last line would have swallowed the next boot's first
+record; fixed in the store (a line break is written first) with tests.
+
+Working tree: M3 is uncommitted (see START HERE). Documents updated: README,
+`docs/ROADMAP_STATUS.md` (rows 2, 22, 26, 27, 28, 40, 41, 42, 43), ADR-0001 addendum,
+`docs/LINUX_VALIDATION.md`, `docs/AUTHENTICATION.md`, `docs/CONFIG_INTEGRITY.md`,
+`deploy/prometheus99.service` (comment only), `docs/STORAGE.md` (new).
+`walkthrough.md` and `bench/CLAIMS.md` were not updated and may quote older counts.
+
+Tool notes from this session: Git Bash rewrites path arguments, so start Linux scripts
+from PowerShell (`wsl.exe -d Ubuntu-24.04 -- bash /mnt/c/.../script.sh`); `/tmp` in WSL
+can be cleared between calls, so keep result files under `/root`; shell heredocs
+mangle backslashes, so write scripts and patches with the file tools; repository files
+use CRLF line endings and the file tools keep them (a Python rewrite does not unless
+`newline=''` is used). Helper scripts used for the runs (sync to `/root/p99`, sanitizer
+loop, mutation script) were kept in the session scratchpad and are not in the repository.
+
+Next: M4 (screens, trends, alarm priority, settings and the configuration helper),
+then M5 (Raspberry Pi) as in `docs/ROADMAP_STATUS.md`. GitHub and CI setup waits for
+the owner's approval of the plan given in the chat.

@@ -11,6 +11,7 @@
 #include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/timex.h>
 #include <sys/un.h>
 #include <stdio.h>
 #include <string.h>
@@ -113,6 +114,66 @@ bool hmi_thread_join(hmi_thread_t *t, uint32_t timeout_ms)
 void hmi_flag_set(hmi_atomic_flag_t *f, int32_t value) { __atomic_store_n(&f->v, value, __ATOMIC_SEQ_CST); }
 int32_t hmi_flag_get(hmi_atomic_flag_t *f) { return __atomic_load_n(&f->v, __ATOMIC_SEQ_CST); }
 
+typedef struct {
+    pthread_mutex_t m;
+    pthread_cond_t c;
+    bool set;
+} posix_event_t;
+typedef char hmi_event_size_check[(sizeof(posix_event_t) <= sizeof(hmi_event_t)) ? 1 : -1];
+
+bool hmi_event_init(hmi_event_t *e)
+{
+    posix_event_t *p = (posix_event_t *)e;
+    pthread_condattr_t at;
+    memset(e, 0, sizeof(*e));
+    if (pthread_mutex_init(&p->m, NULL) != 0) return false;
+    if (pthread_condattr_init(&at) != 0) {
+        pthread_mutex_destroy(&p->m);
+        return false;
+    }
+    bool ok = pthread_condattr_setclock(&at, CLOCK_MONOTONIC) == 0 && pthread_cond_init(&p->c, &at) == 0;
+    pthread_condattr_destroy(&at);
+    if (!ok) pthread_mutex_destroy(&p->m);
+    return ok;
+}
+
+void hmi_event_signal(hmi_event_t *e)
+{
+    posix_event_t *p = (posix_event_t *)e;
+    pthread_mutex_lock(&p->m);
+    p->set = true;
+    pthread_cond_signal(&p->c);
+    pthread_mutex_unlock(&p->m);
+}
+
+bool hmi_event_wait(hmi_event_t *e, uint32_t timeout_ms)
+{
+    posix_event_t *p = (posix_event_t *)e;
+    struct timespec dl;
+    clock_gettime(CLOCK_MONOTONIC, &dl);
+    dl.tv_sec += (time_t)(timeout_ms / 1000u);
+    dl.tv_nsec += (long)(timeout_ms % 1000u) * 1000000L;
+    if (dl.tv_nsec >= 1000000000L) {
+        dl.tv_sec++;
+        dl.tv_nsec -= 1000000000L;
+    }
+    pthread_mutex_lock(&p->m);
+    while (!p->set) {
+        if (pthread_cond_timedwait(&p->c, &p->m, &dl) == ETIMEDOUT) break;
+    }
+    bool got = p->set;
+    p->set = false;
+    pthread_mutex_unlock(&p->m);
+    return got;
+}
+
+void hmi_event_destroy(hmi_event_t *e)
+{
+    posix_event_t *p = (posix_event_t *)e;
+    pthread_cond_destroy(&p->c);
+    pthread_mutex_destroy(&p->m);
+}
+
 static bool write_all(int fd, const void *data, size_t len)
 {
     const char *p = (const char *)data;
@@ -190,6 +251,37 @@ hmi_fs_read_t hmi_fs_read_all(const char *path, void *buf, size_t cap, size_t *l
     return res;
 }
 
+hmi_fs_read_t hmi_fs_read_tail(const char *path, void *buf, size_t cap, size_t *len, bool *truncated)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? HMI_FS_READ_ABSENT : HMI_FS_READ_ERROR;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size < 0) {
+        close(fd);
+        return HMI_FS_READ_ERROR;
+    }
+    off_t size = st.st_size;
+    off_t start = size > (off_t)cap ? size - (off_t)cap : 0;
+    size_t want = (size_t)(size - start), got = 0;
+    hmi_fs_read_t res = HMI_FS_READ_OK;
+    while (got < want) {
+        ssize_t n = pread(fd, (char *)buf + got, want - got, start + (off_t)got);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            res = HMI_FS_READ_ERROR;
+            break;
+        }
+        if (n == 0) break; /* the file shrank while reading: use what was read */
+        got += (size_t)n;
+    }
+    close(fd);
+    if (res == HMI_FS_READ_OK) {
+        if (len) *len = got;
+        if (truncated) *truncated = start > 0;
+    }
+    return res;
+}
+
 bool hmi_fs_mode(const char *path, uint32_t *mode)
 {
     struct stat st;
@@ -201,6 +293,42 @@ bool hmi_fs_mode(const char *path, uint32_t *mode)
 bool hmi_fs_writable_by_me(const char *path)
 {
     return access(path, W_OK) == 0;
+}
+
+bool hmi_fs_size(const char *path, uint64_t *size)
+{
+    struct stat st;
+    if (stat(path, &st) != 0 || st.st_size < 0) return false;
+    *size = (uint64_t)st.st_size;
+    return true;
+}
+
+bool hmi_fs_rename(const char *from, const char *to)
+{
+    char dir[512];
+    if (rename(from, to) != 0) return false;
+    /* fsync the directory so the rename itself survives power loss */
+    if (snprintf(dir, sizeof(dir), "%s", to) >= (int)sizeof(dir)) return true; /* renamed; only the flush is skipped */
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = '\0'; else strcpy(dir, ".");
+    int dfd = open(dir, O_RDONLY);
+    if (dfd >= 0) {
+        fsync(dfd);
+        close(dfd);
+    }
+    return true;
+}
+
+bool hmi_wall_ms(uint64_t *unix_ms, bool *synced)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0 || ts.tv_sec < 0) return false;
+    *unix_ms = (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+    struct timex tx;
+    memset(&tx, 0, sizeof(tx)); /* modes == 0: read only, the clock is not changed */
+    int st = adjtimex(&tx);
+    *synced = st >= 0 && st != TIME_ERROR && (tx.status & STA_UNSYNC) == 0;
+    return true;
 }
 
 bool hmi_random_bytes(void *out, size_t n)

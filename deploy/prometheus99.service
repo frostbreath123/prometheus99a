@@ -67,6 +67,11 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+# Everything the HMI writes is in this directory: audit.log and audit.log.1 to
+# .4, alarms.bin, alarms.bin.journal and alarms.bin.journal.1 to .4, the user
+# file and the config serial (docs/STORAGE.md). If a SystemCallFilter is added
+# later it must still allow adjtimex (read only), which gives the clock state
+# written to every audit line.
 ReadWritePaths=/var/lib/prometheus99
 DeviceAllow=/dev/fb0 rw
 DeviceAllow=char-input rw

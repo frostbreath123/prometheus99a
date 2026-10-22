@@ -109,7 +109,7 @@ void hmi_view_setpoint_text(const hmi_tag_cfg_t *c, double value, char *buf, siz
 const char *hmi_view_write_state_text(hmi_wr_state_t s)
 {
     switch (s) {
-        case HMI_WR_RESERVED: return "RESERVED";
+        case HMI_WR_RESERVED: return "RECORDING (not sent yet)";
         case HMI_WR_PENDING: return "PENDING";
         case HMI_WR_SENT: return "SENT";
         case HMI_WR_CONFIRMED: return "CONFIRMED";
@@ -134,6 +134,7 @@ const char *hmi_view_submit_text(hmi_wr_submit_t s)
         case HMI_WRS_ERR_LINK_DOWN: return "PLC link down";
         case HMI_WRS_ERR_QUEUE_FULL: return "queue full";
         case HMI_WRS_ERR_AUDIT: return "audit unavailable";
+        case HMI_WRS_ERR_RATE_LIMITED: return "too many writes, wait";
     }
     return "?";
 }
@@ -182,13 +183,22 @@ const char *hmi_view_ack_result_text(hmi_ack_result_t r)
         case HMI_ACK_NOTHING: return "NOTHING TO ACKNOWLEDGE";
         case HMI_ACK_DENIED: return "ACK DENIED: role not permitted";
         case HMI_ACK_AUDIT_FAILED: return "ACK REFUSED: audit unavailable";
+        case HMI_ACK_PENDING: return "ACK PENDING: recording";
     }
     return "ACK: unknown result";
 }
 
 hmi_tone_t hmi_view_ack_result_tone(hmi_ack_result_t r)
 {
-    return r == HMI_ACK_OK ? HMI_TONE_GOOD : r == HMI_ACK_NOTHING ? HMI_TONE_MUTED : HMI_TONE_BAD;
+    return r == HMI_ACK_OK ? HMI_TONE_GOOD
+         : r == HMI_ACK_NOTHING ? HMI_TONE_MUTED
+         : r == HMI_ACK_PENDING ? HMI_TONE_WARN
+         : HMI_TONE_BAD;
+}
+
+void hmi_view_storage_fault_text(char *buf, size_t cap)
+{
+    snprintf(buf, cap, "STORAGE FAULT: records not saved");
 }
 
 /* ---- login and session wording ---- */

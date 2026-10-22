@@ -14,6 +14,12 @@
 #define HMI_CONFIG_MAX_BYTES 32768u
 #define HMI_MAX_ALLOWED 8   /* entries in plc.allowed_hosts */
 
+/* Longest time one PLC request may block the comms thread. The limits keep the
+ * longest legitimate stall (hmi_runtime_worst_stall_ms) below the service
+ * manager's watchdog (10 s) and stop timeout (15 s) in deploy/prometheus99.service. */
+#define HMI_RESPONSE_TIMEOUT_MAX_MS 2000u
+#define HMI_CONNECT_TIMEOUT_MAX_MS  3000u
+
 typedef struct {
     char host[HMI_HOST_LEN];      /* dotted-quad IPv4 literal only (no DNS) */
     uint16_t port;
@@ -21,6 +27,8 @@ typedef struct {
     uint32_t response_timeout_ms;
     uint32_t connect_timeout_ms;
     bool writes_enabled;          /* global write master switch, default false */
+    uint32_t write_min_interval_ms; /* at least this long between two accepted writes to one tag (100 .. 3600000, default 1000) */
+    uint32_t write_max_per_minute;  /* at most this many accepted writes in any 60 s window (1 .. 600, default 30) */
     char allowed_hosts[HMI_MAX_ALLOWED][HMI_HOST_LEN]; /* plc.allowed_hosts, optional here */
     size_t n_allowed;
     hmi_tag_cfg_t tags[HMI_MAX_TAGS];

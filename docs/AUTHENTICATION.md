@@ -150,6 +150,14 @@ milestone M2 the acknowledgement and write lines also end with `user=<name>`
 (see `docs/CONFIG_INTEGRITY.md`), so they no longer have to be matched to the
 login lines by time.
 
+Since milestone M3 (see `docs/STORAGE.md`), once the runtime is up the login
+lines go through the storage worker, so they are ordered with the other records
+and counted against the size cap of the audit file, and each ends with a
+wall-clock time and `sync=ok` or `sync=no`. A successful login still waits until
+its record is durable, at most 2 s, on the UI thread. In safe mode, when no
+runtime is running, the lines are appended directly as before and carry no
+wall-clock stamp.
+
 ## The login screen
 
 A full-screen layer with a user name box, a password box (characters are never

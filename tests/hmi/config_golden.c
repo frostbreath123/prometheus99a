@@ -215,13 +215,33 @@ static const mut_t MUTS[] = {
     { "\"name\":\"A\"", "\"name\":\"\\u0041\"" },
     { "\"units\":\"%\"", "\"units\":\"\\u00b0C\"" },
     { "\"role\":\"operator\"", "\"role\":\"Operator\"" },
+    /* write limits (added with milestone M3) and the tightened timeout bounds */
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":250," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":99," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":100," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":3600000," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":3600001," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":\"250\"," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_min_interval_ms\":250,\"write_min_interval_ms\":250," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":10," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":0," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":1," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":600," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":601," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":-1," },
+    { "\"writes_enabled\":true,", "\"writes_enabled\":true,\"write_max_per_minute\":5.5," },
+    { "\"response_timeout_ms\":500", "\"response_timeout_ms\":2000" },
+    { "\"response_timeout_ms\":500", "\"response_timeout_ms\":2001" },
+    { "\"connect_timeout_ms\":1000", "\"connect_timeout_ms\":3000" },
+    { "\"connect_timeout_ms\":1000", "\"connect_timeout_ms\":3001" },
 };
 
 static void dump(const char *tag, const hmi_app_cfg_t *c, bool ok, const char *err)
 {
     printf("%s ok=%d err='%s'\n", tag, ok ? 1 : 0, err);
-    printf("  host='%s' port=%u unit=%u rto=%u cto=%u writes=%d n=%zu\n", c->host, c->port, c->unit,
-           c->response_timeout_ms, c->connect_timeout_ms, c->writes_enabled ? 1 : 0, c->n_tags);
+    printf("  host='%s' port=%u unit=%u rto=%u cto=%u writes=%d wmin=%u wmax=%u n=%zu\n", c->host, c->port, c->unit,
+           c->response_timeout_ms, c->connect_timeout_ms, c->writes_enabled ? 1 : 0, c->write_min_interval_ms,
+           c->write_max_per_minute, c->n_tags);
     for (size_t i = 0; i < c->n_tags; i++) {
         const hmi_tag_cfg_t *t = &c->tags[i];
         printf("  tag[%zu] name='%s' units='%s' area=%d addr=%u dt=%d wo=%d bo=%d scale=%.17g off=%.17g "
