@@ -1,0 +1,8 @@
+label: final_soak   date: 2026-10-23T13:55:51Z   host: 6.18.54.1-microsoft-standard-WSL2
+requested_seconds: 3600   actual_seconds: 3604   fault_period_s: 300   faults_injected: 11
+exit_status_on_SIGTERM: 0
+verify: VERIFY FAILED: journal: 147 damaged lines, at most 5 expected 
+samples: 120   pss_kb first=1324 last=1360 min=1324 max=1360   threads_max=4   fds_max=4   cpu_pct mean=1.03 max=1.20
+pss_slope_kb_per_hour: 13.69
+last_sample: audit_bytes=122 journal_lines=219 plc_requests=29664 write_bytes=
+plc: fake_plc: requests=29668 writes=0

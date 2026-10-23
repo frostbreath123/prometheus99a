@@ -1,0 +1,5 @@
+prometheus99: role=operator (claimed on the command line, not authenticated)
+prometheus99: TEST BUILD: --role is honoured and nothing is authenticated
+prometheus99: configuration verified (signature serial 1)
+prometheus99: warning: the service user can modify the configuration file; a compromised service could rewrite it (the signature would still be checked at the next start)
+prometheus99: warning: the service user can modify the configuration key file

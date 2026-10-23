@@ -1,0 +1,5 @@
+label: final_full   date: 2026-10-23T12:29:02Z   runs: 15
+cold_start_ms: 18
+warm_start_ms (runs 2..): 10 12 12 7 7 8 8 8 11 8 11 12 11 8
+warm min=7 median=8 max=12 ms
+(poll granularity about 2 ms plus process start; includes configuration signature check, runtime threads and the LVGL screen build)

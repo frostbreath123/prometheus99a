@@ -1,0 +1,6 @@
+aarch64 test: exit=0 | cfgedit: 870 checks, 0 failed hmi core total: 3262 checks 
+aarch64 test-view: exit=0 | 197 checks, 0 failed 
+aarch64 e2e: exit=0 | 75 checks, 0 failed 
+aarch64 ui-host: exit=0 | scenario assertions: 205 checks, 0 failed 
+aarch64 ui-shots: exit=0 | scenario assertions: 205 checks, 0 failed screenshots: 23 files, PASS 
+build-arm64/test_e2e: ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically linked, interpreter /lib/ld-linux-aarch64.so.1, BuildID[sha1]=f83655f29ff8351451c1676d76d528c438c87f7e, for GNU/Linux 3.7.0, not stripped

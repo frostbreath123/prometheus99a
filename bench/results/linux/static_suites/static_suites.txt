@@ -1,0 +1,77 @@
+== check-tagdb-access: exit=0  fail-lines=0  | check-tagdb-access: ok
+== test: exit=0  fail-lines=0  | hmi core total: 3262 checks
+== test-notify: exit=0  fail-lines=0  | 13 checks, 0 failed
+== test-view: exit=0  fail-lines=0  | 197 checks, 0 failed
+== test-config-golden: exit=0  fail-lines=0  | config golden: identical
+== ui-host: exit=0  fail-lines=1  | scenario assertions: 203 checks, 0 failed
+== ui-shots: exit=0  fail-lines=1  | screenshots: 23 files, PASS
+== e2e: exit=0  fail-lines=0  | 75 checks, 0 failed
+== cli-exec: exit=0  fail-lines=0  | cli exec test: PASS
+== config-exec: exit=0  fail-lines=0  | config exec test: PASS
+== cfgedit-exec: exit=0  fail-lines=0  | cfgedit-exec: all checks passed
+== liveness: exit=0  fail-lines=0  | liveness e2e: PASS
+third_party/lvgl/src/stdlib/builtin/lv_tlsf.c: In function ‘default_walker’:
+third_party/lvgl/src/stdlib/builtin/lv_tlsf.c:887:35: warning: unused parameter ‘ptr’ [-Wunused-parameter]
+  887 | static void default_walker(void * ptr, size_t size, int used, void * user)
+      |                            ~~~~~~~^~~
+third_party/lvgl/src/stdlib/builtin/lv_tlsf.c:887:47: warning: unused parameter ‘size’ [-Wunused-parameter]
+  887 | static void default_walker(void * ptr, size_t size, int used, void * user)
+      |                                        ~~~~~~~^~~~
+third_party/lvgl/src/stdlib/builtin/lv_tlsf.c:887:57: warning: unused parameter ‘used’ [-Wunused-parameter]
+  887 | static void default_walker(void * ptr, size_t size, int used, void * user)
+      |                                                     ~~~~^~~~
+lto-wrapper: warning: using serial compilation of 5 LTRANS jobs
+lto-wrapper: note: see the ‘-flto’ option documentation for more information
+[start] RssAnon=44 KB  VmRSS=268 KB  VmHWM=268 KB
+writes_effective=1
+LVGL heap after UI build: total=104464 free=56456 used=46 KB
+[after_ui_build] RssAnon=232 KB  VmRSS=516 KB  VmHWM=516 KB
+[ui] link='PLC: HEALTHY' TANK_LEVEL value='50.0 %' quality='GOOD'
+heap allocation calls (app+LVGL+libmodbus objects) in 2.0 s steady state: 0
+steady-state (nothing changing): flushes=0 px=0 in 2.0 s
+heartbeat on: text='HB 55' flushes=4 px=5200 in 3.0 s
+[ui] after register 500->700: value='70.0 %'
+[ui] after register ->910: value='91.0 %' alarm='HI UNACK'
+write submit -> 0 id=1
+[ui] write state=4 (CONFIRMED=4) fake-PLC register=600 (expected 600)
+[ui] PLC hung: link='PLC: DOWN' value='---' quality='BAD COMM'
+[ui] recovered: link='PLC: HEALTHY' value='60.0 %' quality='GOOD'
+[ui] viewer ACK ALL: 'ACK DENIED: role not permitted'
+[ui] operator ACK ALL: 'ACK PENDING: recording'
+[ui] operator ACK ALL settled: 'ACKNOWLEDGED'
+[ui] system 0: PLC 127.0.0.1:46617  unit 1
+[ui] system 1: Writes: enabled
+[ui] system 2: Configuration: serial 7, signed
+[ui] system 3: Storage: ok, 11 records written
+[ui] system 4: Clock: synchronised with a time source
+[ui] system 5: Tags: 4   with alarms: 1   trended: 0
+[ui] system 6: Role: VIEWER (read only)
+LVGL heap with every screen built: used=46 KB of 102 KB
+[ui] header='ADMIN'
+[ui] write while the PLC does not answer: 'WRITE #3: SENT'
+[ui] the same write a little later: 'WRITE #3: UNKNOWN (sent, no confirmation)'
+[ui] write answered with a Modbus exception: 'WRITE #4: REJECTED'
+[ui] write applied but not confirmed: 'WRITE #5: UNKNOWN (sent, no confirmation)'
+[ui] row 0: HEAT_EXCHANGER_OUTLET_T | 4294967295 kWh/m3 | GOOD | 
+[ui] row 1: BIG_FLOAT | 123456792 l/min | GOOD | 
+[ui] row 2: NEGATIVE | -32768 degC | GOOD | 
+[ui] row 3: OUT_OF_RANGE | 120.0 % | UNCERTAIN RANGE | 
+[perf] first visit of screen 1 (lazy build included): 0.4 ms
+[perf] first visit of screen 2 (lazy build included): 2.6 ms
+[perf] first visit of screen 0 (lazy build included): 0.5 ms
+[perf] screen transition, press to last pixels: n=72 min=0.3 median=0.6 p95=1.9 max=68.9 ms
+[perf] touch press to the first pixels of the pressed button: n=120 min=1.2 median=8.7 p95=32.7 max=34.6 ms
+[perf] touch release to the first pixels of the new screen: n=120 min=1.5 median=26.0 p95=33.4 max=35.0 ms
+[perf] touches: 120 pressed and released, 0 did not change the screen, 0 ended on the wrong screen
+[perf] after 40 rounds through every screen the table differs in 0 pixels
+lv_timer_handler (render+binder) samples=2030: mean=30 us p50=8 p95=70 p99=743 max=2088 us
+flush: calls=7900 pixels=121876914 total_flush_time=25450 us
+binder ticks=1047 labels_updated=221 labels_skipped_unchanged=8590
+comms: polls_ok=1526 failed=41 exceptions=22 links_lost=7 connects_ok=8 max_poll_latency=201 ms
+LVGL heap at end: used=47 KB, max_used=48 KB, frag=1%
+heap allocation calls since UI build: 32 (frees 31); counted at link level, CRT-internal allocations not included
+[end] RssAnon=1972 KB  VmRSS=2256 KB  VmHWM=2256 KB
+
+scenario assertions: 125 checks, 0 failed
+== ui-host: exit=0  fail-lines=1  | scenario assertions: 203 checks, 0 failed
+scenario assertions: 125 checks, 0 failed

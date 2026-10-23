@@ -1,0 +1,5 @@
+label: phase5_lite   date: 2026-10-23T11:14:43Z   runs: 15
+cold_start_ms: 18
+warm_start_ms (runs 2..): 6 11 7 7 7 7 11 10 11 7 11 11 7 11
+warm min=6 median=7 max=11 ms
+(poll granularity about 2 ms plus process start; includes configuration signature check, runtime threads and the LVGL screen build)

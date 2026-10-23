@@ -1,0 +1,11 @@
+label: baseline
+binary: bin/prometheus99-bench (750368 bytes unstripped)
+date: 2026-10-23T10:16:57Z   kernel: 6.18.54.1-microsoft-standard-WSL2   cpus: 12
+framebuffer: file-backed, 800x480 RGB565 = 768000 bytes (its pages are shared file pages)
+start_to_first_frame_ms: 16   (process launch to non-zero content in the last pixel row of the framebuffer, polled every 5 ms)
+after_first_frame:  pss_kb=2174 rss_kb=4220 pss_fb_mapping_kb=752 pss_excl_fb_kb=1422 threads=4 vmdata_kb=25428 vmstk_kb=132 mappings=41
+after_600s:       pss_kb=2183 rss_kb=4228 pss_fb_mapping_kb=752 pss_excl_fb_kb=1431 threads=4
+pss_peak_kb_sampled: 2191   (5 s sampling; a shorter peak can be missed)
+cpu_avg_pct_of_one_core_over_run: 0.60
+exit_status_on_SIGTERM: 0
+fake_plc: fake_plc: requests=6029 writes=0

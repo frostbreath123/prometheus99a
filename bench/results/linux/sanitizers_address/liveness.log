@@ -1,0 +1,25 @@
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 tests/hmi/notify_listener.c -o build-san-address/notify_listener
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 tests/hmi/hang_server.c -o build-san-address/hang_server
+bash tests/hmi/liveness_e2e.sh build-san-address config/hmi.example.json
+  ok   READY=1 sent exactly once
+  ok   WATCHDOG=1 cadence while running (>=4 in 3 s, got 5)
+  ok   no pings while SIGSTOPped (2.5 s)
+  ok   pings resume after SIGCONT (5 -> 10)
+  ok   no pings after SIGKILL
+  ok   pings continue against a hung PLC (>=10 in 8 s, got 15)
+  ok   clean exit on SIGTERM against a hung PLC
+  ok   STOPPING=1 sent on shutdown
+--- notify log
+listening
+128 READY=1
+630 WATCHDOG=1
+1133 WATCHDOG=1
+1637 WATCHDOG=1
+2143 WATCHDOG=1
+2649 WATCHDOG=1
+5926 WATCHDOG=1
+6428 WATCHDOG=1
+6932 WATCHDOG=1
+7436 WATCHDOG=1
+7944 WATCHDOG=1
+liveness e2e: PASS

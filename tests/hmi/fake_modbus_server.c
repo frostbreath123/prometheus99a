@@ -88,21 +88,21 @@ static void serve_client(fake_modbus_t *m, SOCKET c)
                 r[1] = (uint8_t)(n * 2);
                 const uint16_t *src = (fc == 3) ? m->hold : m->inp;
                 for (int i = 0; i < n; i++) {
-                    r[2 + 2 * i] = (uint8_t)(src[addr + i] >> 8);
-                    r[3 + 2 * i] = (uint8_t)src[addr + i];
+                    r[2 + 2 * i] = (uint8_t)(__atomic_load_n(&src[addr + i], __ATOMIC_RELAXED) >> 8);
+                    r[3 + 2 * i] = (uint8_t)__atomic_load_n(&src[addr + i], __ATOMIC_RELAXED);
                 }
                 rl = 2 + 2 * n;
             }
         } else if (fc == 6) {
             int addr = (pdu[1] << 8) | pdu[2];
-            m->hold[addr] = (uint16_t)((pdu[3] << 8) | pdu[4]);
+            __atomic_store_n(&m->hold[addr], (uint16_t)((pdu[3] << 8) | pdu[4]), __ATOMIC_RELAXED);
             InterlockedIncrement(&m->writes);
             if (mode == FMS_APPLY_NO_REPLY) return;
             memcpy(r, pdu, 5);
             rl = 5;
         } else if (fc == 16) {
             int addr = (pdu[1] << 8) | pdu[2], n = (pdu[3] << 8) | pdu[4];
-            for (int i = 0; i < n; i++) m->hold[addr + i] = (uint16_t)((pdu[6 + 2 * i] << 8) | pdu[7 + 2 * i]);
+            for (int i = 0; i < n; i++) __atomic_store_n(&m->hold[addr + i], (uint16_t)((pdu[6 + 2 * i] << 8) | pdu[7 + 2 * i]), __ATOMIC_RELAXED);
             InterlockedIncrement(&m->writes);
             if (mode == FMS_APPLY_NO_REPLY) return;
             memcpy(r, pdu, 5);
@@ -178,9 +178,10 @@ void fms_set_mode(fake_modbus_t *s, fms_mode_t m, uint8_t exc)
     InterlockedExchange(&s->exc, exc);
     InterlockedExchange(&s->mode, (LONG)m);
 }
-void fms_set_holding(fake_modbus_t *s, uint16_t a, uint16_t v) { s->hold[a] = v; }
-uint16_t fms_get_holding(fake_modbus_t *s, uint16_t a) { return s->hold[a]; }
-void fms_set_input(fake_modbus_t *s, uint16_t a, uint16_t v) { s->inp[a] = v; }
+/* The registers are touched by the test thread and by the server thread: relaxed atomics, so there is no data race. */
+void fms_set_holding(fake_modbus_t *s, uint16_t a, uint16_t v) { __atomic_store_n(&s->hold[a], v, __ATOMIC_RELAXED); }
+uint16_t fms_get_holding(fake_modbus_t *s, uint16_t a) { return __atomic_load_n(&s->hold[a], __ATOMIC_RELAXED); }
+void fms_set_input(fake_modbus_t *s, uint16_t a, uint16_t v) { __atomic_store_n(&s->inp[a], v, __ATOMIC_RELAXED); }
 uint32_t fms_request_count(fake_modbus_t *s) { return (uint32_t)InterlockedCompareExchange(&s->requests, 0, 0); }
 uint32_t fms_write_count(fake_modbus_t *s) { return (uint32_t)InterlockedCompareExchange(&s->writes, 0, 0); }
 

@@ -1,0 +1,149 @@
+executable: bin/prometheus99-bench
+unstripped_bytes: 305216
+stripped_bytes:   252032
+
+== size -A (stripped)
+section          size     addr
+.hash              16      456
+.gnu.hash          28      472
+.dynsym            24      504
+.dynstr             1      528
+.rela.dyn        5016      536
+.init               3     8192
+.plt               16     8208
+.plt.got            8     8224
+.text          211649     8240
+.fini               3   219889
+.rodata         21568   221184
+.eh_frame           4   242752
+.init_array         8   248304
+.fini_array         8   248312
+.data.rel.ro     5176   248320
+.dynamic          400   253496
+.got               40   253896
+.data             520   253952
+.bss           380360   254496
+.comment           82        0
+
+== size (Berkeley, stripped)
+   text	   data	    bss	    dec	    hex	filename
+ 238336	   6152	 380360	 624848	  988d0	/tmp/tmp.4sdq1ctrO7
+
+== shared libraries needed
+file: bin/prometheus99-bench: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, with debug_info, not stripped
+
+== 40 largest text symbols (bytes)
+0000000000008271 0000000000011057 T main
+0000000000093979 0000000000010013 T dispatch.lto_priv.0
+0000000000177872 0000000000004935 t fmt_fp
+0000000000081807 0000000000004022 t img_draw_core.lto_priv.0
+0000000000182816 0000000000003852 t printf_core
+0000000000199296 0000000000003002 t decfloat
+0000000000124009 0000000000002839 t layout_update_core
+0000000000129822 0000000000002733 T lv_obj_event.lto_priv.0
+0000000000208656 0000000000002642 t alloc_slot
+0000000000065322 0000000000002593 t lv_draw_sw_blend
+0000000000137500 0000000000002555 T lv_display_refr_timer
+0000000000202304 0000000000002308 t __floatscan
+0000000000160308 0000000000002297 t lv_label_refr_text.part.0
+0000000000164693 0000000000002250 t lv_draw_label_iterate_characters.constprop.0
+0000000000087995 0000000000002183 t lv_draw_sw_border
+0000000000029618 0000000000002068 t overview_build
+0000000000127745 0000000000001993 t update_obj_state
+0000000000038293 0000000000001975 t overview_update
+0000000000090178 0000000000001958 t lv_draw_sw_arc
+0000000000170592 0000000000001916 T pow
+0000000000192896 0000000000001901 W pthread_create
+0000000000192896 0000000000001901 T __pthread_create
+0000000000036029 0000000000001701 t alarms_update
+0000000000114492 0000000000001632 t lv_obj_get_scrollbar_area
+0000000000055250 0000000000001612 t supervisor_thread
+0000000000079354 0000000000001563 t lv_draw_rect
+0000000000092136 0000000000001537 t lv_draw_sw_fill
+0000000000041983 0000000000001499 t sp_send_cb
+0000000000189744 0000000000001482 W pthread_cond_timedwait
+0000000000189744 0000000000001482 T __pthread_cond_timedwait
+0000000000150715 0000000000001480 t hmi_config_parse.constprop.0
+0000000000049921 0000000000001467 t journal_collect.lto_priv.0
+0000000000106010 0000000000001400 t lv_bin_decoder_open
+0000000000162952 0000000000001397 T lv_label_event.lto_priv.0
+0000000000051610 0000000000001337 t comms_thread
+0000000000117364 0000000000001333 t lv_obj_draw
+0000000000085829 0000000000001309 t lv_draw_sw_mask_radius_init
+0000000000135279 0000000000001284 t refr_obj
+0000000000047420 0000000000001225 t parse_object.lto_priv.0
+0000000000061862 0000000000001222 t lv_draw_mask_line
+
+== 25 largest static data objects (.data/.bss, bytes)
+0000000000501120 0000000000114688 b work_mem_int.0
+0000000000379456 0000000000114672 B g_rt.lto_priv.0
+0000000000313792 0000000000032769 b cfg.0
+0000000000280992 0000000000032769 b buf.0
+0000000000346564 0000000000032000 B s_bench_draw.lto_priv.0
+0000000000254720 0000000000020480 b tail.0
+0000000000615808 0000000000016384 b toks.1
+0000000000494144 0000000000006080 B g_cfg.lto_priv.0
+0000000000279072 0000000000001920 b s_rows.lto_priv.0
+0000000000276768 0000000000001472 b s_rows.lto_priv.1
+0000000000249760 0000000000001200 d TAG_FIELDS
+0000000000633824 0000000000001032 b buf
+0000000000632864 0000000000000928 B __malloc_context
+0000000000275264 0000000000000840 b t_sys
+0000000000500256 0000000000000840 B lv_global
+0000000000248800 0000000000000640 d ALARM_FIELDS
+0000000000252608 0000000000000560 d TOP_FIELDS
+0000000000276224 0000000000000480 b t_journal.lto_priv.1
+0000000000278400 0000000000000480 b t_journal.lto_priv.0
+0000000000250976 0000000000000480 d PLC_FIELDS
+0000000000632480 0000000000000336 b builtin_tls
+0000000000249440 0000000000000320 d WRITE_FIELDS
+0000000000254240 0000000000000232 D __stdout_FILE
+0000000000253984 0000000000000232 D __stderr_FILE
+0000000000253184 0000000000000144 d _modbus_tcp_backend
+
+== bytes per source group from the linker map (input sections that were kept)
+  223154  src/hmi (and file statics) data_bss
+  156408  app sources, other code_rodata
+  120604  app sources, other data_bss
+   38510  src/ui data_bss
+   12323  src/hmi (and file statics) code_rodata
+   10927  libs: /usr/lib/x86_64-linux-musl/libc.a(vfprintf.lo) code_rodata
+   10632  other: /usr/lib/x86_64-linux-musl/rcrt1.o data_bss
+    8704  libs: /usr/lib/x86_64-linux-musl/libc.a(__libc_start_main.lo) code_rodata
+    5984  libs: /usr/lib/x86_64-linux-musl/libc.a(floatscan.lo) code_rodata
+    5278  libs: /usr/lib/x86_64-linux-musl/libc.a(malloc.lo) code_rodata
+    4168  libs: /usr/lib/x86_64-linux-musl/libc.a(pow_data.lo) code_rodata
+    2962  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_create.lo) code_rodata
+    2251  libs: /usr/lib/x86_64-linux-musl/libc.a(strerror.lo) code_rodata
+    2160  libs: /usr/lib/x86_64-linux-musl/libc.a(exp_data.lo) code_rodata
+    2084  libs: /usr/lib/x86_64-linux-musl/libc.a(pow.lo) code_rodata
+    1948  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_cond_timedwait.lo) code_rodata
+    1668  libs: /usr/lib/x86_64-linux-musl/libc.a(free.lo) code_rodata
+    1465  monocypher code_rodata
+    1272  libs: /usr/lib/x86_64-linux-musl/libc.a(stdout.lo) data_bss
+    1042  src/ui code_rodata
+     932  libs: /usr/lib/x86_64-linux-musl/libc.a(malloc.lo) data_bss
+     881  libs: /usr/lib/x86_64-linux-musl/libc.a(inet_pton.lo) code_rodata
+     710  libs: /usr/lib/x86_64-linux-musl/libc.a(vdso.lo) code_rodata
+     699  libs: /usr/lib/x86_64-linux-musl/libc.a(__init_tls.lo) code_rodata
+     694  libs: /usr/lib/x86_64-linux-musl/libc.a(sigaction.lo) code_rodata
+     635  other: /usr/lib/x86_64-linux-musl/rcrt1.o code_rodata
+     619  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_mutex_timedlock.lo) code_rodata
+     534  libs: /usr/lib/x86_64-linux-musl/libc.a(__timedwait.lo) code_rodata
+     507  libs: /usr/lib/x86_64-linux-musl/libc.a(vsnprintf.lo) code_rodata
+     493  libs: /usr/lib/x86_64-linux-musl/libc.a(fstatat.lo) code_rodata
+     492  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_mutex_unlock.lo) code_rodata
+     475  libs: /usr/lib/x86_64-linux-musl/libc.a(__fdopen.lo) code_rodata
+     466  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_mutex_trylock.lo) code_rodata
+     429  src/hmi/plc_libmodbus code_rodata
+     388  libs: /usr/lib/x86_64-linux-musl/libc.a(__init_tls.lo) data_bss
+     387  libs: /usr/lib/x86_64-linux-musl/libc.a(floor.lo) code_rodata
+     367  libs: /usr/lib/x86_64-linux-musl/libc.a(fwrite.lo) code_rodata
+     358  libs: /usr/lib/x86_64-linux-musl/libc.a(fflush.lo) code_rodata
+     340  other: /usr/lib/x86_64-linux-musl/crtn.o data_bss
+     338  other: /usr/lib/x86_64-linux-musl/crti.o data_bss
+     319  libs: /usr/lib/x86_64-linux-musl/libc.a(wcrtomb.lo) code_rodata
+     304  libs: /usr/lib/x86_64-linux-musl/libc.a(putchar.lo) code_rodata
+     302  libs: /usr/lib/x86_64-linux-musl/libc.a(pthread_join.lo) code_rodata
+     300  libs: /usr/lib/x86_64-linux-musl/libc.a(__stdio_write.lo) code_rodata
+     298  libs: /usr/lib/x86_64-linux-musl/libc.a(fread.lo) code_rodata

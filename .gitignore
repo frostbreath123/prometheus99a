@@ -12,3 +12,5 @@
 # Local scratch
 *.tmp
 *.swp
+/build-*/
+/cfgedit_spool_test/

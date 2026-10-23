@@ -1,5 +1,7 @@
 # Measurements and claims
 
+> **Note, 2026-10-23:** this file records the measurements up to milestone M4 (the legacy prototype and the first Linux runs). The size, memory, speed, soak and recovery measurements of 2026-10-23, with the baseline they are compared with, are in `docs/ENGINEERING_REPORT.md` and `bench/results/linux/`; where a figure here differs (for example the LVGL pool), that file is newer.
+
 Every number below links to a raw file in `bench/results/` and the command
 that produced it. Targets are listed separately and are NOT results.
 

@@ -1,0 +1,11 @@
+label: phase2_lvgl
+binary: bin/prometheus99-bench (338680 bytes unstripped)
+date: 2026-10-23T10:57:02Z   kernel: 6.18.54.1-microsoft-standard-WSL2   cpus: 12
+framebuffer: file-backed, 800x480 RGB565 = 768000 bytes (its pages are shared file pages)
+start_to_first_frame_ms: 15   (process launch to non-zero content in the last pixel row of the framebuffer, polled every 5 ms)
+after_first_frame:  pss_kb=1440 rss_kb=1444 pss_fb_mapping_kb=752 pss_excl_fb_kb=688 threads=4 vmdata_kb=956 vmstk_kb=132 mappings=18
+after_60s:       pss_kb=1452 rss_kb=1456 pss_fb_mapping_kb=752 pss_excl_fb_kb=700 threads=4
+pss_peak_kb_sampled: 1452   (5 s sampling; a shorter peak can be missed)
+cpu_avg_pct_of_one_core_over_run: 0.48
+exit_status_on_SIGTERM: 0
+fake_plc: fake_plc: requests=615 writes=0

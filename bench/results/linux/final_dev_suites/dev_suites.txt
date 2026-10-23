@@ -1,0 +1,14 @@
+== dev suites
+== check-tagdb-access: exit=0  fail-lines=0  | check-tagdb-access: ok
+== test: exit=0  fail-lines=0  | hmi core total: 3262 checks
+== test-notify: exit=0  fail-lines=0  | 13 checks, 0 failed
+== test-view: exit=0  fail-lines=0  | 197 checks, 0 failed
+== test-config-golden: exit=0  fail-lines=0  | config golden: identical
+== ui-host: exit=0  fail-lines=1  | scenario assertions: 205 checks, 0 failed
+== ui-shots: exit=0  fail-lines=1  | screenshots: 23 files, PASS
+== e2e: exit=0  fail-lines=0  | 75 checks, 0 failed
+== cli-exec: exit=0  fail-lines=0  | cli exec test: PASS
+== config-exec: exit=0  fail-lines=0  | config exec test: PASS
+== cfgedit-exec: exit=0  fail-lines=0  | cfgedit-exec: all checks passed
+== liveness: exit=0  fail-lines=0  | liveness e2e: PASS
+lite: scenario assertions: 127 checks, 0 failed

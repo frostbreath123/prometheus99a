@@ -1,0 +1,81 @@
+# Continuous integration for Prometheus99 (Linux only; the Windows build is a development convenience).
+#
+# STATUS: written and statically checked only. It has not been run on GitHub, because nothing was pushed from the
+# machine it was written on. The same commands were run by hand under WSL2 Ubuntu 24.04 (docs/LINUX_VALIDATION.md).
+#
+# Jobs
+#   tests    the unit, view-model, configuration golden, end-to-end, headless UI and executable tests (dynamic glibc build)
+#   static   the small build (static musl, size optimised): tests again with that compiler, then the size and
+#            memory gates of bench/gate.sh for the full and the lite profile
+#   san      the core tests, the end-to-end test and the headless UI scenario under AddressSanitizer plus UBSan
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libmodbus-dev python3 rsync
+      - name: Build and run the tests
+        run: |
+          make -f Makefile.linux -j4 check-tagdb-access test test-notify test-view test-config-golden ui-host ui-shots e2e \
+            cli-exec config-exec cfgedit-exec liveness
+      - name: Lite profile headless UI
+        run: make -f Makefile.linux -j4 LITE=1 BUILD=build-lite ui-host
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: build-linux/shot_*.ppm
+          if-no-files-found: ignore
+
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Packages
+        run: |
+          sudo apt-get update && sudo apt-get install -y build-essential musl-tools linux-libc-dev python3 rsync
+          # musl-gcc does not see the kernel headers that the LVGL framebuffer and evdev drivers include
+          M=/usr/include/x86_64-linux-musl
+          sudo ln -sfn /usr/include/linux $M/linux
+          sudo ln -sfn /usr/include/asm-generic $M/asm-generic
+          sudo ln -sfn /usr/include/x86_64-linux-gnu/asm $M/asm
+      - name: Static full profile, tests with that compiler
+        run: |
+          make -f Makefile.linux -j4 STATIC=1 CC=musl-gcc BUILD=build-musl test test-view ui-host e2e cli-exec config-exec cfgedit-exec liveness
+      - name: Static builds for the gates
+        run: |
+          make -f Makefile.linux -j4 STATIC=1 CC=musl-gcc BUILD=build-musl hmi hmi-bench
+          make -f Makefile.linux -j4 STATIC=1 LITE=1 CC=musl-gcc BUILD=build-musl-lite hmi
+      - name: Size and memory gates
+        run: |
+          bash bench/gate.sh build-musl full
+          bash bench/gate.sh build-musl-lite lite
+      - name: Size report
+        run: bash bench/size_report.sh build-musl/prometheus99-bench ci build-musl/prometheus99-bench.map
+      - uses: actions/upload-artifact@v4
+        with:
+          name: size-report
+          path: bench/results/linux/ci/size_report.txt
+
+  san:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libmodbus-dev python3 rsync
+      - name: AddressSanitizer and UBSan
+        run: |
+          make -f Makefile.linux -j4 SAN=address BUILD=build-asan test e2e ui-host
