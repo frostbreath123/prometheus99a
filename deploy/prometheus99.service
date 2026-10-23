@@ -7,7 +7,6 @@
 # service either, or it could replace the files by renaming over them.
 #   useradd --system --no-create-home --groups video,input prometheus
 #   install -m 0755 build-linux/prometheus99 /usr/local/bin/prometheus99
-#   install -m 0755 build-linux/p99_user /usr/local/bin/p99_user   # offline user tool
 #   install -m 0755 build-linux/p99_sign /usr/local/bin/p99_sign   # offline signing tool
 #   install -d -o root -g root -m 0755 /etc/prometheus99
 #   install -d -o prometheus -g prometheus -m 0750 /var/lib/prometheus99
@@ -43,14 +42,12 @@ NotifyAccess=main
 User=prometheus
 Group=prometheus
 SupplementaryGroups=video input
-# Roles come from logging in on the screen. The process starts as viewer (no
-# acknowledgements, no writes) until someone logs in. The production build
-# refuses --role (exit status 2), so a role cannot be set from this unit. The
-# user file is created by the first-boot screen or with p99_user, owned by the
-# service user, mode 0600; a file that group or others can write is refused.
+# There is no login. The role below is CLAIMED: it is chosen here, by whoever can edit this unit (root), and nothing
+# authenticates it. Leave out --role for a read-only display (viewer: no acknowledgements, no writes); add
+# --role operator for a panel that may acknowledge alarms and write setpoints. The core still checks the role
+# on every acknowledgement, write and configuration request, and each is recorded in the audit file.
 ExecStart=/usr/local/bin/prometheus99 --config /etc/prometheus99/hmi.json \
     --audit /var/lib/prometheus99/audit.log --alarms /var/lib/prometheus99/alarms.bin \
-    --users /var/lib/prometheus99/users.bin \
     --config-key /etc/prometheus99/config.key --config-state /var/lib/prometheus99/config.serial \
     --spool /var/spool/prometheus99 \
     --fb /dev/fb0 --touch /dev/input/event0
@@ -70,8 +67,8 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 # Everything the HMI writes is in this directory: audit.log and audit.log.1 to
-# .4, alarms.bin, alarms.bin.journal and alarms.bin.journal.1 to .4, the user
-# file and the config serial (docs/STORAGE.md). If a SystemCallFilter is added
+# .4, alarms.bin, alarms.bin.journal and alarms.bin.journal.1 to .4, and the config
+# serial (docs/STORAGE.md). If a SystemCallFilter is added
 # later it must still allow adjtimex (read only), which gives the clock state
 # written to every audit line.
 ReadWritePaths=/var/lib/prometheus99 /var/spool/prometheus99

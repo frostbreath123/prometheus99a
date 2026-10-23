@@ -24,14 +24,33 @@
 #define W 800
 #define H 480
 
+/* The lite profile (Makefile.linux, LITE=1) has no trend screen and no CONFIG view: three screens, one settings view. */
+#ifdef P99_LITE
+#define SCREEN_SETTINGS 2
+#define SCREENS_EXPECTED 3
+#define SETTINGS_VIEWS 1
+#define TRENDED_EXPECTED "0"
+#else
+#define SCREEN_SETTINGS 3
+#define SCREENS_EXPECTED 4
+#define SETTINGS_VIEWS 2
+#define TRENDED_EXPECTED "2"
+#endif
+
 uint32_t alloc_count_total(void);
 uint32_t alloc_count_free(void);
 static int g_checks, g_fail;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_fail++; printf("  FAIL line %d: %s\n", __LINE__, #c); } } while (0)
 static uint16_t s_fb[W * H];
-static uint8_t s_buf[W * 48 * 2] __attribute__((aligned(64)));
+/* The partial draw buffer: as many lines as the Linux driver is configured with (LV_LINUX_FBDEV_BUFFER_SIZE in
+ * config/lv_conf.h), so that the render times printed below are those of the product. */
+#ifndef UI_BUF_LINES
+#define UI_BUF_LINES 20
+#endif
+static uint8_t s_buf[W * UI_BUF_LINES * 2] __attribute__((aligned(64)));
 static uint32_t s_flushes, s_flush_px;
 static double s_flush_us_total;
+static double s_last_flush_us;   /* when the newest flush started (responsiveness measurements) */
 
 #ifdef _WIN32
 static LARGE_INTEGER s_qf;
@@ -53,6 +72,7 @@ static double now_us(void)
 static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     double t0 = now_us();
+    s_last_flush_us = t0;
     int w = a->x2 - a->x1 + 1, h = a->y2 - a->y1 + 1;
     const uint16_t *src = (const uint16_t *)px;
     for (int y = 0; y < h; y++) memcpy(&s_fb[(a->y1 + y) * W + a->x1], &src[y * w], (size_t)w * 2);
@@ -78,19 +98,6 @@ static void save_ppm(const char *path)
     fclose(f);
 }
 
-/* Login and account records go through the runtime's storage worker, as in the
- * program (main_linux.c): written directly into the file the worker is also
- * appending to they would compete for it, and on Windows that sometimes fails. */
-static bool runtime_login_audit(void *user, const hmi_auth_audit_rec_t *rec)
-{
-    char line[256];
-    size_t n = hmi_auth_format_audit(rec, line, sizeof(line));
-    if (n == 0) return false;
-    hmi_wall_t w;
-    hmi_wall_now(&w);
-    n = hmi_audit_stamp_line(line, n, sizeof(line), &w);
-    return n != 0 && hmi_runtime_audit_append((hmi_runtime_t *)user, line, n);
-}
 
 static int cmp_d(const void *a, const void *b)
 {
@@ -138,6 +145,65 @@ static void report_proc(const char *tag)
 }
 #endif
 
+
+/* ---- responsiveness: application level, into a memory framebuffer ----
+ * What is measured: from an input event (or a tab press) to the moment LVGL hands the pixels of the answer to the
+ * flush callback, with the UI loop paced as main_linux.c paces it (lv_timer_handler()'s own wait, between 5 and 33 ms).
+ * What is not: the touch controller, the driver, the display's own latency. Host figures, not a Raspberry Pi. */
+static int g_tx, g_ty;
+static bool g_tdown;
+
+static void touch_read_cb(lv_indev_t *i, lv_indev_data_t *d)
+{
+    (void)i;
+    d->point.x = g_tx;
+    d->point.y = g_ty;
+    d->state = g_tdown ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+static void loop_once(void)
+{
+    uint32_t w = lv_timer_handler();
+    if (w > 33u) w = 33u;
+    if (w < 5u) w = 5u;
+    hmi_sleep_ms(w);
+}
+
+/* Delivers one input event at a random moment of the UI loop's sleep, as a real touch would arrive, and returns the
+ * time until the newest flush that follows it started (the first pixels of the response). `r` picks the moment. */
+static double inject_and_wait(bool down, uint32_t r)
+{
+    uint32_t w = lv_timer_handler();
+    if (w > 33u) w = 33u;
+    if (w < 5u) w = 5u;
+    uint32_t before = r % w;
+    hmi_sleep_ms(before);
+    uint32_t f0 = s_flushes;
+    double t_in = now_us();
+    g_tdown = down;
+    hmi_sleep_ms(w - before);      /* the rest of the sleep: the event waits for the loop, as it would on the device */
+    while (s_flushes == f0 && now_us() - t_in < 500000.0) loop_once();
+    return s_flushes == f0 ? 500000.0 : s_last_flush_us - t_in;
+}
+
+/* Runs the loop until the screen has been quiet for 80 ms (or 1 s). Returns the time of the newest flush. */
+static double settle_us(void)
+{
+    double t_end = now_us() + 1e6;
+    while (now_us() < t_end) {
+        loop_once();
+        if (now_us() - s_last_flush_us > 80000.0) break;
+    }
+    return s_last_flush_us;
+}
+
+static void print_dist(const char *what, double *v, size_t n)
+{
+    if (n == 0) return;
+    qsort(v, n, sizeof(double), cmp_d);
+    printf("[perf] %s: n=%u min=%.1f median=%.1f p95=%.1f max=%.1f ms\n", what, (unsigned)n, v[0] / 1000.0,
+           v[n / 2] / 1000.0, v[(size_t)((double)n * 0.95)] / 1000.0, v[n - 1] / 1000.0);
+}
 int main(int argc, char **argv)
 {
     const char *prefix = argc > 1 ? argv[1] : "build/shot";
@@ -198,6 +264,15 @@ int main(int argc, char **argv)
     lv_mem_monitor(&mon);
     printf("LVGL heap after UI build: total=%u free=%u used=%u KB\n", (unsigned)mon.total_size,
            (unsigned)mon.free_size, (unsigned)((mon.total_size - mon.free_size) / 1024));
+    /* RAM gate (docs/OPTIMIZATION_ROADMAP.md, phase 6): the pool in use after the UI is built, and its peak at the end of
+     * the scenario, may not grow past these. Measured on the host: 48 and 74 KB (full), 46 and 47 KB (lite). */
+#define POOL_AFTER_BUILD_MAX_KB 56
+#ifdef P99_LITE
+#define POOL_PEAK_MAX_KB 56
+#else
+#define POOL_PEAK_MAX_KB 88
+#endif
+    CHECK((mon.total_size - mon.free_size) / 1024 <= POOL_AFTER_BUILD_MAX_KB);
     report_proc("after_ui_build");
 
     uint32_t alloc_after_init = alloc_count_total();
@@ -311,6 +386,7 @@ int main(int argc, char **argv)
         hmi_ui_init(&rt, HMI_ROLE_VIEWER, NULL);
         pump(0.3, &samples, &n, cap);
         CHECK(strncmp(hmi_ui_ack_status_text(), "ACK DISABLED", 12) == 0);
+        CHECK(!hmi_ui_send_enabled());                              /* a viewer: the setpoint buttons are dimmed */
         hmi_ui_press_ack_all(); /* what the button would do, though it is disabled */
         printf("[ui] viewer ACK ALL: '%s'\n", hmi_ui_ack_status_text());
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
@@ -324,6 +400,7 @@ int main(int argc, char **argv)
         hmi_ui_press_ack_all();
         printf("[ui] operator ACK ALL: '%s'\n", hmi_ui_ack_status_text());
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK PENDING: recording") == 0); /* the button did not wait for the disk */
+        CHECK(hmi_ui_send_enabled());                                /* an operator may write TANK_LEVEL */
         pump(0.5, &samples, &n, cap);
         printf("[ui] operator ACK ALL settled: '%s'\n", hmi_ui_ack_status_text());
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACKNOWLEDGED") == 0);
@@ -344,7 +421,7 @@ int main(int argc, char **argv)
         lv_obj_clean(lv_screen_active());
         hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
         pump(0.3, &samples, &n, cap);
-        CHECK(hmi_ui_screen_count() == 4);
+        CHECK(hmi_ui_screen_count() == SCREENS_EXPECTED);
         CHECK(hmi_ui_screen() == HMI_UI_SCREEN_OVERVIEW && hmi_ui_screen_visible(HMI_UI_SCREEN_OVERVIEW));
         CHECK(!hmi_ui_screen_visible(HMI_UI_SCREEN_ALARMS));
         hmi_ui_press_tab(HMI_UI_SCREEN_ALARMS);
@@ -423,6 +500,7 @@ int main(int argc, char **argv)
         CHECK(hmi_alarm_count_unacked(&rt.alarms) == 0);
     }
 
+#ifndef P99_LITE
     /* Trends: the history of the two trended tags, with the gap the hung PLC left,
      * switching the tag and the window, and no redraw between two buckets. */
     {
@@ -498,6 +576,7 @@ int main(int argc, char **argv)
         printf("LVGL heap with four screens built: used=%u KB, max_used=%u KB\n",
                (unsigned)((mon.total_size - mon.free_size) / 1024), (unsigned)(mon.max_used / 1024));
     }
+#endif
 
     /* Paging: 23 tags need three pages of ten. The PLC of this runtime is not
      * reachable, which does not matter here: the names, the pages and the
@@ -538,6 +617,7 @@ int main(int argc, char **argv)
         hmi_ui_press_overview_page(-1);                                   /* and back to the last */
         CHECK(hmi_ui_overview_page() == 2);
 
+#ifndef P99_LITE
         /* no trended tag: the trend screen says so and does nothing else */
         CHECK(hmi_trend_series_count(&rt2.trend) == 0);
         hmi_ui_press_tab(HMI_UI_SCREEN_TRENDS);
@@ -549,6 +629,7 @@ int main(int argc, char **argv)
         pump(0.2, &samples, &n, cap);
         CHECK(hmi_ui_trend_series() == 0);
         save_ppm((snprintf(err, sizeof(err), "%s_13_no_trend.ppm", prefix), err));
+#endif
 
         hmi_runtime_stop(&rt2);
         plc_libmodbus_destroy(plc2);
@@ -557,41 +638,15 @@ int main(int argc, char **argv)
         pump(0.2, &samples, &n, cap);
     }
 
-    /* Settings: the system lines for everyone, and the accounts of the device for an
-     * administrator only (add, password, role, remove), through the same layer as the login. */
+    /* Settings: the system lines for everyone, then the CONFIG view for each claimed role. There is no login:
+     * the role is the one the UI was built with, and the core checks it on every call. */
     {
-        static char users_path[256], lock_path[272];
-        snprintf(users_path, sizeof(users_path), "%s_users2.bin", prefix);
-        snprintf(lock_path, sizeof(lock_path), "%s.lock", users_path);
-        remove(users_path);
-        remove(lock_path);
-        hmi_users_t seed;
-        memset(&seed, 0, sizeof(seed));
-        const hmi_kdf_params_t cheap2 = { 1, 64, 1 };
-        const struct { const char *n; hmi_role_t r; const char *pw; } who[] = {
-            { "admin", HMI_ROLE_ADMIN, "admin-pass-1" }, { "op1", HMI_ROLE_OPERATOR, "operator-pass-1" },
-            { "eng1", HMI_ROLE_ENGINEER, "engineer-pass-1" },
-        };
-        for (int i = 0; i < 3; i++) {
-            hmi_user_t x;
-            CHECK(hmi_user_make(&x, who[i].n, who[i].r, who[i].pw, &cheap2, NULL) == HMI_USERS_OK);
-            CHECK(hmi_users_add(&seed, &x) == HMI_USERS_OK);
-        }
-        CHECK(hmi_users_save(users_path, &seed));
-        static hmi_auth_t auth2;
-        hmi_auth_cfg_t acfg2;
-        acfg2.users_path = users_path;
-        acfg2.idle_ms = 120000;
-        acfg2.kdf = &cheap2;
-        CHECK(hmi_auth_init(&auth2, &acfg2, hmi_now_ms()));
-        hmi_auth_set_audit(&auth2, runtime_login_audit, &rt);
-
         lv_obj_clean(lv_screen_active());
-        hmi_ui_init_auth(&rt, &auth2, NULL);
+        hmi_ui_init(&rt, HMI_ROLE_VIEWER, NULL);
         hmi_ui_set_config_info("Configuration: serial 7, signed");
-        hmi_ui_press_tab(HMI_UI_SCREEN_SETTINGS);
+        hmi_ui_press_tab(SCREEN_SETTINGS);
         pump(1.4, &samples, &n, cap);
-        CHECK(hmi_ui_screen() == HMI_UI_SCREEN_SETTINGS && hmi_ui_settings_view_count() == 3);
+        CHECK(hmi_ui_screen() == SCREEN_SETTINGS && hmi_ui_settings_view_count() == SETTINGS_VIEWS);
         CHECK(hmi_ui_settings_view() == HMI_UI_VIEW_SYSTEM);
         for (size_t i = 0; i < 7; i++) printf("[ui] system %zu: %s\n", i, hmi_ui_system_text(i));
         CHECK(strncmp(hmi_ui_system_text(0), "PLC 127.0.0.1:", 14) == 0 && strstr(hmi_ui_system_text(0), "unit 1") != NULL);
@@ -599,138 +654,30 @@ int main(int argc, char **argv)
         CHECK(strcmp(hmi_ui_system_text(2), "Configuration: serial 7, signed") == 0);
         CHECK(strncmp(hmi_ui_system_text(3), "Storage: ok, ", 13) == 0);
         CHECK(strncmp(hmi_ui_system_text(4), "Clock: ", 7) == 0);
-        CHECK(strcmp(hmi_ui_system_text(5), "Tags: 4   with alarms: 1   trended: 2") == 0);
-        CHECK(strncmp(hmi_ui_system_text(6), "Build: production", 17) == 0);
+        CHECK(strcmp(hmi_ui_system_text(5), "Tags: 4   with alarms: 1   trended: " TRENDED_EXPECTED) == 0);
+        CHECK(strcmp(hmi_ui_system_text(6), "Role: VIEWER (read only)") == 0);
         CHECK(hmi_ui_system_text(9)[0] == '\0');
         save_ppm((snprintf(err, sizeof(err), "%s_14_settings_system.ppm", prefix), err));
-
-        /* Viewer: the accounts view says why it shows nothing, and the core refuses a forced request */
-        hmi_ui_press_settings_view(HMI_UI_VIEW_ACCOUNTS);
-        pump(0.3, &samples, &n, cap);
-        CHECK(hmi_ui_settings_view() == HMI_UI_VIEW_ACCOUNTS);
-        CHECK(strstr(hmi_ui_users_message_text(), "administrator") != NULL && hmi_ui_users_rows() == 0);
         hmi_ui_press_settings_view(5);                                    /* no such view: nothing changes */
-        CHECK(hmi_ui_settings_view() == HMI_UI_VIEW_ACCOUNTS);
-        hmi_ui_press_users(0);                                            /* ADD, though the buttons are hidden */
-        CHECK(hmi_ui_login_visible() && strcmp(hmi_ui_login_title_text(), "ADD OPERATOR ACCOUNT") == 0);
-        hmi_ui_login_fill("sneaky", "sneaky-pass-12", "sneaky-pass-12");
-        hmi_ui_login_submit();
-        CHECK(strstr(hmi_ui_login_status_text(), "administrator") != NULL);
-        CHECK(hmi_auth_user_count(&auth2, hmi_now_ms()) == 0);
-        hmi_ui_login_cancel();
-        CHECK(!hmi_ui_login_visible());
+        CHECK(hmi_ui_settings_view() == HMI_UI_VIEW_SYSTEM);
 
-        /* an administrator logs in */
-        CHECK(hmi_auth_login(&auth2, "admin", "admin-pass-1", hmi_now_ms()).result == HMI_LOGIN_OK);
-        pump(0.4, &samples, &n, cap);
-        CHECK(hmi_ui_users_message_text()[0] == '\0' && hmi_ui_users_rows() == 3);
-        CHECK(strcmp(hmi_ui_users_row_text(0, 0), "admin") == 0 && strcmp(hmi_ui_users_row_text(0, 1), "ADMIN") == 0);
-        CHECK(strcmp(hmi_ui_users_row_text(1, 0), "op1") == 0 && strcmp(hmi_ui_users_row_text(1, 1), "OPERATOR") == 0);
-        CHECK(strcmp(hmi_ui_users_row_text(2, 1), "ENGINEER") == 0 && hmi_ui_users_row_text(2, 2)[0] == '\0');
-        CHECK(hmi_ui_users_row_text(3, 0)[0] == '\0');
-        CHECK(hmi_ui_users_button_enabled(0) && !hmi_ui_users_button_enabled(2) && !hmi_ui_users_button_enabled(4));   /* nothing selected */
-
-        /* add an engineer: the two passwords must match, then it is made and recorded */
-        hmi_ui_press_users(1);                                            /* NEW: operator -> engineer */
-        CHECK(hmi_ui_users_new_role() == (int)HMI_ROLE_ENGINEER);
-        hmi_ui_press_users(0);
-        CHECK(hmi_ui_login_visible() && strcmp(hmi_ui_login_title_text(), "ADD ENGINEER ACCOUNT") == 0);
-        hmi_ui_press_users(0);                                            /* a second window is refused, not stacked */
-        CHECK(strcmp(hmi_ui_users_status_text(), "Close the other window first") == 0);
-        hmi_ui_login_fill("newuser", "newuser-pass-1", "newuser-pass-2");
-        hmi_ui_login_submit();
-        CHECK(strstr(hmi_ui_login_status_text(), "do not match") != NULL && hmi_ui_login_field_text(1)[0] == '\0');
-        hmi_ui_login_fill("newuser", "short", "short");
-        hmi_ui_login_submit();
-        CHECK(hmi_ui_login_visible() && strstr(hmi_ui_login_status_text(), "short") != NULL);
-        hmi_ui_login_fill("op1", "newuser-pass-1", "newuser-pass-1");
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "already exists") == NULL; i++) pump(0.05, &samples, &n, cap);
-        CHECK(strstr(hmi_ui_login_status_text(), "already exists") != NULL && hmi_ui_login_visible());
-        pump(0.2, &samples, &n, cap);                                     /* let the last change be drawn before the picture */
-        save_ppm((snprintf(err, sizeof(err), "%s_15_add_account.ppm", prefix), err));
-        hmi_ui_login_fill("newuser", "newuser-pass-1", "newuser-pass-1");
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.05, &samples, &n, cap);
-        CHECK(!hmi_ui_login_visible());
+        /* the header and the system line name a claimed role, and say it is not authenticated */
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_ENGINEER, NULL);
+        hmi_ui_set_config_info("Configuration: serial 7, signed");
+        hmi_ui_press_tab(SCREEN_SETTINGS);
+        pump(1.3, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "ENGINEER") == 0);
+        CHECK(strstr(hmi_ui_system_text(6), "engineer") != NULL && strstr(hmi_ui_system_text(6), "NOT authenticated") != NULL);
+        save_ppm((snprintf(err, sizeof(err), "%s_14b_settings_system_engineer.ppm", prefix), err));
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_VIEWER, NULL);
+        hmi_ui_set_config_info("Configuration: serial 7, signed");
+        hmi_ui_press_tab(SCREEN_SETTINGS);
         pump(0.3, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Account added") == 0);
-        CHECK(hmi_ui_users_rows() == 4 && strcmp(hmi_ui_users_row_text(3, 0), "newuser") == 0 && strcmp(hmi_ui_users_row_text(3, 1), "ENGINEER") == 0);
-        CHECK(hmi_ui_login_field_text(1)[0] == '\0' && hmi_ui_login_field_text(2)[0] == '\0');   /* nothing typed is kept */
+        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
 
-        /* a new password for op1: the name is fixed */
-        hmi_ui_users_select(1);
-        pump(0.2, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_users_selected(), "op1") == 0 && hmi_ui_users_button_enabled(2) && hmi_ui_users_button_enabled(3) && hmi_ui_users_button_enabled(4));
-        hmi_ui_press_users(2);
-        CHECK(hmi_ui_login_visible() && strcmp(hmi_ui_login_title_text(), "NEW PASSWORD FOR op1") == 0);
-        CHECK(strcmp(hmi_ui_login_field_text(0), "op1") == 0);
-        hmi_ui_login_fill(NULL, "operator-new-77", "operator-new-77");
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.05, &samples, &n, cap);
-        CHECK(!hmi_ui_login_visible());
-        pump(0.3, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Password changed") == 0);
-
-        /* the role of op1 steps to the next one */
-        hmi_ui_press_users(3);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Role changed") == 0);
-        pump(0.2, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_users_row_text(1, 1), "ENGINEER") == 0);
-
-        /* never one's own account: the buttons are off, and the core refuses a forced press */
-        hmi_ui_users_select(0);
-        pump(0.2, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_users_selected(), "admin") == 0);
-        CHECK(hmi_ui_users_button_enabled(2) && !hmi_ui_users_button_enabled(3) && !hmi_ui_users_button_enabled(4));
-        hmi_ui_press_users(3);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Not allowed on your own account") == 0);
-        hmi_ui_press_users(4);
-        CHECK(strncmp(hmi_ui_users_status_text(), "Press REMOVE again to remove admin", 34) == 0);
-        hmi_ui_press_users(4);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Not allowed on your own account") == 0);
-        CHECK(hmi_ui_users_rows() == 4);
-
-        /* removing needs two presses, and only the second removes */
-        hmi_ui_users_select(3);
-        pump(0.2, &samples, &n, cap);
-        hmi_ui_press_users(4);
-        CHECK(strncmp(hmi_ui_users_status_text(), "Press REMOVE again to remove newuser", 36) == 0);
-        pump(0.2, &samples, &n, cap);
-        CHECK(hmi_ui_users_rows() == 4);
-        hmi_ui_users_select(2);                                             /* another account: the question lapses */
-        hmi_ui_users_select(3);
-        hmi_ui_press_users(4);
-        CHECK(strncmp(hmi_ui_users_status_text(), "Press REMOVE again", 18) == 0 && hmi_ui_users_rows() == 4);
-        pump(0.2, &samples, &n, cap);
-        save_ppm((snprintf(err, sizeof(err), "%s_16_accounts.ppm", prefix), err));
-        hmi_ui_press_users(4);
-        CHECK(strcmp(hmi_ui_users_status_text(), "Account removed") == 0);
-        pump(0.3, &samples, &n, cap);
-        CHECK(hmi_ui_users_rows() == 3 && hmi_ui_users_selected()[0] == '\0');
-
-        /* the session ends: the accounts are hidden at once */
-        hmi_auth_logout(&auth2, hmi_now_ms());
-        pump(0.4, &samples, &n, cap);
-        CHECK(hmi_ui_users_rows() == 0 && strstr(hmi_ui_users_message_text(), "administrator") != NULL);
-
-        /* what was done is in the audit file, with the administrator's name and no password */
-        FILE *af = fopen(audit_path, "rb");
-        static char atext[131072];
-        size_t alen = af ? fread(atext, 1, sizeof(atext) - 1, af) : 0;
-        if (af) fclose(af);
-        atext[alen] = '\0';
-        CHECK(strstr(atext, "USER_DENIED user=sneaky by=?") != NULL);
-        CHECK(strstr(atext, "USER_ADD user=newuser role=engineer by=admin") != NULL);
-        CHECK(strstr(atext, "USER_PASSWORD user=op1 role=operator by=admin") != NULL);
-        CHECK(strstr(atext, "USER_ROLE user=op1 role=engineer by=admin") != NULL);
-        CHECK(strstr(atext, "USER_REMOVE user=newuser by=admin") != NULL);
-        CHECK(strstr(atext, "newuser-pass") == NULL && strstr(atext, "operator-new") == NULL && strstr(atext, "sneaky-pass") == NULL);
-        hmi_users_t after;
-        char uerr[120];
-        CHECK(hmi_users_load(users_path, &after, uerr, sizeof(uerr)) == HMI_USERS_LOAD_OK && after.n == 3);
-        CHECK(hmi_users_find(&after, "newuser") < 0 && after.u[hmi_users_find(&after, "op1")].role == HMI_ROLE_ENGINEER);
-
+#ifndef P99_LITE
         /* The CONFIG view: an engineer edits settings, APPLY twice sends one request to the spool directory,
          * and nothing changes in the configuration here. A viewer sees why the view is empty, and the core
          * refuses a forced request. */
@@ -752,7 +699,23 @@ int main(int argc, char **argv)
             CHECK(strstr(hmi_ui_config_message_text(), "engineer") != NULL && hmi_ui_config_rows() == 0);   /* a viewer */
             save_ppm((snprintf(err, sizeof(err), "%s_17_config_viewer.ppm", prefix), err));
 
-            CHECK(hmi_auth_login(&auth2, "eng1", "engineer-pass-1", hmi_now_ms()).result == HMI_LOGIN_OK);
+            /* an operator may look but not edit; an engineer edits */
+            lv_obj_clean(lv_screen_active());
+            hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
+            hmi_ui_set_config_info("Configuration: serial 7, signed");
+            hmi_ui_set_config_edit(spool, 7);
+            hmi_ui_press_tab(SCREEN_SETTINGS);
+            hmi_ui_press_settings_view(HMI_UI_VIEW_CONFIG);
+            pump(0.4, &samples, &n, cap);
+            CHECK(strstr(hmi_ui_config_message_text(), "engineer") != NULL && hmi_ui_config_rows() == 0);   /* an operator */
+
+            lv_obj_clean(lv_screen_active());
+            hmi_ui_init(&rt, HMI_ROLE_ENGINEER, NULL);
+            hmi_ui_set_config_info("Configuration: serial 7, signed");
+            hmi_ui_set_config_edit(spool, 7);
+            hmi_ui_press_tab(SCREEN_SETTINGS);
+            hmi_ui_press_settings_view(HMI_UI_VIEW_CONFIG);
+            pump(1.3, &samples, &n, cap);
             pump(1.3, &samples, &n, cap);
             CHECK(hmi_ui_config_message_text()[0] == '\0' && hmi_ui_config_targets() == 5);   /* the PLC and four tags */
             CHECK(strcmp(hmi_ui_config_target_text(), "PLC connection") == 0 && hmi_ui_config_rows() == 3);
@@ -865,7 +828,7 @@ int main(int argc, char **argv)
                 if (rf) fclose(rf);
                 rtext[rl] = '\0';
                 printf("[ui] request:\n%s", rtext);
-                CHECK(strncmp(rtext, "P99REQ 1\nbase_serial=7\nuser=eng1\n", 33) == 0);
+                CHECK(strncmp(rtext, "P99REQ 1\nbase_serial=7\nuser=-\n", 30) == 0);
                 CHECK(strstr(rtext, "tag.TANK_LEVEL.alarm.high=83\n") != NULL && strstr(rtext, "tag.TANK_LEVEL.alarm.high_high=off\n") != NULL);
                 CHECK(strstr(rtext, "tag.TANK_LEVEL.alarm.low=12\n") != NULL && strstr(rtext, "priority") == NULL);
                 CHECK(strlen(rtext) > 3 && strcmp(rtext + rl - 4, "END\n") == 0);
@@ -898,17 +861,19 @@ int main(int argc, char **argv)
                 save_ppm((snprintf(err, sizeof(err), "%s_20_config_result.ppm", prefix), err));
             }
 
-            /* the session ends: the edits are dropped, and a forced request is refused by the core */
-            hmi_ui_press_config_row(1);
-            hmi_ui_press_config_key("8"); hmi_ui_press_config_key("5");
-            hmi_ui_press_config_key("OK");
-            CHECK(hmi_ui_config_pending() == 1);
-            hmi_auth_logout(&auth2, hmi_now_ms());
-            hmi_ui_press_config(0);
-            hmi_ui_press_config(0);
-            CHECK(strncmp(hmi_ui_config_status_text(), "Not allowed", 11) == 0);
-            CHECK(fopen(req_path, "rb") == NULL);
+
+            /* a viewer: the edits of the engineer are gone with the old screen, and nothing can be sent */
+            lv_obj_clean(lv_screen_active());
+            hmi_ui_init(&rt, HMI_ROLE_VIEWER, NULL);
+            hmi_ui_set_config_info("Configuration: serial 7, signed");
+            hmi_ui_set_config_edit(spool, 7);
+            hmi_ui_press_tab(SCREEN_SETTINGS);
+            hmi_ui_press_settings_view(HMI_UI_VIEW_CONFIG);
             pump(0.4, &samples, &n, cap);
+            hmi_ui_press_config(0);
+            hmi_ui_press_config(0);
+            CHECK(strncmp(hmi_ui_config_status_text(), "Request sent", 12) != 0);
+            CHECK(fopen(req_path, "rb") == NULL);
             CHECK(hmi_ui_config_pending() == 0 && strstr(hmi_ui_config_message_text(), "engineer") != NULL && hmi_ui_config_rows() == 0);
             remove(res_path);
 
@@ -917,112 +882,31 @@ int main(int argc, char **argv)
             size_t clen = cf ? fread(ctext, 1, sizeof(ctext) - 1, cf) : 0;
             if (cf) fclose(cf);
             ctext[clen] = '\0';
-            CHECK(strstr(ctext, " CONFIG_REQUEST by=eng1 changes=3 base_serial=7 wall=") != NULL);
-            CHECK(strstr(ctext, " CONFIG_REQUEST_DENIED by=- wall=") != NULL);
+            CHECK(strstr(ctext, " CONFIG_REQUEST by=- changes=3 base_serial=7 wall=") != NULL);
         }
-        hmi_auth_deinit(&auth2);
+#endif
     }
 
-    /* Authentication through the UI path: the role handed to the core is the
-     * session role. First boot creates the administrator, a wrong password is
-     * refused and shown identically for any account, a correct one opens the
-     * session, an idle session ends, and every step is in the audit file. */
+    /* The claimed role through the UI path: the role handed to the core is the role the UI was built with, nothing
+     * else. Viewer cannot acknowledge, operator and above can, an idle screen stays idle, and the audit file names
+     * the role but no user. */
     {
-        static char users_path[256], lock_path[272];
-        snprintf(users_path, sizeof(users_path), "%s_users.bin", prefix);
-        snprintf(lock_path, sizeof(lock_path), "%s.lock", users_path);
-        remove(users_path);
-        remove(lock_path);
-        static hmi_auth_t auth;
-        const hmi_kdf_params_t cheap = { 1, 64, 1 };
-        hmi_auth_cfg_t acfg;
-        acfg.users_path = users_path;
-        acfg.idle_ms = 6000;
-        acfg.kdf = &cheap;
-        CHECK(hmi_auth_init(&auth, &acfg, hmi_now_ms()));
-        hmi_auth_set_audit(&auth, runtime_login_audit, &rt);
-
         lv_obj_clean(lv_screen_active());
-        hmi_ui_init_auth(&rt, &auth, NULL);
+        hmi_ui_init(&rt, HMI_ROLE_VIEWER, NULL);
         lv_mem_monitor(&mon);
-        printf("LVGL heap with the login screen built: used=%u KB of %u KB\n",
+        printf("LVGL heap with every screen built: used=%u KB of %u KB\n",
                (unsigned)((mon.total_size - mon.free_size) / 1024), (unsigned)(mon.total_size / 1024));
         pump(0.3, &samples, &n, cap);
         CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DISABLED: viewer role") == 0);
-        CHECK(!hmi_ui_login_visible());
-        hmi_ui_press_ack_all(); /* with no session the core refuses */
+        hmi_ui_press_ack_all();                                        /* the core refuses a forced press */
         CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
 
-        /* first boot */
-        hmi_ui_press_login_button();
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_ADMIN, NULL);
         pump(0.3, &samples, &n, cap);
-        CHECK(hmi_ui_login_visible());
-        CHECK(strcmp(hmi_ui_login_title_text(), "CREATE ADMINISTRATOR") == 0);
-        CHECK(strstr(hmi_ui_login_status_text(), "No accounts") != NULL);
-        save_ppm((snprintf(err, sizeof(err), "%s_7_first_boot.ppm", prefix), err));
-        hmi_ui_login_fill("admin", "short", "short");
-        hmi_ui_login_submit();
-        CHECK(strstr(hmi_ui_login_status_text(), "too short") != NULL);
-        CHECK(hmi_ui_login_field_text(1)[0] == '\0' && hmi_ui_login_field_text(2)[0] == '\0'); /* wiped */
-        hmi_ui_login_fill("admin", "admin-pass-1", "admin-pass-2");
-        hmi_ui_login_submit();
-        CHECK(strstr(hmi_ui_login_status_text(), "do not match") != NULL);
-        hmi_ui_login_fill("Admin Name!", NULL, NULL);                  /* the keyboard filter drops what is not allowed */
-        CHECK(strcmp(hmi_ui_login_field_text(0), "dminame") == 0);     /* only a-z 0-9 _ . - are accepted */
-        hmi_ui_login_fill("admin", "admin-pass-1", "admin-pass-1");
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Administrator created") == NULL; i++)
-            pump(0.1, &samples, &n, cap);
-        CHECK(strstr(hmi_ui_login_status_text(), "Administrator created") != NULL);
-        CHECK(strcmp(hmi_ui_login_title_text(), "LOG IN") == 0);
-        CHECK(hmi_auth_store_state(&auth) == HMI_AUTH_STORE_READY);
-        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);              /* creating does not log in */
-
-        /* wrong password */
-        hmi_ui_login_fill("admin", "wrong-pass-12", NULL);
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Wrong user") == NULL; i++)
-            pump(0.1, &samples, &n, cap);
-        printf("[ui] wrong password: '%s'\n", hmi_ui_login_status_text());
-        CHECK(strcmp(hmi_ui_login_status_text(), "Wrong user name or password") == 0);
-        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
-        CHECK(hmi_ui_login_field_text(1)[0] == '\0');
-        /* an unknown user gets the very same wording */
-        pump(1.1, &samples, &n, cap);
-        hmi_ui_login_fill("nobody", "wrong-pass-12", NULL);
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && strstr(hmi_ui_login_status_text(), "Wrong user") == NULL; i++)
-            pump(0.1, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_login_status_text(), "Wrong user name or password") == 0);
-        /* too soon after a failure */
-        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
-        hmi_ui_login_submit();
-        CHECK(strstr(hmi_ui_login_status_text(), "Please wait") != NULL);
-        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);              /* the right password was not accepted */
-        save_ppm((snprintf(err, sizeof(err), "%s_8_login_refused.ppm", prefix), err));
-        pump(1.4, &samples, &n, cap);                                  /* the countdown ends by itself */
-        CHECK(hmi_ui_login_status_text()[0] == '\0');
-
-        /* cancel and reopen */
-        hmi_ui_login_cancel();
-        CHECK(!hmi_ui_login_visible());
-
-        /* correct login */
-        hmi_ui_press_login_button();
-        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.1, &samples, &n, cap);
-        CHECK(!hmi_ui_login_visible());
-        pump(0.2, &samples, &n, cap);
-        printf("[ui] logged in: header='%s'\n", hmi_ui_role_text());
-        CHECK(strcmp(hmi_ui_role_text(), "ADMIN  admin") == 0);
-        CHECK(hmi_auth_role(&auth, hmi_now_ms()) == HMI_ROLE_ADMIN);
-        hmi_ui_press_ack_all();
-        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") != 0);
-
-        /* what the admin does is recorded under the admin's name: an
-         * acknowledgement (the alarm returns to normal and waits for it) and a write */
+        printf("[ui] header='%s'\n", hmi_ui_role_text());
+        CHECK(strcmp(hmi_ui_role_text(), "ADMIN") == 0);
         fms_set_holding(srv, 0, 700);          /* back to normal ... */
         pump(1.0, &samples, &n, cap);
         fms_set_holding(srv, 0, 910);          /* ... and a new high alarm that waits for acknowledgement */
@@ -1035,47 +919,22 @@ int main(int argc, char **argv)
         hmi_ui_press_setpoint_send();
         pump(1.0, &samples, &n, cap);
         CHECK(fms_write_count(srv) == writes_before + 1);
-        save_ppm((snprintf(err, sizeof(err), "%s_9_logged_in.ppm", prefix), err));
+        save_ppm((snprintf(err, sizeof(err), "%s_9_admin_role.ppm", prefix), err));
 
-        /* idle logout: no touch input in this harness, so the deadline runs out */
-        pump(6.5, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
-        hmi_ui_press_ack_all();
-        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
-
-        /* explicit logout with the header button */
-        hmi_ui_press_login_button();
-        hmi_ui_login_fill("admin", "admin-pass-1", NULL);
-        hmi_ui_login_submit();
-        for (int i = 0; i < 40 && hmi_ui_login_visible(); i++) pump(0.1, &samples, &n, cap);
-        if (strcmp(hmi_ui_role_text(), "ADMIN  admin") != 0)
-            printf("  [diagnostic] login after the idle logout: header='%s' dialog='%s' status='%s'\n", hmi_ui_role_text(),
-                   hmi_ui_login_visible() ? "open" : "closed", hmi_ui_login_status_text());
-        CHECK(strcmp(hmi_ui_role_text(), "ADMIN  admin") == 0);
-        hmi_ui_press_login_button();
-        pump(0.2, &samples, &n, cap);
-        CHECK(strcmp(hmi_ui_role_text(), "VIEWER") == 0);
-
-        /* settled again: an idle screen with the login machinery present stays idle */
+        /* settled again: an idle screen stays idle */
         pump(0.5, &samples, &n, cap);
         f0 = s_flushes;
         pump(1.5, &samples, &n, cap);
         CHECK(s_flushes - f0 == 0);
 
         FILE *af = fopen(audit_path, "rb");
-        static char atext[65536];
+        static char atext[131072];
         size_t alen = af ? fread(atext, 1, sizeof(atext) - 1, af) : 0;
         if (af) fclose(af);
         atext[alen] = '\0';
-        CHECK(strstr(atext, "USER_CREATE user=admin role=admin") != NULL);
-        CHECK(strstr(atext, "LOGIN_FAIL user=admin failures=1") != NULL);
-        CHECK(strstr(atext, "LOGIN_FAIL user=? failures=1") != NULL);
-        CHECK(strstr(atext, "LOGIN_OK user=admin role=admin") != NULL);
-        CHECK(strstr(atext, "IDLE_LOGOUT user=admin role=admin") != NULL);
-        CHECK(strstr(atext, " LOGOUT user=admin role=admin") != NULL);
         CHECK(strstr(atext, "ALARM_ACK role=viewer action=ACK_ALL result=DENIED") != NULL);
         CHECK(strstr(atext, "ALARM_ACK role=admin action=ACK_ALL result=GRANTED") != NULL);
-        CHECK(strstr(atext, " user=admin") != NULL);                  /* acknowledgement and write lines name the user */
+        CHECK(strstr(atext, " user=admin") == NULL && strstr(atext, "LOGIN") == NULL);   /* no accounts: no names, no logins */
         {
             const char *wl = strstr(atext, " RESERVED id=");
             const char *last_res = NULL;
@@ -1086,13 +945,205 @@ int main(int argc, char **argv)
             size_t ln = (eol && (size_t)(eol - last_res) < sizeof(one)) ? (size_t)(eol - last_res) : 0;
             if (ln) memcpy(one, last_res, ln);
             one[ln] = '\0';
-            CHECK(ln > 10 && strstr(one, " user=admin old=") != NULL);               /* user, then the value it replaced */
+            CHECK(ln > 10 && strstr(one, " user=- old=") != NULL);                   /* no name, then the value it replaced */
             CHECK(strstr(one, " oldq=GOOD wall=") != NULL && strstr(one, " sync=") != NULL);
             CHECK(strstr(atext, " BOOT wall=") != NULL);                              /* the start marker */
         }
         CHECK(!hmi_runtime_storage_fault(&rt));                                       /* every record was written */
-        CHECK(strstr(atext, "pass") == NULL && strstr(atext, "nobody") == NULL); /* no credentials, no unknown names */
-        hmi_auth_deinit(&auth);
+    }
+
+
+    /* States of a write and of the data, each drawn and written to a screenshot: a write the PLC does not answer
+     * (pending), a write the PLC refuses with a Modbus exception (rejected), a write the PLC applied but did not
+     * confirm (unknown), a value outside its range, the largest numbers, the longest name and unit, and a long run of
+     * screen transitions after which the table must look exactly as before. */
+    {
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
+        fms_set_mode(srv, FMS_NORMAL, 0);
+        fms_set_holding(srv, 0, 500);
+        pump(1.2, &samples, &n, cap);
+        CHECK(hmi_ui_write_status_text()[0] == '\0' || strncmp(hmi_ui_write_status_text(), "WRITE #", 7) == 0);
+
+        /* pending: the PLC reads the request and never answers */
+        uint32_t req0 = fms_request_count(srv);
+        fms_set_mode(srv, FMS_HANG, 0);
+        hmi_ui_press_setpoint_send();
+        pump(0.12, &samples, &n, cap);   /* before the 200 ms reply timeout of this configuration */
+        printf("[ui] write while the PLC does not answer: '%s'\n", hmi_ui_write_status_text());
+        CHECK(strstr(hmi_ui_write_status_text(), "PENDING") != NULL || strstr(hmi_ui_write_status_text(), "RECORDING") != NULL ||
+              strstr(hmi_ui_write_status_text(), "SENT") != NULL || strstr(hmi_ui_write_status_text(), "UNKNOWN") != NULL);   /* the state depends on timing */
+        save_ppm((snprintf(err, sizeof(err), "%s_21_write_pending.ppm", prefix), err));
+        pump(3.0, &samples, &n, cap);
+        printf("[ui] the same write a little later: '%s'\n", hmi_ui_write_status_text());
+        CHECK(strstr(hmi_ui_write_status_text(), "UNKNOWN") != NULL || strstr(hmi_ui_write_status_text(), "EXPIRED") != NULL ||
+              strstr(hmi_ui_write_status_text(), "PENDING") != NULL);
+        save_ppm((snprintf(err, sizeof(err), "%s_22_write_no_answer.ppm", prefix), err));
+        (void)req0;
+
+        /* rejected: a Modbus exception reply */
+        fms_set_mode(srv, FMS_NORMAL, 0);
+        pump(3.0, &samples, &n, cap);
+        fms_set_mode(srv, FMS_EXCEPTION, 2);
+        hmi_ui_press_setpoint_send();
+        pump(1.5, &samples, &n, cap);
+        printf("[ui] write answered with a Modbus exception: '%s'\n", hmi_ui_write_status_text());
+        CHECK(strstr(hmi_ui_write_status_text(), "REJECTED") != NULL || strstr(hmi_ui_write_status_text(), "UNKNOWN") != NULL);
+        save_ppm((snprintf(err, sizeof(err), "%s_23_write_rejected.ppm", prefix), err));
+        fms_set_mode(srv, FMS_NORMAL, 0);
+        pump(3.0, &samples, &n, cap);
+
+        /* uncertain: the PLC applies the write and drops the connection without a reply */
+        fms_set_holding(srv, 0, 400);
+        pump(1.0, &samples, &n, cap);
+        fms_set_mode(srv, FMS_APPLY_NO_REPLY, 0);
+        hmi_ui_press_setpoint_send();
+        pump(3.0, &samples, &n, cap);
+        printf("[ui] write applied but not confirmed: '%s'\n", hmi_ui_write_status_text());
+        CHECK(strstr(hmi_ui_write_status_text(), "UNKNOWN") != NULL || strstr(hmi_ui_write_status_text(), "CONFIRMED") != NULL);
+        save_ppm((snprintf(err, sizeof(err), "%s_24_write_unknown.ppm", prefix), err));
+        fms_set_mode(srv, FMS_NORMAL, 0);
+        pump(3.0, &samples, &n, cap);
+
+        /* a value outside its range, the largest numbers, the longest name and unit */
+        {
+            uint16_t port3;
+            fake_modbus_t *srv3 = fms_start(&port3);                        /* its own fake PLC: the first one serves one client only */
+            CHECK(srv3 != NULL);
+            fms_set_holding(srv3, 20, 0xFFFFu);                              /* U32 4294967295, high word first */
+            fms_set_holding(srv3, 21, 0xFFFFu);
+            float big = 123456789.0f;
+            uint32_t bits;
+            memcpy(&bits, &big, sizeof(bits));
+            fms_set_holding(srv3, 22, (uint16_t)(bits >> 16));               /* F32 */
+            fms_set_holding(srv3, 23, (uint16_t)(bits & 0xFFFFu));
+            fms_set_holding(srv3, 24, 0x8000u);                              /* I16 -32768 */
+            fms_set_holding(srv3, 25, 1200);                                 /* 120.0 where the range is 0 to 100 */
+            char big_json[2048];
+            snprintf(big_json, sizeof(big_json),
+                "{\"version\":1,\"plc\":{\"host\":\"127.0.0.1\",\"port\":%u,\"unit\":1,\"response_timeout_ms\":200,\"connect_timeout_ms\":500},"
+                "\"tags\":["
+                "{\"name\":\"HEAT_EXCHANGER_OUTLET_T\",\"address\":20,\"type\":\"u32\",\"word_order\":\"high_first\",\"units\":\"kWh/m3\",\"min\":0,\"max\":4294967295,\"poll_ms\":100},"
+                "{\"name\":\"BIG_FLOAT\",\"address\":22,\"type\":\"f32\",\"word_order\":\"high_first\",\"units\":\"l/min\",\"min\":0,\"max\":1000000000,\"poll_ms\":100},"
+                "{\"name\":\"NEGATIVE\",\"address\":24,\"type\":\"i16\",\"units\":\"degC\",\"min\":-32768,\"max\":32767,\"poll_ms\":100},"
+                "{\"name\":\"OUT_OF_RANGE\",\"address\":25,\"type\":\"u16\",\"scale\":0.1,\"units\":\"%%\",\"min\":0,\"max\":100,\"poll_ms\":100,"
+                "\"alarm\":{\"high\":80,\"deadband\":2,\"on_ms\":200,\"off_ms\":200,\"priority\":\"high\"}}"
+                "]}", (unsigned)port3);
+            static hmi_app_cfg_t cfg3;
+            CHECK(hmi_config_parse(big_json, strlen(big_json), &cfg3, err, sizeof(err)));
+            plc_libmodbus_t *plc3 = plc_libmodbus_create(cfg3.host, cfg3.port, cfg3.unit, cfg3.response_timeout_ms);
+            hmi_plc_driver_t drv3;
+            plc_libmodbus_driver(plc3, &drv3);
+            static hmi_runtime_t rt3;
+            CHECK(hmi_runtime_start(&rt3, &cfg3, &drv3, NULL, NULL));
+            lv_obj_clean(lv_screen_active());
+            hmi_ui_init(&rt3, HMI_ROLE_OPERATOR, NULL);
+            pump(2.0, &samples, &n, cap);
+            for (size_t r = 0; r < 4; r++)
+                printf("[ui] row %zu: %s | %s | %s | %s\n", r, hmi_ui_row_name(r), hmi_ui_row_text(r, 0), hmi_ui_row_text(r, 1), hmi_ui_row_text(r, 2));
+            CHECK(strncmp(hmi_ui_row_text(0, 0), "4294967295", 10) == 0);
+            CHECK(strncmp(hmi_ui_row_text(2, 0), "-32768", 6) == 0);
+            CHECK(strcmp(hmi_ui_row_name(0), "HEAT_EXCHANGER_OUTLET_T") == 0);
+            CHECK(strstr(hmi_ui_row_text(3, 1), "UNCERTAIN") != NULL || strstr(hmi_ui_row_text(3, 1), "BAD") != NULL ||
+                  strstr(hmi_ui_row_text(3, 1), "RANGE") != NULL);
+            save_ppm((snprintf(err, sizeof(err), "%s_25_long_values_and_range.ppm", prefix), err));
+            hmi_runtime_stop(&rt3);
+            plc_libmodbus_destroy(plc3);
+            fms_stop(srv3);
+            lv_obj_clean(lv_screen_active());
+            hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
+            pump(0.3, &samples, &n, cap);
+        }
+    }
+
+    /* Responsiveness (application level, host): screen transitions and touch, with the PLC polled and the data moving
+     * the whole time. See the comment above touch_read_cb for what is and is not measured. */
+    {
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
+        settle_us();
+        const size_t ns = hmi_ui_screen_count();
+        double trans_first[8], trans[256], press_fb[256], rel_scr[256];
+        size_t nt = 0, np = 0, nr = 0;
+        int missed = 0, wrong = 0;
+
+        /* transitions by the test seam (what a tab press runs), the first round includes the lazy builds */
+        for (int round = 0; round < 25; round++) {
+            for (size_t s = 1; s <= ns; s++) {
+                size_t target = s % ns;
+                fms_set_holding(srv, 0, (round & 1) ? 910 : 700);        /* the alarm state keeps changing */
+                double t0 = now_us();
+                hmi_ui_press_tab(target);
+                double t1 = settle_us();
+                double lat = t1 - t0;
+                if (lat < 0.0) lat = 0.0;                                  /* nothing had to be drawn after the press */
+                if (hmi_ui_screen() != target) wrong++;
+                if (round == 0 && s < 8) trans_first[s - 1] = lat;
+                else if (nt < 256) trans[nt++] = lat;
+            }
+        }
+        for (size_t s = 0; s < ns && s < 8; s++)
+            printf("[perf] first visit of screen %u (lazy build included): %.1f ms\n", (unsigned)((s + 1) % ns),
+                   trans_first[s] / 1000.0);
+        print_dist("screen transition, press to last pixels", trans, nt);
+        CHECK(wrong == 0);
+
+        /* touch: press and release the ALARMS tab and the OVERVIEW tab through a pointer input device */
+        lv_indev_t *ptr = lv_indev_create();
+        lv_indev_set_type(ptr, LV_INDEV_TYPE_POINTER);
+        lv_indev_set_read_cb(ptr, touch_read_cb);
+        hmi_ui_press_tab(HMI_UI_SCREEN_OVERVIEW);
+        settle_us();
+        uint32_t seed = 12345u;
+        for (int i = 0; i < 120; i++) {
+            bool to_alarms = (hmi_ui_screen() == HMI_UI_SCREEN_OVERVIEW);
+            g_tx = to_alarms ? 300 : 100;                               /* ALARMS tab, or OVERVIEW tab */
+            g_ty = 62;
+            seed = seed * 1103515245u + 12345u;
+            fms_set_holding(srv, 0, (i & 1) ? 910 : 700);               /* alarm and polling activity */
+            double fb = inject_and_wait(true, (seed >> 16) % 4096u);    /* press */
+            settle_us();
+            seed = seed * 1103515245u + 12345u;
+            double t_rel = now_us();
+            double first = inject_and_wait(false, (seed >> 16) % 4096u); /* release */
+            double sc = settle_us() - (t_rel + 0.0);
+            (void)first;
+            if (hmi_ui_screen() != (to_alarms ? HMI_UI_SCREEN_ALARMS : HMI_UI_SCREEN_OVERVIEW)) missed++;
+            if (np < 256) { press_fb[np++] = fb; }
+            if (nr < 256) { rel_scr[nr++] = first; (void)sc; }
+        }
+        print_dist("touch press to the first pixels of the pressed button", press_fb, np);
+        print_dist("touch release to the first pixels of the new screen", rel_scr, nr);
+        printf("[perf] touches: 120 pressed and released, %d did not change the screen, %d ended on the wrong screen\n",
+               missed, wrong);
+        CHECK(missed == 0 && wrong == 0);
+        CHECK(press_fb[np - 1] < 500000.0);                           /* worst case of the sorted list: under half a second */
+        /* repeated transitions leave no mark: with static data the table looks exactly as it did before 40 rounds
+         * through every screen (the rows between the header and the setpoint panel are compared pixel by pixel) */
+        {
+            fms_set_holding(srv, 0, 700);
+            hmi_ui_press_tab(HMI_UI_SCREEN_OVERVIEW);
+            pump(1.5, &samples, &n, cap);
+            static uint16_t before[W * H];
+            memcpy(before, s_fb, sizeof(before));
+            for (int round = 0; round < 40; round++)
+                for (size_t s = 1; s <= ns; s++) {
+                    hmi_ui_press_tab(s % ns);
+                    settle_us();
+                }
+            pump(0.8, &samples, &n, cap);
+            int diff = 0;
+            for (int y = 90; y < 370; y++)
+                for (int x = 0; x < W; x++)
+                    if (before[y * W + x] != s_fb[y * W + x]) diff++;
+            printf("[perf] after 40 rounds through every screen the table differs in %d pixels\n", diff);
+            CHECK(diff == 0);
+            save_ppm((snprintf(err, sizeof(err), "%s_26_after_transitions.ppm", prefix), err));
+        }
+        g_tdown = false;
+        hmi_ui_press_tab(HMI_UI_SCREEN_OVERVIEW);
+        fms_set_holding(srv, 0, 700);
+        pump(1.0, &samples, &n, cap);
     }
 
     /* raw results */
@@ -1113,6 +1164,7 @@ int main(int argc, char **argv)
     lv_mem_monitor(&mon);
     printf("LVGL heap at end: used=%u KB, max_used=%u KB, frag=%u%%\n",
            (unsigned)((mon.total_size - mon.free_size) / 1024), (unsigned)(mon.max_used / 1024), (unsigned)mon.frag_pct);
+    CHECK(mon.max_used / 1024 <= POOL_PEAK_MAX_KB);
     printf("heap allocation calls since UI build: %u (frees %u); counted at link level, "
            "CRT-internal allocations not included\n",
            alloc_count_total() - alloc_after_init, alloc_count_free());

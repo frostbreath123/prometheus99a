@@ -58,7 +58,7 @@ bool hmi_audit_parse_journal(const char *line, size_t len, const char *const *na
 
 /* Adds " <wall stamp>" in front of the final newline of a finished line of
  * length len (the newline is required), for records formatted elsewhere such as
- * login and configuration lines. Returns the new length, or 0 and leaves the
+ * configuration lines. Returns the new length, or 0 and leaves the
  * line unchanged if it does not fit in cap or does not end in a newline. */
 size_t hmi_audit_stamp_line(char *line, size_t len, size_t cap, const hmi_wall_t *w);
 

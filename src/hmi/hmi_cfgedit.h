@@ -33,7 +33,7 @@
  * A line may appear once; any unknown key, a missing END or a byte after it makes
  * the whole request invalid.
  *
- * Limits, stated plainly: the root program cannot tell who is really logged in on
+ * Limits, stated plainly: the root program cannot tell who is really at
  * the screen. A compromised service could ask for any change on the whitelist, for
  * example to raise an alarm limit. The whitelist, the bounds below, the audit
  * record and the signed result are the protection, not a proof of identity.

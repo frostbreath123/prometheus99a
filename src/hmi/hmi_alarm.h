@@ -76,7 +76,7 @@ typedef enum {
 typedef struct {
     uint64_t t_ms;                       /* hmi_now_ms() of the attempt (monotonic, since boot) */
     hmi_role_t role;                     /* the role the caller presented */
-    char actor[HMI_ACTOR_LEN];           /* logged-in user name, or "-" (see hmi_actor_copy) */
+    char actor[HMI_ACTOR_LEN];           /* actor name, or "-" (no accounts: always "-"; see hmi_actor_copy) */
     bool all;                            /* ACK ALL (true) or a single point */
     hmi_ack_result_t result;             /* HMI_ACK_OK (granted) or HMI_ACK_DENIED */
     size_t n_points;
@@ -195,7 +195,7 @@ uint32_t hmi_alarm_last_ack(hmi_alarm_t *a, hmi_ack_result_t *result);
 hmi_ack_result_t hmi_alarm_ack(hmi_alarm_t *a, size_t point, uint64_t now_ms, hmi_role_t role);
 hmi_ack_result_t hmi_alarm_ack_all(hmi_alarm_t *a, uint64_t now_ms, hmi_role_t role);
 
-/* The same with the name of the logged-in user, which goes into the audit
+/* The same with an actor name (the product passes none), which goes into the audit
  * record. The calls above record "-". The UI always uses these. */
 hmi_ack_result_t hmi_alarm_ack_as(hmi_alarm_t *a, size_t point, uint64_t now_ms, hmi_role_t role, const char *actor);
 hmi_ack_result_t hmi_alarm_ack_all_as(hmi_alarm_t *a, uint64_t now_ms, hmi_role_t role, const char *actor);

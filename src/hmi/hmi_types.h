@@ -9,7 +9,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/* The lite profile (Makefile.linux, LITE=1) halves the tag table; see docs/OPTIMIZATION_ROADMAP.md, phase 5. */
+#ifdef P99_LITE
+#define HMI_MAX_TAGS        32
+#else
 #define HMI_MAX_TAGS        64
+#endif
 #define HMI_MAX_GROUPS      32
 #define HMI_NAME_LEN        24
 #define HMI_UNIT_LEN        8
@@ -86,12 +91,11 @@ typedef enum {
     HMI_PRI_CRITICAL
 } hmi_priority_t;
 
-/* Who performed a privileged action, for the audit trail: the name of a logged-in
- * account (hmi_auth.h). Only a valid account name (3 to 24 characters from
- * a-z 0-9 _ . -) is kept; anything else, including NULL and a test build's
- * unauthenticated role, becomes "-". An audit line therefore never contains a
- * space, a newline or an '=' supplied by a caller. The rule is the same as
- * hmi_user_name_valid() and is checked against it in the tests. */
+/* Who performed a privileged action, for the audit trail. The product has no accounts, so the
+ * HMI passes NULL and the audit line shows "-"; the field stays so that a later authentication
+ * can fill it. Only a valid name (3 to 24 characters from a-z 0-9 _ . -) is kept; anything
+ * else, including NULL, becomes "-". An audit line therefore never contains a space, a newline
+ * or an '=' supplied by a caller. */
 #define HMI_ACTOR_LEN 25
 static inline void hmi_actor_copy(char dst[HMI_ACTOR_LEN], const char *src)
 {

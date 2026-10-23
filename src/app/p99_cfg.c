@@ -23,7 +23,7 @@
  *      removes the request (always, also after a refusal), and optionally restarts the
  *      service with "systemctl restart UNIT".
  *
- * Stated limit: this program cannot tell who is really logged in on the screen. A
+ * Stated limit: this program cannot tell who is really at the screen or which role the service runs with. A
  * compromised service could ask for any change on the whitelist. The whitelist, the
  * bounds, the audit record and the signed result are the protection.
  * The configuration and its signature are replaced by two renames; a restart of the
@@ -37,7 +37,7 @@
 #include "../hmi/hmi_cfgedit.h"
 #include "../hmi/hmi_auditfmt.h"
 #include "../hmi/hmi_platform.h"
-#include "../hmi/hmi_kdf.h"
+#include "../hmi/hmi_util.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>

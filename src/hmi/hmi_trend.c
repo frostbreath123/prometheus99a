@@ -1,4 +1,5 @@
 #include "hmi_trend.h"
+#include <stddef.h>
 #include <string.h>
 
 /* A bucket that holds no data: lo > hi. */
@@ -12,7 +13,14 @@ static bool finite_value(double v)
 
 bool hmi_trend_init(hmi_trend_t *t, const hmi_tag_cfg_t *tags, size_t n_tags, uint32_t bucket_ms, uint64_t now_ms)
 {
-    memset(t, 0, sizeof(*t));
+    /* Only the series in use are cleared. Each holds a ring of HMI_TREND_POINTS buckets that is read only up to its
+     * `count`, so clearing the unused ones would just make their pages resident (about 4 KB per series). */
+    size_t used = 0;
+    for (size_t i = 0; tags && i < n_tags; i++)
+        if (tags[i].trend) used++;
+    if (used > HMI_TREND_MAX_SERIES) used = HMI_TREND_MAX_SERIES;
+    memset(t->s, 0, used * sizeof(t->s[0]));
+    memset(&t->n_series, 0, sizeof(*t) - offsetof(hmi_trend_t, n_series));
     if (bucket_ms < HMI_TREND_BUCKET_MIN_MS || bucket_ms > HMI_TREND_BUCKET_MAX_MS) return false;
     if (!tags && n_tags) return false;
     for (size_t i = 0; i < n_tags; i++) {

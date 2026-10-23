@@ -1,4 +1,5 @@
 #include "hmi_store.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -6,9 +7,19 @@ typedef char hmi_store_results_check[(HMI_STORE_RESULTS >= 2 * HMI_STORE_QUEUE_L
 
 static const hmi_store_io_t s_platform_io = { hmi_fs_append_sync, hmi_fs_atomic_write, hmi_fs_size, hmi_fs_rename };
 
+void hmi_store_zero(hmi_store_t *s)
+{
+    /* The queue slots are written in full when a request is queued (every field and the first `len` bytes of data)
+     * and read only while queued, so they are not cleared: clearing 64 slots of about 770 bytes would make 49 KB of
+     * RAM resident for nothing. Everything else is cleared. */
+    size_t from = offsetof(hmi_store_t, q), to = from + sizeof(s->q);
+    memset(s, 0, from);
+    memset((char *)s + to, 0, sizeof(*s) - to);
+}
+
 bool hmi_store_init(hmi_store_t *s, const hmi_store_cfg_t *cfg)
 {
-    memset(s, 0, sizeof(*s));
+    hmi_store_zero(s);
     if (!cfg) return false;
     unsigned used = 0;
     for (unsigned i = 0; i < HMI_STORE_TARGETS; i++) {

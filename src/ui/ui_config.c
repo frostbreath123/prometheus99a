@@ -577,4 +577,4 @@ static void config_update(void)
     }
 }
 
-const ui_screen_ops_t ui_sub_config = { "CONFIG", config_reset, config_build, config_update };
+const ui_screen_ops_t ui_sub_config = { "CONFIG", config_reset, config_build, config_update, true };

@@ -12,15 +12,13 @@
  *    writes the audit line and the result, then restarts the runtime with the new configuration;
  *  - trend data is in RAM, so a restart after a configuration change starts the trend again.
  *
- * Keys: F1 help and demo accounts, F2 cut or restore the PLC link, Esc closes.
+ * Keys: F1 help, F2 cut or restore the PLC link, F3 change the claimed role, Esc closes.
  */
 #include "lvgl.h"
 #include "../src/ui/hmi_ui.h"
 #include "../src/hmi/plc_libmodbus.h"
 #include "../src/hmi/hmi_auditfmt.h"
 #include "../src/hmi/hmi_cfgedit.h"
-#include "../src/hmi/hmi_kdf.h"
-#include "../src/hmi/hmi_users.h"
 #include "../tests/hmi/fake_modbus_server.h"
 #include <windows.h>
 #include <direct.h>
@@ -31,16 +29,11 @@
 #define W 800
 #define H 480
 #define DATA_DIR "demo_data"
-#define USERS_PATH DATA_DIR "/users.bin"
 #define AUDIT_PATH DATA_DIR "/audit.log"
 #define SPOOL_DIR DATA_DIR "/spool"
 
-static const struct { const char *name; hmi_role_t role; const char *pw; } DEMO_USERS[] = {
-    { "admin", HMI_ROLE_ADMIN, "demo-admin-1" },
-    { "engineer", HMI_ROLE_ENGINEER, "demo-engineer-1" },
-    { "operator", HMI_ROLE_OPERATOR, "demo-operator-1" },
-};
-
+/* The demo has no login either: F3 cycles the claimed role (viewer, operator, engineer, admin) and rebuilds the screens. */
+static hmi_role_t g_role = HMI_ROLE_OPERATOR;
 /* ------------------------------------------------------------------ window and display */
 static HWND g_hwnd;
 static HDC g_memdc;
@@ -78,23 +71,31 @@ static void pointer_cb(lv_indev_t *i, lv_indev_data_t *data)
 
 static uint32_t tick_cb(void) { return (uint32_t)hmi_now_ms(); }
 
+static void build_ui(void);
+
 static void show_help(void)
 {
     char t[1024];
     snprintf(t, sizeof(t),
              "Prometheus99 HMI demo (a demonstration build, a fake PLC)\n\n"
-             "Click the screen like a touchscreen. Press LOGIN to sign in:\n\n"
-             "   %s  /  %s   (administrator: accounts)\n"
-             "   %s  /  %s   (engineer: CONFIG screen)\n"
-             "   %s  /  %s   (operator: acknowledge, setpoint)\n\n"
+             "Click the screen like a touchscreen. The product has no login: the role is chosen when the program\n"
+             "is started, and in this demo F3 cycles it (viewer, operator, engineer, admin).\n\n"
+             "   viewer: look only      operator: acknowledge, setpoint\n"
+             "   engineer or admin: SETTINGS > CONFIG\n\n"
              "Try: TRENDS, the alarm list, a setpoint above 80 on TANK_LEVEL, SETTINGS > CONFIG.\n\n"
-             "F2 cuts or restores the PLC link.  Esc closes.",
-             DEMO_USERS[0].name, DEMO_USERS[0].pw, DEMO_USERS[1].name, DEMO_USERS[1].pw, DEMO_USERS[2].name,
-             DEMO_USERS[2].pw);
+             "F2 cuts or restores the PLC link.  F3 changes the role.  Esc closes.\n"
+             "Current role: %s", hmi_role_name(g_role));
     MessageBoxA(g_hwnd, t, "Prometheus99 demo", MB_OK | MB_ICONINFORMATION);
 }
 
+static void cycle_role(void)
+{
+    g_role = (hmi_role_t)(((int)g_role + 1) % 4);
+    build_ui();
+}
+
 static void toggle_link(void);
+static void cycle_role(void);
 
 static LRESULT CALLBACK wnd_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
 {
@@ -105,6 +106,7 @@ static LRESULT CALLBACK wnd_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         case WM_KEYDOWN:
             if (wp == VK_F1) show_help();
             else if (wp == VK_F2) toggle_link();
+            else if (wp == VK_F3) cycle_role();
             else if (wp == VK_ESCAPE) g_running = false;
             return 0;
         case WM_PAINT: {
@@ -162,7 +164,6 @@ static uint16_t g_port;
 static bool g_link_cut;
 static hmi_app_cfg_t g_cfg;
 static hmi_runtime_t g_rt;
-static hmi_auth_t g_auth;
 static plc_libmodbus_t *g_drv;
 static uint32_t g_serial = 1;
 
@@ -189,17 +190,6 @@ static void plant_step(uint64_t now)
     fms_set_holding(g_plc, 3, (uint16_t)lround(flow));
 }
 
-static bool runtime_login_audit(void *user, const hmi_auth_audit_rec_t *rec)
-{
-    char line[256];
-    size_t n = hmi_auth_format_audit(rec, line, sizeof(line));
-    if (n == 0) return false;
-    hmi_wall_t w;
-    hmi_wall_now(&w);
-    n = hmi_audit_stamp_line(line, n, sizeof(line), &w);
-    return n != 0 && hmi_runtime_audit_append((hmi_runtime_t *)user, line, n);
-}
-
 static bool start_runtime(void)
 {
     g_drv = plc_libmodbus_create(g_cfg.host, g_cfg.port, g_cfg.unit, g_cfg.response_timeout_ms);
@@ -207,14 +197,13 @@ static bool start_runtime(void)
     hmi_plc_driver_t d;
     plc_libmodbus_driver(g_drv, &d);
     if (!hmi_runtime_start(&g_rt, &g_cfg, &d, AUDIT_PATH, NULL)) return false;
-    hmi_auth_set_audit(&g_auth, runtime_login_audit, &g_rt);
     return true;
 }
 
 static void build_ui(void)
 {
     lv_obj_clean(lv_screen_active());
-    hmi_ui_init_auth(&g_rt, &g_auth, NULL);
+    hmi_ui_init(&g_rt, g_role, NULL);
     char info[96];
     snprintf(info, sizeof(info), "Configuration: demo, serial %u (not signed)", (unsigned)g_serial);
     hmi_ui_set_config_info(info);
@@ -263,7 +252,7 @@ static void demo_helper_step(uint64_t now)
     hmi_fs_atomic_write(res_path, res, strlen(res));
     remove(req_path);
 
-    /* the restart: stop, use the new configuration, start, rebuild the screens; the login stays */
+    /* the restart: stop, use the new configuration, start, rebuild the screens; the role stays */
     hmi_runtime_stop(&g_rt);
     if (g_drv) plc_libmodbus_destroy(g_drv);
     g_drv = NULL;
@@ -278,21 +267,6 @@ static void demo_helper_step(uint64_t now)
 }
 
 /* ------------------------------------------------------------------ start up */
-static bool seed_users(void)
-{
-    hmi_users_t s;
-    char err[120];
-    if (hmi_users_load(USERS_PATH, &s, err, sizeof(err)) == HMI_USERS_LOAD_OK && s.n > 0) return true;
-    memset(&s, 0, sizeof(s));
-    hmi_kdf_params_t kp = hmi_kdf_default_params();
-    for (size_t i = 0; i < sizeof(DEMO_USERS) / sizeof(DEMO_USERS[0]); i++) {
-        hmi_user_t u;
-        if (hmi_user_make(&u, DEMO_USERS[i].name, DEMO_USERS[i].role, DEMO_USERS[i].pw, &kp, NULL) != HMI_USERS_OK) return false;
-        if (hmi_users_add(&s, &u) != HMI_USERS_OK) return false;
-    }
-    return hmi_users_save(USERS_PATH, &s);
-}
-
 static void fail(const char *what)
 {
     MessageBoxA(NULL, what, "Prometheus99 demo", MB_OK | MB_ICONERROR);
@@ -302,6 +276,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 {
     (void)prev; (void)show;
     bool no_help = cmd && strstr(cmd, "--no-help") != NULL;
+    if (cmd && strstr(cmd, "--role viewer")) g_role = HMI_ROLE_VIEWER;
+    else if (cmd && strstr(cmd, "--role engineer")) g_role = HMI_ROLE_ENGINEER;
+    else if (cmd && strstr(cmd, "--role admin")) g_role = HMI_ROLE_ADMIN;
     _mkdir(DATA_DIR);
     _mkdir(SPOOL_DIR);
     remove(SPOOL_DIR "/request");
@@ -331,13 +308,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
         "{\"name\":\"FLOW\",\"trend\":true,\"address\":3,\"type\":\"u16\",\"units\":\"l/min\",\"min\":0,\"max\":5000,\"poll_ms\":300}"
         "]}", (unsigned)g_port);
     if (!hmi_config_parse(json, strlen(json), &g_cfg, err, sizeof(err))) { fail(err); return 1; }
-    if (!seed_users()) { fail("The demo accounts could not be created."); return 1; }
-
-    hmi_auth_cfg_t ac;
-    ac.users_path = USERS_PATH;
-    ac.idle_ms = 600000u;           /* ten minutes, so a talk is not interrupted */
-    ac.kdf = NULL;
-    if (!hmi_auth_init(&g_auth, &ac, hmi_now_ms())) { fail("The account store could not be opened."); return 1; }
 
     if (!make_window(inst)) { fail("The window could not be created."); return 1; }
     lv_init();
@@ -369,7 +339,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 
     hmi_runtime_stop(&g_rt);
     if (g_drv) plc_libmodbus_destroy(g_drv);
-    hmi_auth_deinit(&g_auth);
     fms_stop(g_plc);
     return 0;
 }

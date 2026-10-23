@@ -25,6 +25,8 @@ static uint32_t c_store;
 static char t_wr[UI_TXT * 2], t_sp[UI_TXT], t_journal[480];
 static uint32_t c_wr;
 static int s_sp_tag = -1;
+static lv_obj_t *s_sp_btn[3];      /* -, + and SEND: dimmed for a role that may not write the tag (the core refuses anyway) */
+static int s_sp_may = -1;
 static double s_sp_value;
 static bool s_sp_inited;
 static uint32_t s_last_write_id;
@@ -45,6 +47,8 @@ static void overview_reset(void)
     c_wr = 0;
     s_wr_status = s_sp_label = s_journal = s_store_fault = NULL;
     s_sp_tag = -1;
+    memset(s_sp_btn, 0, sizeof(s_sp_btn));
+    s_sp_may = -1;
     s_sp_inited = false;
     s_last_write_id = 0;
     s_last_gv = 0xFFFFFFFFu;
@@ -84,6 +88,9 @@ const char *ui_overview_row_text(size_t row, int column)
     const row_t *r = &s_rows[row];
     return column == 0 ? r->t_value : column == 1 ? r->t_quality : r->t_alarm;
 }
+
+const char *ui_overview_write_text(void) { return t_wr; }
+bool ui_overview_send_enabled(void) { return s_sp_btn[2] && !lv_obj_has_state(s_sp_btn[2], LV_STATE_DISABLED); }
 
 const char *ui_overview_row_name(size_t row)
 {
@@ -159,9 +166,9 @@ static void overview_build(lv_obj_t *page)
 
     /* column headers */
     ui_mk_label(page, 12, 4, "TAG", C_MUTED);
-    ui_mk_label(page, 220, 4, "VALUE", C_MUTED);
-    ui_mk_label(page, 420, 4, "QUALITY", C_MUTED);
-    ui_mk_label(page, 580, 4, "ALARM", C_MUTED);
+    ui_mk_label(page, 244, 4, "VALUE", C_MUTED);
+    ui_mk_label(page, 444, 4, "QUALITY", C_MUTED);
+    ui_mk_label(page, 600, 4, "ALARM", C_MUTED);
     if (s_pages > 1) {
         s_pg_prev = ui_mk_button(page, 676, 0, 44, 26, "<", page_cb, (void *)(intptr_t)-1);
         s_pg_lbl = ui_mk_label(page, 726, 4, "", C_TEXT);
@@ -171,10 +178,19 @@ static void overview_build(lv_obj_t *page)
     for (size_t i = 0; i < ROWS_PER_PAGE; i++) {
         int y = ROW_Y0 + (int)i * ROW_H;
         row_t *r = &s_rows[i];
+        /* The columns have fixed widths: a name or a value that is too long ends in dots instead of running into the next column. */
         r->name = ui_mk_label(page, 12, y, "", C_TEXT);
-        r->value = ui_mk_label(page, 220, y, "---", C_MUTED);
-        r->quality = ui_mk_label(page, 420, y, "NO DATA", C_MUTED);
-        r->alarm = ui_mk_label(page, 580, y, "", C_MUTED);
+        lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(r->name, 226);
+        r->value = ui_mk_label(page, 244, y, "---", C_MUTED);
+        lv_label_set_long_mode(r->value, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(r->value, 192);
+        r->quality = ui_mk_label(page, 444, y, "NO DATA", C_MUTED);
+        lv_label_set_long_mode(r->quality, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(r->quality, 150);
+        r->alarm = ui_mk_label(page, 600, y, "", C_MUTED);
+        lv_label_set_long_mode(r->alarm, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(r->alarm, 196);
     }
     for (size_t i = 0; i < n; i++) {
         if (hmi_tagdb_cfg(&rt->db, i)->write_allowed) {
@@ -196,22 +212,29 @@ static void overview_build(lv_obj_t *page)
     lv_obj_remove_flag(pnl, LV_OBJ_FLAG_SCROLLABLE);
     if (s_sp_tag >= 0 && rt->writes_effective) {
         s_sp_label = ui_mk_label(pnl, 8, 6, "SETPOINT", C_TEXT);
-        ui_mk_button(pnl, 8, 32, 60, 40, "-", sp_step_cb, (void *)(intptr_t)-1);
-        ui_mk_button(pnl, 76, 32, 60, 40, "+", sp_step_cb, (void *)(intptr_t)1);
-        ui_mk_button(pnl, 144, 32, 110, 40, "SEND", sp_send_cb, NULL);
+        s_sp_btn[0] = ui_mk_button(pnl, 8, 32, 60, 40, "-", sp_step_cb, (void *)(intptr_t)-1);
+        s_sp_btn[1] = ui_mk_button(pnl, 76, 32, 60, 40, "+", sp_step_cb, (void *)(intptr_t)1);
+        s_sp_btn[2] = ui_mk_button(pnl, 144, 32, 110, 40, "SEND", sp_send_cb, NULL);
         s_wr_status = ui_mk_label(pnl, 270, 44, "", C_MUTED);
+        lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);   /* two lines at most, clear of the journal on the right */
+        lv_obj_set_width(s_wr_status, 284);
     } else {
         s_sp_tag = -1;
         s_sp_label = ui_mk_label(pnl, 8, 6, "WRITES DISABLED", C_MUTED);
         s_wr_status = ui_mk_label(pnl, 8, 40, "", C_MUTED);
+        lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(s_wr_status, 540);
     }
     s_journal = ui_mk_label(pnl, 560, 4, "no alarm events", C_MUTED);
-    ui_ack_bind(ui_mk_label(pnl, 270, 6, "", C_MUTED));
+    lv_obj_t *ack_lbl = ui_mk_label(pnl, 270, 6, "", C_MUTED);
+    lv_label_set_long_mode(ack_lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(ack_lbl, 284);
+    ui_ack_bind(ack_lbl);
     s_store_fault = ui_mk_label(pnl, 270, 78, "", C_BAD);
-    if (!ui_auth) { /* test builds: the claimed role must never look like a login */
+    if (ui_role != HMI_ROLE_VIEWER) { /* a claimed role must never look like a login */
         char tb[UI_TXT * 2];
-        hmi_view_test_role_banner(ui_fixed_role, tb, sizeof(tb));
-        ui_mk_label(pnl, 8, 80, tb, C_BAD);
+        hmi_view_claimed_role_text(ui_role, tb, sizeof(tb));
+        ui_mk_label(pnl, 8, 80, tb, C_WARN);
     }
 }
 
@@ -269,6 +292,16 @@ static void overview_update(void)
         }
         hmi_view_setpoint_text(c, s_sp_value, buf, sizeof(buf));
         ui_set_text(s_sp_label, t_sp, sizeof(t_sp), buf);
+        /* convenience only: the core refuses a write from a role below the tag's minimum whatever the buttons show */
+        int may = hmi_authz_allows(ui_current_role(hmi_now_ms()), HMI_ACT_WRITE_TAG, c->write_role) ? 1 : 0;
+        if (may != s_sp_may) {
+            s_sp_may = may;
+            for (int b = 0; b < 3; b++) {
+                if (!s_sp_btn[b]) continue;
+                if (may) lv_obj_remove_state(s_sp_btn[b], LV_STATE_DISABLED);
+                else lv_obj_add_state(s_sp_btn[b], LV_STATE_DISABLED);
+            }
+        }
     }
     if (s_store_fault) {
         if (hmi_runtime_storage_fault(ui_rt)) hmi_view_storage_fault_text(buf, sizeof(buf));
@@ -297,4 +330,4 @@ static void overview_update(void)
     ui_set_text(s_journal, t_journal, sizeof(t_journal), jb);
 }
 
-const ui_screen_ops_t ui_screen_overview = { "OVERVIEW", overview_reset, overview_build, overview_update };
+const ui_screen_ops_t ui_screen_overview = { "OVERVIEW", overview_reset, overview_build, overview_update, false };
