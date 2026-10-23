@@ -281,112 +281,30 @@ static void test_journal(void)
     CHECK(strlen(small) < sizeof(small));
 }
 
-static void test_login_wording(void)
+static void test_role_wording(void)
 {
-    SECTION("login and session wording");
+    SECTION("claimed role wording");
     char b[160];
-    hmi_view_role_label(HMI_ROLE_VIEWER, "", b, sizeof(b));
+    hmi_view_role_label(HMI_ROLE_VIEWER, b, sizeof(b));
     CHECK_STR(b, "VIEWER");
-    hmi_view_role_label(HMI_ROLE_VIEWER, "someone", b, sizeof(b)); /* a viewer has no user */
-    CHECK_STR(b, "VIEWER");
-    hmi_view_role_label(HMI_ROLE_OPERATOR, "op1", b, sizeof(b));
-    CHECK_STR(b, "OPERATOR  op1");
-    hmi_view_role_label(HMI_ROLE_ADMIN, "admin", b, sizeof(b));
-    CHECK_STR(b, "ADMIN  admin");
-    hmi_view_role_label(HMI_ROLE_ENGINEER, NULL, b, sizeof(b));
+    hmi_view_role_label(HMI_ROLE_OPERATOR, b, sizeof(b));
+    CHECK_STR(b, "OPERATOR");
+    hmi_view_role_label(HMI_ROLE_ENGINEER, b, sizeof(b));
     CHECK_STR(b, "ENGINEER");
-    char small[12];
-    hmi_view_role_label(HMI_ROLE_ENGINEER, "abcdefghijklmnop", small, sizeof(small));
-    CHECK(strlen(small) == 11);                                  /* cut and terminated */
-    hmi_view_role_label((hmi_role_t)9, "x", b, sizeof(b));
-    CHECK_STR(b, "INVALID  x");
-    CHECK(hmi_view_role_tone(HMI_ROLE_VIEWER) == HMI_TONE_MUTED);
-    CHECK(hmi_view_role_tone(HMI_ROLE_OPERATOR) == HMI_TONE_GOOD);
+    hmi_view_role_label(HMI_ROLE_ADMIN, b, sizeof(b));
+    CHECK_STR(b, "ADMIN");
+    char small[6];
+    hmi_view_role_label(HMI_ROLE_ENGINEER, small, sizeof(small));
+    CHECK(strlen(small) == 5);                                   /* cut and terminated */
+    hmi_view_role_label((hmi_role_t)9, b, sizeof(b));
+    CHECK_STR(b, "INVALID");
 
-    hmi_view_wait_text(0, b, sizeof(b));
-    CHECK_STR(b, "0:00");
-    hmi_view_wait_text(1, b, sizeof(b));
-    CHECK_STR(b, "0:01");                                        /* rounded up, never 0:00 while waiting */
-    hmi_view_wait_text(1000, b, sizeof(b));
-    CHECK_STR(b, "0:01");
-    hmi_view_wait_text(1001, b, sizeof(b));
-    CHECK_STR(b, "0:02");
-    hmi_view_wait_text(30000, b, sizeof(b));
-    CHECK_STR(b, "0:30");
-    hmi_view_wait_text(61000, b, sizeof(b));
-    CHECK_STR(b, "1:01");
-    hmi_view_wait_text(900000, b, sizeof(b));
-    CHECK_STR(b, "15:00");
-
-    hmi_view_login_text(HMI_LOGIN_OK, 0, "op1", b, sizeof(b));
-    CHECK_STR(b, "Logged in as op1");
-    hmi_view_login_text(HMI_LOGIN_BAD, 1000, NULL, b, sizeof(b));
-    CHECK_STR(b, "Wrong user name or password");
-    hmi_view_login_text(HMI_LOGIN_BAD, 30000, NULL, b, sizeof(b));
-    CHECK_STR(b, "Wrong user name or password. Locked, try again in 0:30");
-    hmi_view_login_text(HMI_LOGIN_LOCKED, 29001, NULL, b, sizeof(b));
-    CHECK_STR(b, "Too many failed attempts. Try again in 0:30");
-    hmi_view_login_text(HMI_LOGIN_WAIT, 400, NULL, b, sizeof(b));
-    CHECK_STR(b, "Please wait 0:01 before trying again");
-    hmi_view_login_text(HMI_LOGIN_PENDING, 0, NULL, b, sizeof(b));
-    CHECK_STR(b, "Checking, please wait");
-    hmi_view_login_text(HMI_LOGIN_BUSY, 0, NULL, b, sizeof(b));
-    CHECK_STR(b, "Checking, please wait");
-    hmi_view_login_text(HMI_LOGIN_NO_STORE, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "Create the administrator") != NULL);
-    hmi_view_login_text(HMI_LOGIN_STORE_INVALID, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "damaged") && strstr(b, "disabled"));
-    hmi_view_login_text(HMI_LOGIN_SESSION_ACTIVE, 0, NULL, b, sizeof(b));
-    CHECK_STR(b, "Already logged in");
-    hmi_view_login_text(HMI_LOGIN_AUDIT_FAILED, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "audit log") != NULL);
-    hmi_view_login_text(HMI_LOGIN_INPUT, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "too long") != NULL);
-    hmi_view_login_text(HMI_LOGIN_ERROR, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "Internal error") != NULL);
-    hmi_view_login_text((hmi_login_result_t)99, 0, NULL, b, sizeof(b));
-    CHECK(strstr(b, "unknown") != NULL);
-    for (int r = 0; r <= HMI_LOGIN_ERROR; r++) {                 /* every outcome has some wording */
-        hmi_view_login_text((hmi_login_result_t)r, 5000, "u", b, sizeof(b));
-        CHECK(b[0] != '\0');
-    }
-    hmi_view_login_text(HMI_LOGIN_BAD, 30000, NULL, small, sizeof(small)); /* truncation is safe */
-    CHECK(strlen(small) < sizeof(small));
-
-    CHECK(hmi_view_login_tone(HMI_LOGIN_OK) == HMI_TONE_GOOD);
-    CHECK(hmi_view_login_tone(HMI_LOGIN_BAD) == HMI_TONE_BAD);
-    CHECK(hmi_view_login_tone(HMI_LOGIN_LOCKED) == HMI_TONE_WARN);
-    CHECK(hmi_view_login_tone(HMI_LOGIN_WAIT) == HMI_TONE_WARN);
-    CHECK(hmi_view_login_tone(HMI_LOGIN_PENDING) == HMI_TONE_TEXT);
-    CHECK(hmi_view_login_tone(HMI_LOGIN_AUDIT_FAILED) == HMI_TONE_BAD);
-
-    hmi_view_setup_text(HMI_SETUP_OK, NULL, b, sizeof(b));
-    CHECK(strstr(b, "Administrator created") != NULL);
-    hmi_view_setup_text(HMI_SETUP_PASSWORD, "password is too short (8 characters at least)", b, sizeof(b));
-    CHECK_STR(b, "password is too short (8 characters at least)");
-    hmi_view_setup_text(HMI_SETUP_PASSWORD, "", b, sizeof(b));
-    CHECK_STR(b, "Password rejected");
-    hmi_view_setup_text(HMI_SETUP_NAME, NULL, b, sizeof(b));
-    CHECK(strstr(b, "3 to 24") != NULL);
-    hmi_view_setup_text(HMI_SETUP_NOT_FIRST_BOOT, NULL, b, sizeof(b));
-    CHECK(strstr(b, "already exists") != NULL);
-    hmi_view_setup_text(HMI_SETUP_AUDIT_FAILED, NULL, b, sizeof(b));
-    CHECK(strstr(b, "audit log") != NULL);
-    hmi_view_setup_text(HMI_SETUP_SAVE_FAILED, NULL, b, sizeof(b));
-    CHECK(strstr(b, "cannot be saved") != NULL);
-    for (int r = 0; r <= HMI_SETUP_ERROR; r++) {
-        hmi_view_setup_text((hmi_setup_result_t)r, "x", b, sizeof(b));
-        CHECK(b[0] != '\0');
-    }
-    hmi_view_setup_text((hmi_setup_result_t)99, NULL, b, sizeof(b));
-    CHECK(strstr(b, "unknown") != NULL);
-    CHECK(hmi_view_setup_tone(HMI_SETUP_OK) == HMI_TONE_GOOD);
-    CHECK(hmi_view_setup_tone(HMI_SETUP_PENDING) == HMI_TONE_TEXT);
-    CHECK(hmi_view_setup_tone(HMI_SETUP_NAME) == HMI_TONE_BAD);
-    CHECK(strstr(hmi_view_setup_mismatch_text(), "do not match") != NULL);
-
-    hmi_view_test_role_banner(HMI_ROLE_OPERATOR, b, sizeof(b));
-    CHECK_STR(b, "TEST ROLE operator - NOT AUTHENTICATED");
+    hmi_view_claimed_role_text(HMI_ROLE_VIEWER, b, sizeof(b));
+    CHECK_STR(b, "Role: VIEWER (read only)");
+    hmi_view_claimed_role_text(HMI_ROLE_OPERATOR, b, sizeof(b));
+    CHECK(strstr(b, "operator") != NULL && strstr(b, "NOT authenticated") != NULL);
+    hmi_view_claimed_role_text(HMI_ROLE_ADMIN, small, sizeof(small));
+    CHECK(strlen(small) == 5);
 }
 
 static void test_priority_wording(void)
@@ -463,7 +381,7 @@ static void test_config_wording(void)
         CHECK((hmi_view_cfgreq_tone((hmi_cfgreq_result_t)r) == HMI_TONE_GOOD) == (r == (int)HMI_CFGREQ_OK));   /* a failure is never good */
     }
     hmi_view_cfgreq_text((hmi_cfgreq_result_t)99, b, sizeof(b)); CHECK_STR(b, "Request: unknown result");
-    hmi_view_cfgreq_text(HMI_CFGREQ_DENIED, b, sizeof(b)); CHECK_STR(b, "Not allowed: log in as an engineer or administrator");
+    hmi_view_cfgreq_text(HMI_CFGREQ_DENIED, b, sizeof(b)); CHECK(strstr(b, "this role cannot change settings") != NULL);
     CHECK(hmi_view_cfgreq_tone(HMI_CFGREQ_BUSY) == HMI_TONE_WARN && hmi_view_cfgreq_tone(HMI_CFGREQ_AUDIT_FAILED) == HMI_TONE_BAD);
     hmi_view_cfgreq_text(HMI_CFGREQ_WRITE_FAILED, b, 10); CHECK(strlen(b) == 9);                       /* cut, never overrun */
 
@@ -495,37 +413,6 @@ static void test_settings_wording(void)
 {
     printf("view: settings wording\n");
     char b[96];
-    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Account added");
-    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_PASSWORD, NULL, b, sizeof(b)); CHECK_STR(b, "Password changed");
-    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_ROLE, NULL, b, sizeof(b)); CHECK_STR(b, "Role changed");
-    hmi_view_uadm_text(HMI_UADM_OK, HMI_VIEW_UA_REMOVE, NULL, b, sizeof(b)); CHECK_STR(b, "Account removed");
-    hmi_view_uadm_text(HMI_UADM_OK, (hmi_view_user_action_t)9, NULL, b, sizeof(b)); CHECK_STR(b, "Done");
-    hmi_view_uadm_text(HMI_UADM_PASSWORD, HMI_VIEW_UA_ADD, "Password too short", b, sizeof(b)); CHECK_STR(b, "Password too short");
-    hmi_view_uadm_text(HMI_UADM_PASSWORD, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Password rejected");
-    hmi_view_uadm_text(HMI_UADM_SELF, HMI_VIEW_UA_REMOVE, NULL, b, sizeof(b)); CHECK_STR(b, "Not allowed on your own account");
-    hmi_view_uadm_text((hmi_uadm_result_t)99, HMI_VIEW_UA_ADD, NULL, b, sizeof(b)); CHECK_STR(b, "Account change: unknown result");
-    /* every result has wording, and a tone that does not call a failure good */
-    for (int r = 0; r <= (int)HMI_UADM_ERROR; r++) {
-        hmi_view_uadm_text((hmi_uadm_result_t)r, HMI_VIEW_UA_ADD, "x", b, sizeof(b));
-        CHECK(b[0] != '\0' && strstr(b, "unknown") == NULL);
-        CHECK((hmi_view_uadm_tone((hmi_uadm_result_t)r) == HMI_TONE_GOOD) == (r == (int)HMI_UADM_OK));
-    }
-    CHECK(hmi_view_uadm_tone(HMI_UADM_PENDING) == HMI_TONE_TEXT);
-    CHECK(hmi_view_uadm_tone(HMI_UADM_AUDIT_FAILED) == HMI_TONE_BAD && hmi_view_uadm_tone(HMI_UADM_DENIED) == HMI_TONE_BAD);
-    CHECK(hmi_view_uadm_tone(HMI_UADM_EXISTS) == HMI_TONE_WARN);
-    hmi_view_uadm_text(HMI_UADM_FULL, HMI_VIEW_UA_ADD, NULL, b, 12);                    /* cut, never overrun */
-    CHECK(strlen(b) == 11);
-
-    CHECK_STR(hmi_view_role_caps(HMI_ROLE_OPERATOR), "OPERATOR");
-    CHECK_STR(hmi_view_role_caps(HMI_ROLE_ENGINEER), "ENGINEER");
-    CHECK_STR(hmi_view_role_caps(HMI_ROLE_ADMIN), "ADMIN");
-    CHECK_STR(hmi_view_role_caps(HMI_ROLE_VIEWER), "VIEWER");
-    CHECK_STR(hmi_view_role_caps((hmi_role_t)9), "?");
-    hmi_view_account_state_text(0, b, sizeof(b)); CHECK_STR(b, "");
-    hmi_view_account_state_text(45000, b, sizeof(b)); CHECK_STR(b, "LOCKED 0:45");
-    hmi_view_account_state_text(900000, b, sizeof(b)); CHECK_STR(b, "LOCKED 15:00");
-    CHECK(strlen(hmi_view_users_need_admin_text()) > 10 && strlen(hmi_view_users_unavailable_text()) > 10);
-
     hmi_view_plc_text("192.168.0.10", 502, 1, b, sizeof(b)); CHECK_STR(b, "PLC 192.168.0.10:502  unit 1");
     hmi_view_writes_text(true, true, b, sizeof(b)); CHECK_STR(b, "Writes: enabled");
     hmi_view_writes_text(false, false, b, sizeof(b)); CHECK(strstr(b, "configuration") != NULL);
@@ -553,7 +440,7 @@ int main(void)
     test_journal();
     test_heartbeat();
     test_ack_wording();
-    test_login_wording();
+    test_role_wording();
     printf("%d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

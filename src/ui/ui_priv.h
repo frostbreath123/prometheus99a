@@ -16,19 +16,24 @@
 
 #define UI_TXT 40
 
-/* --- colours (flat, high contrast, ISA-101 style) --- */
+/* --- colours: the whole screen uses these sixteen at most (eleven are defined), flat and high contrast
+ * (ISA-101 style). The display is RGB565, so each is stored as the 565 value nearest to it; the screenshot
+ * test checks that a screen shows nothing else. --- */
 #define C_BG     lv_color_hex(0x1B1F24)
 #define C_PANEL  lv_color_hex(0x262B31)
+#define C_LINE   lv_color_hex(0x3A424B)   /* grid lines, button faces */
 #define C_TEXT   lv_color_hex(0xE6E6E6)
 #define C_MUTED  lv_color_hex(0x8A9199)
+#define C_DIM    lv_color_hex(0x5A626B)   /* disabled text */
 #define C_GOOD   lv_color_hex(0x4CAF50)
 #define C_WARN   lv_color_hex(0xFFB300)
 #define C_BAD    lv_color_hex(0xE53935)
+#define C_ACCENT lv_color_hex(0x3A6EA5)   /* selected tab, pressed button */
+#define C_SERIES lv_color_hex(0x4FC3F7)   /* the second chart line */
 
 /* State shared by all screens, defined in hmi_ui.c. */
 extern hmi_runtime_t *ui_rt;       /* NULL when no configuration was accepted */
-extern hmi_auth_t *ui_auth;        /* production: the session is the only source of the role */
-extern hmi_role_t ui_fixed_role;   /* test builds only: used when ui_auth is NULL */
+extern hmi_role_t ui_role;        /* the claimed role the program was started with; there is no login */
 extern hmi_ui_stats_t ui_stats;
 
 /* Helpers, defined in hmi_ui.c. */
@@ -38,17 +43,9 @@ void ui_set_text(lv_obj_t *lbl, char *cache, size_t cap, const char *txt);
 hmi_role_t ui_current_role(uint64_t now);
 const char *ui_current_actor(uint64_t now);
 void ui_refresh_role(bool force);
+void ui_theme_install(void);   /* ui_theme.c: the only styles of the program */
 lv_obj_t *ui_mk_label(lv_obj_t *parent, int x, int y, const char *txt, lv_color_t col);
 lv_obj_t *ui_mk_button(lv_obj_t *parent, int x, int y, int w, int h, const char *txt, lv_event_cb_t cb, void *ud);
-
-/* ui_login.c: login and first-boot screen, drawn over everything else. */
-void ui_login_reset(void);
-void ui_login_build(lv_obj_t *scr);
-void ui_login_button_cb(lv_event_t *e);   /* header button: opens the screen, or logs out */
-void ui_login_tick(uint64_t now);
-/* The same layer for an administrator on the settings screen. False if it is already open. */
-bool ui_login_open_user_add(hmi_role_t role);
-bool ui_login_open_password_reset(const char *name);
 
 /* ui_ack.c: acknowledgement requests and the outcome text. The outcome is
  * shown on every bound label (one per screen that has an ACK status line). */
@@ -75,6 +72,8 @@ typedef struct {
     void (*reset)(void);               /* forget every widget pointer and cached text (before a rebuild) */
     void (*build)(lv_obj_t *page);     /* page: 800 x UI_PAGE_H, coordinates are relative to it */
     void (*update)(void);              /* binder tick while visible; ui_rt is not NULL */
+    bool lazy;                         /* build on the first visit, not at start: the widgets of a screen that is never opened
+                                          are never allocated. Once built it stays (nothing it holds is lost by leaving it). */
 } ui_screen_ops_t;
 
 extern const ui_screen_ops_t ui_screen_overview;
@@ -85,7 +84,6 @@ extern const ui_screen_ops_t ui_screen_settings;
 /* The views of the settings screen use the same shape: a page of 624 x UI_PAGE_H. */
 #define UI_SUBPAGE_W 624
 extern const ui_screen_ops_t ui_sub_system;
-extern const ui_screen_ops_t ui_sub_users;
 extern const ui_screen_ops_t ui_sub_config;
 
 /* ui_nav.c: tab bar and page switching. */
@@ -100,6 +98,8 @@ bool ui_nav_visible(size_t index);
 /* ui_overview.c: tag table (paged), setpoint panel, journal, storage banner. */
 const char *ui_overview_row_text(size_t row, int column);
 const char *ui_overview_row_name(size_t row);
+const char *ui_overview_write_text(void);   /* the status line of the last SEND ("" before the first) */
+bool ui_overview_send_enabled(void);        /* false when there is no setpoint panel or the role may not write the tag */
 void ui_overview_press_setpoint_send(void);
 size_t ui_overview_page(void);
 size_t ui_overview_pages(void);
@@ -124,24 +124,6 @@ bool ui_settings_select(size_t view);
 const char *ui_settings_system_text(size_t line);
 const char *ui_config_info_text(void);       /* set by hmi_ui_set_config_info() */
 void ui_config_info_set(const char *text);
-
-/* ui_users.c: accounts, for an administrator. The list is read from hmi_auth at every
- * update, so it is never out of date. */
-size_t ui_users_rows(void);                  /* rows in use on the current page */
-const char *ui_users_row_text(size_t row, int column);    /* 0 name, 1 role, 2 state */
-void ui_users_select_row(size_t row);
-typedef enum { UI_USERS_BTN_ADD = 0, UI_USERS_BTN_NEW_ROLE, UI_USERS_BTN_PASSWORD, UI_USERS_BTN_ROLE, UI_USERS_BTN_REMOVE } ui_users_btn_t;
-void ui_users_press(ui_users_btn_t button);
-bool ui_users_button_enabled(ui_users_btn_t button);
-const char *ui_users_status_text(void);
-const char *ui_users_message_text(void);     /* why the list is not shown, "" when it is */
-const char *ui_users_selected(void);
-hmi_role_t ui_users_new_role(void);
-size_t ui_users_page(void);
-size_t ui_users_pages(void);
-void ui_users_press_page(int dir);
-/* The settings view hears of a finished change from the layer that took the password. */
-void ui_users_changed(hmi_view_user_action_t action, hmi_uadm_result_t result);
 
 /* ui_config.c: changing alarm limits, deadband, delays, priority and the PLC address. Nothing is changed
  * here: the edits become one request for the root helper (hmi_cfgedit.h). */

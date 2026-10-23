@@ -2,11 +2,11 @@
  * @file hmi_authz.h
  * @brief The single authorization decision point of the core.
  *
- * The role passed to every privileged call is a CLAIMED role: today it comes
- * from the --role command-line option of the launching process. It is not an
- * authenticated identity and this module does not make it one. Its job is to
- * keep the "who may do what" rule in one place so that the UI cannot be the
- * only thing enforcing it.
+ * The role passed to every privileged call is a CLAIMED role: it comes from
+ * the --role command-line option of the launching process (default viewer).
+ * It is not an authenticated identity and this module does not make it one;
+ * the product has no login. Its job is to keep the "who may do what" rule in
+ * one place so that the UI cannot be the only thing enforcing it.
  */
 #ifndef HMI_AUTHZ_H
 #define HMI_AUTHZ_H
@@ -16,7 +16,6 @@
 typedef enum {
     HMI_ACT_ACK_ALARM,   /* acknowledge one alarm or all alarms: Operator and above */
     HMI_ACT_WRITE_TAG,   /* write a tag: role must reach that tag's configured minimum */
-    HMI_ACT_MANAGE_USERS,   /* add, remove, change the role or reset the password of an account: Admin only */
     HMI_ACT_EDIT_SETTINGS   /* ask for a change of the device settings (alarm limits, PLC address): Engineer and above */
 } hmi_action_t;
 

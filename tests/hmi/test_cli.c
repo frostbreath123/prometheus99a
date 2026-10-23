@@ -76,29 +76,23 @@ static void test_rejections(void)
     CHECK(!run(&o, NULL, 0, 2, "--bogus", 0, 0, 0, 0, 0));
 }
 
-static void test_users_and_role_given(void)
+static void test_role_given_and_no_users_option(void)
 {
-    SECTION("cli: --users path and whether --role was given");
+    SECTION("cli: whether --role was given; the removed --users option is an error");
     hmi_cli_t o;
     char err[128];
     CHECK(run(&o, err, sizeof(err), 1, 0, 0, 0, 0, 0, 0));
-    CHECK(strcmp(o.users, "/var/lib/prometheus99/users.bin") == 0);
-    CHECK(!o.role_given);                                   /* no --role: nothing was claimed */
-    CHECK(run(&o, err, sizeof(err), 3, "--users", "u.bin", 0, 0, 0, 0));
-    CHECK(strcmp(o.users, "u.bin") == 0 && !o.role_given);
+    CHECK(!o.role_given && o.role == HMI_ROLE_VIEWER);      /* no --role: the least privileged role */
     CHECK(run(&o, err, sizeof(err), 3, "--role", "viewer", 0, 0, 0, 0));
     CHECK(o.role_given && o.role == HMI_ROLE_VIEWER);       /* even the default role counts as given */
-    CHECK(run(&o, err, sizeof(err), 5, "--role", "admin", "--users", "u.bin", 0, 0));
-    CHECK(o.role_given && o.role == HMI_ROLE_ADMIN && strcmp(o.users, "u.bin") == 0);
+    CHECK(run(&o, err, sizeof(err), 3, "--role", "admin", 0, 0, 0, 0));
+    CHECK(o.role_given && o.role == HMI_ROLE_ADMIN);
 
-    CHECK(!run(&o, err, sizeof(err), 5, "--users", "a", "--users", "b", 0, 0));          /* repeated */
-    CHECK(strstr(err, "option given twice: --users") != NULL);
-    CHECK(!run(&o, err, sizeof(err), 2, "--users", 0, 0, 0, 0, 0));                      /* no value */
-    CHECK(!run(&o, err, sizeof(err), 3, "--users", "", 0, 0, 0, 0));                     /* empty value */
-    CHECK(!run(&o, err, sizeof(err), 4, "--users", "--role", "admin", 0, 0, 0));         /* value is a flag */
+    CHECK(!run(&o, err, sizeof(err), 3, "--users", "u.bin", 0, 0, 0, 0));                /* accounts were removed */
+    CHECK(strstr(err, "unknown option: --users") != NULL);
     CHECK(!run(&o, err, sizeof(err), 3, "--user", "u.bin", 0, 0, 0, 0));                 /* typo must not be ignored */
     CHECK(!run(&o, err, sizeof(err), 3, "--role", "bogus", 0, 0, 0, 0));
-    CHECK(!o.role_given && strcmp(o.users, "/var/lib/prometheus99/users.bin") == 0);   /* defaults after failure */
+    CHECK(!o.role_given);                                                                /* defaults after failure */
 }
 
 static void test_spool_option(void)
@@ -157,6 +151,6 @@ int main(void)
     test_spool_option();
     test_defaults_and_valid();
     test_rejections();
-    test_users_and_role_given();
+    test_role_given_and_no_users_option();
     return test_finish();
 }

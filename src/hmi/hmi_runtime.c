@@ -1,5 +1,6 @@
 #include "hmi_runtime.h"
 #include "hmi_auditfmt.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -95,7 +96,9 @@ static bool journal_sink(void *user, const hmi_alarm_log_t *e)
  * or name a tag that no longer exists are skipped. */
 static void journal_collect(const char *path, const char *const *names, size_t nt, hmi_alarm_log_t *ev, size_t *n_ev)
 {
-    static char tail[48 * 1024];
+    /* Room for the newest HMI_JOURNAL_LEN lines at their longest (320 bytes each, see journal_sink); older lines would be
+     * dropped by the ring anyway. */
+    static char tail[HMI_JOURNAL_LEN * 320];
     size_t len = 0, pos = 0;
     bool cut = false;
     if (hmi_fs_read_tail(path, tail, sizeof(tail), &len, &cut) != HMI_FS_READ_OK || len == 0) return;
@@ -243,10 +246,19 @@ bool hmi_runtime_start(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_pl
     return hmi_runtime_start_ex(rt, cfg, drv, &st);
 }
 
+/* Clear the whole runtime except the 64 slots of the storage queue (hmi_store_zero says why). */
+static void runtime_zero(hmi_runtime_t *rt)
+{
+    size_t from = offsetof(hmi_runtime_t, store), to = from + sizeof(rt->store);
+    memset(rt, 0, from);
+    hmi_store_zero(&rt->store);
+    memset((char *)rt + to, 0, sizeof(*rt) - to);
+}
+
 bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_plc_driver_t *drv,
                           const hmi_runtime_storage_t *storage)
 {
-    memset(rt, 0, sizeof(*rt));
+    runtime_zero(rt);
     if (!cfg || cfg->n_tags == 0 || !drv || !storage) return false;
     rt->cfg = *cfg;
     if (storage->audit_path) snprintf(rt->audit_path, sizeof(rt->audit_path), "%s", storage->audit_path);
@@ -290,8 +302,12 @@ bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi
         hmi_tagdb_destroy(&rt->db);
         return false;
     }
-
-    if (!hmi_trend_init(&rt->trend, cfg->tags, cfg->n_tags,
+#ifdef P99_LITE   /* the lite profile has no trend screen, so nothing is recorded */
+    const size_t trend_tags = 0;
+#else
+    const size_t trend_tags = cfg->n_tags;
+#endif
+    if (!hmi_trend_init(&rt->trend, cfg->tags, trend_tags,
                         cfg->trend_bucket_ms ? cfg->trend_bucket_ms : HMI_TREND_BUCKET_DEFAULT_MS, hmi_now_ms())) {
         hmi_alarm_destroy(&rt->alarms);
         hmi_writes_destroy(&rt->writes);

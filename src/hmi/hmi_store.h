@@ -121,6 +121,9 @@ typedef struct {
 /* Validates the configuration (at least one target, kinds set, generations 1
  * to 9 when max_bytes is set) and copies the file names. Does not start the
  * worker, so a test can drive it with hmi_store_run_once(). */
+/* Clears everything except the queue slots (see hmi_store.c). hmi_store_init() does this too; the runtime
+ * calls it so that an unused store is in a known state without touching the queue pages. */
+void hmi_store_zero(hmi_store_t *s);
 bool hmi_store_init(hmi_store_t *s, const hmi_store_cfg_t *cfg);
 void hmi_store_destroy(hmi_store_t *s);
 

@@ -7,11 +7,16 @@
 #define SYS_LINES 7
 
 /* The views, in the order of the buttons. A new view is one more line here. */
-static const ui_screen_ops_t *const VIEWS[] = { &ui_sub_system, &ui_sub_users, &ui_sub_config };
+#ifdef P99_LITE
+static const ui_screen_ops_t *const VIEWS[] = { &ui_sub_system };
+#else
+static const ui_screen_ops_t *const VIEWS[] = { &ui_sub_system, &ui_sub_config };
+#endif
 #define N_VIEWS (sizeof(VIEWS) / sizeof(VIEWS[0]))
 
 static lv_obj_t *s_area[N_VIEWS];
 static lv_obj_t *s_btn[N_VIEWS];
+static bool s_built[N_VIEWS];   /* a lazy view (the CONFIG view) is built when it is first opened */
 static size_t s_view;
 static char s_config_info[96];   /* set before or after the UI is built; survives a rebuild */
 
@@ -31,7 +36,7 @@ static void show_view(void)
         if (!s_area[i]) continue;
         if (i == s_view) lv_obj_remove_flag(s_area[i], LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(s_area[i], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_bg_color(s_btn[i], i == s_view ? lv_color_hex(0x3A6EA5) : C_PANEL, 0);
+        lv_obj_set_style_bg_color(s_btn[i], i == s_view ? C_ACCENT : C_PANEL, 0);
     }
 }
 
@@ -41,6 +46,10 @@ bool ui_settings_select(size_t view)
 {
     if (view >= N_VIEWS || !s_area[view]) return false;
     if (view == s_view) return true;
+    if (!s_built[view]) {
+        VIEWS[view]->build(s_area[view]);
+        s_built[view] = true;
+    }
     s_view = view;
     show_view();
     settings_update();
@@ -125,12 +134,12 @@ static void system_update(void)
     hmi_view_tags_text(n, hmi_trend_series_count(&ui_rt->trend), alarms, b, sizeof(b));
     sys_line(5, b, HMI_TONE_TEXT);
 
-    sys_line(6, ui_auth ? "Build: production, roles come from logging in"
-                        : "Build: TEST build, roles are claimed and NOT authenticated",
-             ui_auth ? HMI_TONE_TEXT : HMI_TONE_BAD);
+    char rb[UI_TXT * 3];
+    hmi_view_claimed_role_text(ui_role, rb, sizeof(rb));
+    sys_line(6, rb, ui_role == HMI_ROLE_VIEWER ? HMI_TONE_TEXT : HMI_TONE_WARN);
 }
 
-const ui_screen_ops_t ui_sub_system = { "SYSTEM", system_reset, system_build, system_update };
+const ui_screen_ops_t ui_sub_system = { "SYSTEM", system_reset, system_build, system_update, false };
 
 /* ---- the screen ---- */
 static void settings_reset(void)
@@ -156,7 +165,11 @@ static void settings_build(lv_obj_t *page)
         lv_obj_set_style_pad_all(a, 0, 0);
         lv_obj_remove_flag(a, LV_OBJ_FLAG_SCROLLABLE);
         s_area[i] = a;
-        VIEWS[i]->build(a);
+        s_built[i] = false;
+        if (!VIEWS[i]->lazy) {
+            VIEWS[i]->build(a);
+            s_built[i] = true;
+        }
     }
     s_view = 0;
     show_view();
@@ -167,4 +180,4 @@ static void settings_update(void)
     if (s_view < N_VIEWS && s_area[s_view]) VIEWS[s_view]->update();
 }
 
-const ui_screen_ops_t ui_screen_settings = { "SETTINGS", settings_reset, settings_build, settings_update };
+const ui_screen_ops_t ui_screen_settings = { "SETTINGS", settings_reset, settings_build, settings_update, false };

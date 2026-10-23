@@ -25,7 +25,7 @@
  * Exit status: 0 done, 1 refused or failed, 2 wrong usage.
  */
 #include "../hmi/hmi_cfgsec.h"
-#include "../hmi/hmi_users.h"
+#include "../hmi/hmi_util.h"
 #include "../hmi/hmi_platform.h"
 #include <stdio.h>
 #include <stdlib.h>

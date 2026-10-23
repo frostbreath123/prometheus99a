@@ -104,7 +104,7 @@ bool hmi_runtime_stop(hmi_runtime_t *rt);
 
 /* Append one line to the audit file through the storage worker and wait until
  * it is durable (at most HMI_AUDIT_WAIT_MS). True only if it is durable. For
- * records that must not be lost, such as a login. Without an audit path it
+ * records that must not be lost, such as an acknowledgement. Without an audit path it
  * returns false. */
 bool hmi_runtime_audit_append(hmi_runtime_t *rt, const char *line, size_t len);
 

@@ -118,7 +118,7 @@ static void window_labels(void)
         if (w > HMI_TREND_POINTS) w = HMI_TREND_POINTS;
         hmi_view_age_text((uint64_t)w * hmi_trend_bucket_ms(&ui_rt->trend), b, sizeof(b));
         lv_label_set_text(s_win_lbl[i], b);
-        lv_obj_set_style_bg_color(s_win_btn[i], (size_t)i == s_win ? lv_color_hex(0x3A6EA5) : C_PANEL, 0);
+        lv_obj_set_style_bg_color(s_win_btn[i], (size_t)i == s_win ? C_ACCENT : C_PANEL, 0);
     }
 }
 
@@ -171,11 +171,11 @@ static void trends_build(lv_obj_t *page)
     lv_obj_set_style_bg_color(s_chart, C_PANEL, 0);
     lv_obj_set_style_border_width(s_chart, 0, 0);
     lv_obj_set_style_radius(s_chart, 0, 0);
-    lv_obj_set_style_line_color(s_chart, lv_color_hex(0x3A424B), LV_PART_MAIN);   /* grid */
+    lv_obj_set_style_line_color(s_chart, C_LINE, LV_PART_MAIN);   /* grid */
     lv_obj_set_style_line_width(s_chart, 2, LV_PART_ITEMS);
     lv_obj_set_style_size(s_chart, 0, 0, LV_PART_INDICATOR);                    /* no marker per point */
     s_ser_max = lv_chart_add_series(s_chart, C_WARN, LV_CHART_AXIS_PRIMARY_Y);
-    s_ser_min = lv_chart_add_series(s_chart, lv_color_hex(0x4FC3F7), LV_CHART_AXIS_PRIMARY_Y);
+    s_ser_min = lv_chart_add_series(s_chart, C_SERIES, LV_CHART_AXIS_PRIMARY_Y);
     for (uint32_t i = 0; i < CHART_POINTS; i++) {
         lv_chart_set_value_by_id(s_chart, s_ser_max, i, LV_CHART_POINT_NONE);
         lv_chart_set_value_by_id(s_chart, s_ser_min, i, LV_CHART_POINT_NONE);
@@ -217,4 +217,4 @@ static void trends_update(void)
     redraw();
 }
 
-const ui_screen_ops_t ui_screen_trends = { "TRENDS", trends_reset, trends_build, trends_update };
+const ui_screen_ops_t ui_screen_trends = { "TRENDS", trends_reset, trends_build, trends_update, true };

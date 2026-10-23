@@ -10,7 +10,6 @@ bool hmi_authz_allows(hmi_role_t role, hmi_action_t action, hmi_role_t tag_min_r
     switch (action) {
         case HMI_ACT_ACK_ALARM: return role >= HMI_ROLE_OPERATOR;
         case HMI_ACT_WRITE_TAG: return role >= tag_min_role;
-        case HMI_ACT_MANAGE_USERS: return role >= HMI_ROLE_ADMIN;
         case HMI_ACT_EDIT_SETTINGS: return role >= HMI_ROLE_ENGINEER;
     }
     return false; /* unknown action: deny */

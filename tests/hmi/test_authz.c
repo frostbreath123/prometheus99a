@@ -48,22 +48,21 @@ static void test_write_rule(void)
     }
 }
 
-static void test_user_and_settings_rules(void)
+static void test_settings_rule(void)
 {
-    SECTION("authz: managing accounts needs Admin, asking for a settings change needs Engineer");
+    SECTION("authz: asking for a settings change needs Engineer");
     for (int role = 0; role < 4; role++) {
-        for (int min = 0; min < 4; min++) {          /* the tag minimum is ignored by both */
-            CHECK(hmi_authz_allows((hmi_role_t)role, HMI_ACT_MANAGE_USERS, (hmi_role_t)min) == (role >= HMI_ROLE_ADMIN));
+        for (int min = 0; min < 4; min++) {          /* the tag minimum is ignored */
             CHECK(hmi_authz_allows((hmi_role_t)role, HMI_ACT_EDIT_SETTINGS, (hmi_role_t)min) == (role >= HMI_ROLE_ENGINEER));
         }
     }
-    CHECK(!hmi_authz_allows((hmi_role_t)99, HMI_ACT_MANAGE_USERS, HMI_ROLE_VIEWER));      /* a corrupt role gets nothing */
+    CHECK(!hmi_authz_allows((hmi_role_t)99, HMI_ACT_EDIT_SETTINGS, HMI_ROLE_VIEWER));      /* a corrupt role gets nothing */
     CHECK(!hmi_authz_allows((hmi_role_t)-1, HMI_ACT_EDIT_SETTINGS, HMI_ROLE_VIEWER));
 }
 
 int main(void)
 {
-    test_user_and_settings_rules();
+    test_settings_rule();
     test_roles();
     test_ack_rule();
     test_write_rule();

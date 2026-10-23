@@ -3,15 +3,20 @@
 #define TAB_Y 44
 #define TAB_H 36
 
-#define C_TAB_ON  lv_color_hex(0x3A6EA5)
+#define C_TAB_ON  C_ACCENT
 #define C_TAB_OFF C_PANEL
 
 /* The screens, in tab order. A new screen is one more line here. */
+#ifdef P99_LITE
+static const ui_screen_ops_t *const SCREENS[] = { &ui_screen_overview, &ui_screen_alarms, &ui_screen_settings };
+#else
 static const ui_screen_ops_t *const SCREENS[] = { &ui_screen_overview, &ui_screen_alarms, &ui_screen_trends, &ui_screen_settings };
+#endif
 #define N_SCREENS (sizeof(SCREENS) / sizeof(SCREENS[0]))
 
 static lv_obj_t *s_page[N_SCREENS];
 static lv_obj_t *s_tab[N_SCREENS];
+static bool s_built[N_SCREENS];
 static size_t s_cur;
 
 size_t ui_nav_count(void) { return N_SCREENS; }
@@ -23,6 +28,7 @@ void ui_nav_reset(void)
     for (size_t i = 0; i < N_SCREENS; i++) {
         s_page[i] = NULL;
         s_tab[i] = NULL;
+        s_built[i] = false;
         SCREENS[i]->reset();
     }
     s_cur = 0;
@@ -42,6 +48,10 @@ bool ui_nav_select(size_t index)
 {
     if (index >= N_SCREENS || !s_page[index]) return false;
     if (index == s_cur) return true;
+    if (!s_built[index]) { /* a lazy screen is built on its first visit */
+        SCREENS[index]->build(s_page[index]);
+        s_built[index] = true;
+    }
     s_cur = index;
     show_current();
     ui_nav_update();   /* draw it now rather than at the next tick */
@@ -70,7 +80,10 @@ void ui_nav_build(lv_obj_t *scr)
         lv_obj_set_style_pad_all(p, 0, 0);
         lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
         s_page[i] = p;
-        SCREENS[i]->build(p);
+        if (!SCREENS[i]->lazy) {
+            SCREENS[i]->build(p);
+            s_built[i] = true;
+        }
     }
     s_cur = 0;
     show_current();

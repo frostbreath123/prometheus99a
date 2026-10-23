@@ -48,7 +48,7 @@ typedef struct {
     uint8_t tag;
     hmi_wr_state_t state;
     hmi_role_t role;
-    char actor[HMI_ACTOR_LEN];   /* logged-in user name, or "-" (see hmi_actor_copy) */
+    char actor[HMI_ACTOR_LEN];   /* actor name, or "-" (no accounts: always "-"; see hmi_actor_copy) */
     double eng;
     uint32_t raw;
     uint32_t readback_raw;
@@ -141,7 +141,7 @@ void hmi_writes_set_limits(hmi_writes_t *w, uint32_t min_interval_ms, uint32_t m
  * the link is lost. */
 hmi_wr_submit_t hmi_writes_submit(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role,
                                   hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id);
-/* The same with the name of the logged-in user, kept in the audit record. The
+/* The same with an actor name (the product passes none), kept in the audit record. The
  * call above records "-". The UI always uses this one. */
 hmi_wr_submit_t hmi_writes_submit_as(hmi_writes_t *w, size_t tag, double eng, hmi_role_t role, const char *actor,
                                      hmi_link_health_t link, uint64_t now_ms, uint32_t *out_id);

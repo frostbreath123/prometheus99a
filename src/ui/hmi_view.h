@@ -17,8 +17,8 @@
 #include "../hmi/hmi_comms.h"
 #include "../hmi/hmi_alarm.h"
 #include "../hmi/hmi_writes.h"
-#include "../hmi/hmi_auth.h"
 #include "../hmi/hmi_cfgedit.h"
+#include "../hmi/hmi_authz.h"
 
 /* Semantic colour of a piece of text; the binder owns the actual colours. */
 typedef enum {
@@ -108,34 +108,9 @@ hmi_tone_t hmi_view_ack_result_tone(hmi_ack_result_t r);
 /* Banner shown while the storage worker cannot write its files. */
 void hmi_view_storage_fault_text(char *buf, size_t cap);
 
-/* ---- login and session wording ---- */
-/* Header label: "VIEWER" when logged out, else "<ROLE>  <user>" with the role in
- * capitals. A text longer than the buffer is cut, never overflowed. */
-void hmi_view_role_label(hmi_role_t role, const char *user, char *buf, size_t cap);
-hmi_tone_t hmi_view_role_tone(hmi_role_t role);
-
-/* Time as M:SS, rounded UP to whole seconds so "0:00" is never shown while a
- * wait remains. */
-void hmi_view_wait_text(uint32_t ms, char *buf, size_t cap);
-
-/* One message per outcome. The wording for a wrong user name and a wrong
- * password is identical, so the screen does not reveal which accounts exist. */
-void hmi_view_login_text(hmi_login_result_t r, uint32_t wait_ms, const char *user, char *buf, size_t cap);
-hmi_tone_t hmi_view_login_tone(hmi_login_result_t r);
-void hmi_view_setup_text(hmi_setup_result_t r, const char *reason, char *buf, size_t cap);
-hmi_tone_t hmi_view_setup_tone(hmi_setup_result_t r);
-const char *hmi_view_setup_mismatch_text(void);
-/* ---- accounts on the settings screen ---- */
-typedef enum { HMI_VIEW_UA_ADD = 0, HMI_VIEW_UA_PASSWORD, HMI_VIEW_UA_ROLE, HMI_VIEW_UA_REMOVE } hmi_view_user_action_t;
-/* One line for the result of an account change. `reason` is the password policy
- * text (for HMI_UADM_PASSWORD), `action` says what "done" means. */
-void hmi_view_uadm_text(hmi_uadm_result_t r, hmi_view_user_action_t action, const char *reason, char *buf, size_t cap);
-hmi_tone_t hmi_view_uadm_tone(hmi_uadm_result_t r);
-/* Role in capitals for a list ("OPERATOR"), and "LOCKED 0:45" or "" for the state column. */
-const char *hmi_view_role_caps(hmi_role_t role);
-void hmi_view_account_state_text(uint32_t wait_ms, char *buf, size_t cap);
-const char *hmi_view_users_need_admin_text(void);
-const char *hmi_view_users_unavailable_text(void);   /* a test build has no accounts */
+/* ---- the claimed role ---- */
+/* Header label: the role in capitals ("OPERATOR"). A text longer than the buffer is cut, never overflowed. */
+void hmi_view_role_label(hmi_role_t role, char *buf, size_t cap);
 
 /* ---- changing settings from the screen (the CONFIG view) ---- */
 /* One line for the outcome of handing a request to the configuration helper. */
@@ -159,7 +134,7 @@ void hmi_view_storage_text(bool fault, uint32_t written, uint32_t failed, char *
 void hmi_view_clock_text(bool valid, bool synced, char *buf, size_t cap);
 void hmi_view_tags_text(size_t tags, size_t trended, size_t with_alarm, char *buf, size_t cap);
 
-/* Shown permanently when the process runs with --role (a test build only). */
-void hmi_view_test_role_banner(hmi_role_t role, char *buf, size_t cap);
+/* One line about the claimed role (the program has no login): "Role: VIEWER (read only)" or the role with a warning that nothing authenticates it. */
+void hmi_view_claimed_role_text(hmi_role_t role, char *buf, size_t cap);
 
 #endif /* HMI_VIEW_H */

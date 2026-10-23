@@ -1,6 +1,6 @@
 #include "hmi_cfgsec.h"
 #include "hmi_mac.h"
-#include "hmi_users.h" /* hmi_crc32 */
+#include "hmi_util.h" /* hmi_crc32, hmi_wipe */
 #include "hmi_platform.h"
 #include <stdio.h>
 #include <string.h>

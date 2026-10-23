@@ -40,7 +40,7 @@ stop_listener() { [ $HAVE_PY -eq 1 ] && wait $LP 2>/dev/null; }
 
 run_app() { # extra args after the fixed ones; stderr goes to $W/app.out, listener counts connections
   start_listener
-  "$APP" --config "$C" --config-key "$K" --config-state "$S" --users "$W/users.bin" --audit "$A" \
+  "$APP" --config "$C" --config-key "$K" --config-state "$S" --audit "$A" \
          --fb /dev/null --touch /nonexistent "$@" > "$W/app.out" 2>&1 &
   local p=$!
   sleep 1.5

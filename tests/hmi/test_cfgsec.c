@@ -3,7 +3,7 @@
  * the MAC succeeds". Files live in the working directory. */
 #include "test_support.h"
 #include "../../src/hmi/hmi_cfgsec.h"
-#include "../../src/hmi/hmi_users.h"
+#include "../../src/hmi/hmi_util.h"
 #include <stdio.h>
 #ifndef _WIN32
 #include <sys/stat.h>

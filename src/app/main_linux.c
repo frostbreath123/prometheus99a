@@ -1,6 +1,6 @@
 /**
  * @file main_linux.c
- * @brief Production HMI entry point for Linux (framebuffer + evdev touch).
+ * @brief HMI entry point for Linux (framebuffer + evdev touch).
  *
  * Build target: `make -f Makefile.linux hmi` (needs libmodbus-dev). Linked and
  * launched on WSL2 without a framebuffer only; never run on a real display or
@@ -9,26 +9,22 @@
  *   prometheus99 --config /etc/prometheus99/hmi.json \
  *                --audit /var/lib/prometheus99/audit.log \
  *                --alarms /var/lib/prometheus99/alarms.bin \
- *                --users /var/lib/prometheus99/users.bin \
  *                --config-key /etc/prometheus99/config.key \
  *                --config-state /var/lib/prometheus99/config.serial \
+ *                [--role viewer|operator|engineer|admin]
  *                [--spool /var/spool/prometheus99] [--fb /dev/fb0] [--touch /dev/input/event0]
  *
  * The configuration is used only if "<config>.sig" verifies against the key
  * (hmi_cfgsec.h, tool p99_sign). A missing, damaged, altered, wrongly keyed or
  * rolled-back configuration, or one whose plc.host is not in plc.allowed_hosts,
  * is refused: the screen shows the reason, no PLC connection is made and writes
- * stay off. --unsigned-config exists only in the simulation build.
+ * stay off. --unsigned-config exists only in the test build (-DHMI_TEST_ROLE=1).
  *
- * Roles come from logging in on the screen (hmi_auth.h). Until someone logs in
- * the role is Viewer. The first time, while no user file exists, the login
- * screen offers to create the administrator.
- *
- * --role viewer|operator|engineer|admin exists only in a test build (compile
- * with -DHMI_TEST_ROLE=1, make target hmi-sim). The production build refuses it
- * with exit status 2, so a started process can never be given a role from the
- * command line. A test build shows a permanent "TEST ROLE ... NOT AUTHENTICATED"
- * banner.
+ * There is no login: the product does not authenticate anyone. The role is a
+ * CLAIMED role given with --role by whoever starts the process (for example the
+ * service unit); the default is viewer, which can neither acknowledge alarms nor
+ * write. The core still checks the role on every privileged call (hmi_authz.h),
+ * and a role above viewer is announced on stderr and in the header.
  *
  * An invalid or missing configuration never falls back to a default PLC: the
  * UI shows the reason, no connection is made and writes stay disabled.
@@ -38,7 +34,6 @@
 #include "../hmi/plc_libmodbus.h"
 #include "../hmi/hmi_watchdog.h"
 #include "../hmi/hmi_cli.h"
-#include "../hmi/hmi_auth.h"
 #include "../hmi/hmi_cfgsec.h"
 #include "../hmi/hmi_auditfmt.h"
 #include <errno.h>
@@ -58,26 +53,47 @@ static void on_signal(int sig)
 
 static uint32_t tick_cb(void) { return (uint32_t)hmi_now_ms(); }
 
-static hmi_runtime_t g_rt;
-static hmi_app_cfg_t g_cfg;
-#ifndef HMI_TEST_ROLE
-static hmi_auth_t g_auth;
+#ifdef P99_FILE_FB
+/* Measurement build only (make target hmi-bench). A regular file stands in for /dev/fb0: it is mapped
+ * shared and the flush callback copies rows into it, exactly as the fbdev driver copies into the device
+ * memory. The draw buffer has the same size as the driver's (800 x LV_LINUX_FBDEV_BUFFER_SIZE lines x 2 bytes). There is no
+ * touch input. It exists so that the real executable can be measured (PSS, threads, mappings) on a
+ * machine without a framebuffer. Never part of a product build. */
+#include <sys/mman.h>
+#include <sys/stat.h>
+#define BENCH_W 800
+#define BENCH_H 480
+#define BENCH_LINES LV_LINUX_FBDEV_BUFFER_SIZE   /* the same number of lines as the real driver (config/lv_conf.h) */
+static uint8_t *s_bench_fb;
+static uint8_t s_bench_draw[BENCH_W * BENCH_LINES * 2] __attribute__((aligned(4)));
 
-/* Once the runtime is up, login records go through its storage worker, so they
- * are ordered with the other audit records and counted against the size cap of
- * the file. The call waits (at most HMI_AUDIT_WAIT_MS) until the record is
- * durable, on the UI thread: a login is rare and must not succeed unrecorded. */
-static bool runtime_login_audit(void *user, const hmi_auth_audit_rec_t *rec)
+static void bench_flush(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
-    char line[256];
-    size_t n = hmi_auth_format_audit(rec, line, sizeof(line));
-    if (n == 0) return false;
-    hmi_wall_t w;
-    hmi_wall_now(&w);
-    n = hmi_audit_stamp_line(line, n, sizeof(line), &w);
-    return n != 0 && hmi_runtime_audit_append((hmi_runtime_t *)user, line, n);
+    int32_t w = a->x2 - a->x1 + 1;
+    for (int32_t y = a->y1; y <= a->y2; y++) {
+        memcpy(s_bench_fb + ((size_t)y * BENCH_W + (size_t)a->x1) * 2u, px, (size_t)w * 2u);
+        px += (size_t)w * 2u;
+    }
+    lv_display_flush_ready(d);
+}
+
+static lv_display_t *bench_display_create(const char *path)
+{
+    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0 || ftruncate(fd, BENCH_W * BENCH_H * 2) != 0) return NULL;
+    s_bench_fb = mmap(NULL, BENCH_W * BENCH_H * 2, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (s_bench_fb == MAP_FAILED) return NULL;
+    lv_display_t *d = lv_display_create(BENCH_W, BENCH_H);
+    lv_display_set_color_format(d, LV_COLOR_FORMAT_RGB565);
+    lv_display_set_buffers(d, s_bench_draw, NULL, sizeof(s_bench_draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(d, bench_flush);
+    return d;
 }
 #endif
+
+static hmi_runtime_t g_rt;
+static hmi_app_cfg_t g_cfg;
 
 int main(int argc, char **argv)
 {
@@ -88,21 +104,16 @@ int main(int argc, char **argv)
     char cli_err[160];
     if (!hmi_cli_parse(argc, argv, &cli, cli_err, sizeof(cli_err))) {
         fprintf(stderr, "prometheus99: %s\n", cli_err);
-        fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE] [--users FILE]\n"
+        fprintf(stderr, "usage: prometheus99 [--config FILE] [--audit FILE] [--alarms FILE]\n"
                         "                    [--config-key FILE] [--config-state FILE] [--spool DIR]\n"
-                        "                    [--fb DEV] [--touch DEV]"
+                        "                    [--role viewer|operator|engineer|admin] [--fb DEV] [--touch DEV]"
 #ifdef HMI_TEST_ROLE
-                        " [--role viewer|operator|engineer|admin] [--unsigned-config]"
+                        " [--unsigned-config]"
 #endif
                         "\n");
         return 2;
     }
 #ifndef HMI_TEST_ROLE
-    if (cli.role_given) {
-        fprintf(stderr, "prometheus99: --role is not available in this build: roles come from logging in on the "
-                        "screen. (The simulation build 'hmi-sim' accepts it for tests.)\n");
-        return 2;
-    }
     if (cli.unsigned_config) {
         fprintf(stderr, "prometheus99: --unsigned-config is not available in this build: the configuration must be "
                         "signed (see p99_sign). (The simulation build 'hmi-sim' accepts it for tests.)\n");
@@ -114,41 +125,23 @@ int main(int argc, char **argv)
     const char *alarm_path = cli.alarms;
     const char *fb_path = cli.fb;
     const char *touch_path = cli.touch;
-#ifdef HMI_TEST_ROLE
     hmi_role_t role = cli.role;
-    fprintf(stderr, "prometheus99: role=%s (claimed on the command line, not authenticated)\n",
-            hmi_role_name(role));
-    fprintf(stderr, "prometheus99: TEST BUILD: --role is honoured and nothing is authenticated\n");
-#else
-    {
-        hmi_auth_cfg_t acfg;
-        acfg.users_path = cli.users;
-        acfg.idle_ms = 0;
-        acfg.kdf = NULL;
-        if (!hmi_auth_init(&g_auth, &acfg, hmi_now_ms())) {
-            fprintf(stderr, "prometheus99: cannot use the user store path '%s'\n", cli.users);
-            return 2;
-        }
-        if (audit_path) hmi_auth_set_audit(&g_auth, hmi_auth_file_audit, (void *)audit_path);
-        hmi_auth_store_t st = hmi_auth_store_state(&g_auth);
-        if (st == HMI_AUTH_STORE_READY)
-            fprintf(stderr, "prometheus99: user store %s: ready\n", cli.users);
-        else if (st == HMI_AUTH_STORE_NONE)
-            fprintf(stderr, "prometheus99: user store %s: absent (first boot: the login screen creates the administrator)\n",
-                    cli.users);
-        else
-            fprintf(stderr, "prometheus99: user store %s: INVALID, login disabled (%s)\n", cli.users,
-                    hmi_auth_store_error(&g_auth));
-        if (hmi_auth_store_readable_by_others(&g_auth))
-            fprintf(stderr, "prometheus99: warning: the user store can be read by group or others (use mode 0600)\n");
-        if (!audit_path) fprintf(stderr, "prometheus99: warning: no --audit file: logins will not be recorded\n");
-    }
+    fprintf(stderr, "prometheus99: role=%s (claimed on the command line, not authenticated)\n", hmi_role_name(role));
+    if (role != HMI_ROLE_VIEWER)
+        fprintf(stderr, "prometheus99: warning: nothing authenticates this role; anyone who can start the process or edit "
+                        "its service unit can choose it\n");
+#ifdef HMI_TEST_ROLE
+    fprintf(stderr, "prometheus99: TEST BUILD: --unsigned-config is available and nothing is authenticated\n");
 #endif
 
     /* lv_linux_fbdev_set_file() returns void, so probe the device ourselves.
      * Without a display the process must fail fast (non-zero) so a service
      * manager can see it, not keep polling the PLC headless. */
+#ifdef P99_FILE_FB
+    int fb_probe = open(fb_path, O_RDWR | O_CREAT, 0600);
+#else
     int fb_probe = open(fb_path, O_RDWR);
+#endif
     if (fb_probe < 0) {
         fprintf(stderr, "prometheus99: cannot open framebuffer '%s': %s\n", fb_path, strerror(errno));
         return 2;
@@ -221,30 +214,41 @@ int main(int argc, char **argv)
             hmi_plc_driver_t drv;
             plc_libmodbus_driver(plc, &drv);
             runtime_up = hmi_runtime_start(&g_rt, &g_cfg, &drv, audit_path, alarm_path);
-#ifndef HMI_TEST_ROLE
-            if (runtime_up && audit_path) hmi_auth_set_audit(&g_auth, runtime_login_audit, &g_rt);
-#endif
         }
         if (!runtime_up) snprintf(banner, sizeof(banner), "RUNTIME START FAILED");
     }
 
     lv_init();
     lv_tick_set_cb(tick_cb);
+#ifdef P99_FILE_FB
+    if (!bench_display_create(fb_path)) {
+        fprintf(stderr, "prometheus99: cannot create the file framebuffer '%s'\n", fb_path);
+        return 2;
+    }
+    (void)touch_path;
+#else
     lv_display_t *disp = lv_linux_fbdev_create();
     lv_linux_fbdev_set_file(disp, fb_path);
+    /* Only RGB565 is compiled into LVGL's drawing code (config/lv_conf.h, LV_DRAW_SW_SUPPORT_*): a framebuffer of
+     * another depth would draw nothing, so refuse to start if the driver gives another one. (Not tested on a real
+     * framebuffer: the check reads the format the LVGL driver chose from the device's reported depth.) */
+    if (lv_display_get_color_format(disp) != LV_COLOR_FORMAT_RGB565) {
+        fprintf(stderr, "prometheus99: the framebuffer '%s' is not 16 bits per pixel; set the display to 16 bits "
+                        "(on a Raspberry Pi: framebuffer_depth=16 in config.txt, or fbset -depth 16)\n", fb_path);
+        return 2;
+    }
     lv_indev_t *touch = lv_evdev_create(LV_INDEV_TYPE_POINTER, touch_path);
     (void)touch;
+#endif
 
     hmi_ui_enable_heartbeat(true);
-#ifdef HMI_TEST_ROLE
     hmi_ui_init(runtime_up ? &g_rt : NULL, role, banner[0] ? banner : NULL);
-#else
-    hmi_ui_init_auth(runtime_up ? &g_rt : NULL, &g_auth, banner[0] ? banner : NULL);
-#endif
     hmi_ui_set_config_info(cfg_info);
-#ifndef HMI_TEST_ROLE
     /* Changing settings from the screen needs a verified configuration, a running runtime (it writes the
      * audit record) and a spool directory for the root helper p99_cfg. Without all three the view stays off. */
+#ifdef P99_LITE
+    if (cli.spool) fprintf(stderr, "prometheus99: note: --spool is ignored: the lite profile has no CONFIG view\n");
+#else
     if (cli.spool && cfg_ok && runtime_up) hmi_ui_set_config_edit(cli.spool, cfg_serial);
 #endif
 
@@ -282,8 +286,5 @@ int main(int argc, char **argv)
     if (runtime_up) hmi_runtime_stop(&g_rt);
     if (plc) plc_libmodbus_destroy(plc);
     lv_deinit();
-#ifndef HMI_TEST_ROLE
-    hmi_auth_deinit(&g_auth);
-#endif
     return 0;
 }

@@ -103,6 +103,8 @@ static void alarms_build(lv_obj_t *page)
         int y = AL_ROW_Y0 + (int)i * AL_ROW_H;
         r->pri = ui_mk_label(page, 12, y + 6, "", C_TEXT);
         r->name = ui_mk_label(page, 110, y + 6, "", C_TEXT);
+        lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);   /* a long name ends in dots instead of running into the state column */
+        lv_obj_set_width(r->name, 216);
         r->state = ui_mk_label(page, 330, y + 6, "", C_TEXT);
         r->age = ui_mk_label(page, 560, y + 6, "", C_MUTED);
         r->btn = ui_mk_button(page, 676, y, 120, AL_ROW_H - 4, "ACK", ack_cb, (void *)(intptr_t)i);
@@ -194,4 +196,4 @@ static void alarms_update(void)
     ui_set_text(s_journal, t_journal, sizeof(t_journal), jb);
 }
 
-const ui_screen_ops_t ui_screen_alarms = { "ALARMS", alarms_reset, alarms_build, alarms_update };
+const ui_screen_ops_t ui_screen_alarms = { "ALARMS", alarms_reset, alarms_build, alarms_update, false };
