@@ -1,0 +1,12 @@
+label: baseline_stress
+binary: /root/p99_base/bin/prometheus99-bench (750368 bytes unstripped)
+date: 2026-10-23T12:54:12Z   kernel: 6.18.54.1-microsoft-standard-WSL2   cpus: 12
+framebuffer: file-backed, 800x480 RGB565 = 768000 bytes (its pages are shared file pages)
+start_to_first_frame_ms: 16   (process launch to non-zero content in the last pixel row of the framebuffer, polled every 5 ms)
+after_first_frame:  pss_kb=2203 rss_kb=4128 pss_fb_mapping_kb=752 pss_excl_fb_kb=1451 threads=4 vmdata_kb=25428 vmstk_kb=132 mappings=41
+after_300s:       pss_kb=2200 rss_kb=4128 pss_fb_mapping_kb=752 pss_excl_fb_kb=1448 threads=4
+pss_peak_kb_sampled: 2204   (5 s sampling; a shorter peak can be missed)
+cpu_avg_pct_of_one_core_over_run: 2.29
+io_at_end: na  open_fds=4  audit_lines=2 audit_bytes=122 journal_lines=0
+exit_status_on_SIGTERM: 0
+fake_plc: fake_plc: requests=18117 writes=0

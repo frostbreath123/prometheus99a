@@ -1,0 +1,22 @@
+302 s: PLC hangs (reads, never answers)
+362 s: PLC serves normally again
+602 s: PLC drops the connection
+662 s: PLC serves normally again
+902 s: PLC hangs (reads, never answers)
+962 s: PLC serves normally again
+1203 s: PLC drops the connection
+1263 s: PLC serves normally again
+1503 s: PLC hangs (reads, never answers)
+1563 s: PLC serves normally again
+1803 s: PLC drops the connection
+1863 s: PLC serves normally again
+2103 s: PLC hangs (reads, never answers)
+2163 s: PLC serves normally again
+2403 s: PLC drops the connection
+2463 s: PLC serves normally again
+2704 s: PLC hangs (reads, never answers)
+2764 s: PLC serves normally again
+3004 s: PLC drops the connection
+3064 s: PLC serves normally again
+3304 s: PLC hangs (reads, never answers)
+3364 s: PLC serves normally again

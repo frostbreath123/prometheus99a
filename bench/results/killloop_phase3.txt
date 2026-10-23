@@ -1,0 +1,167 @@
+  ok   healthy run passes
+  ok   a write the audit file does not know: refused (audit before send)
+  ok   a SENT record removed: refused (audit before send\|without SENT)
+  ok   SENT twice: refused (SENT twice)
+  ok   SENT without RESERVED: refused (SENT without RESERVED)
+  ok   a final record without a request: refused (without)
+  ok   a damaged audit line over the allowance: refused (damaged)
+  ok   a damaged line followed by an ordinary record: refused (followed by an ordinary record)
+  ok   a record without a stamp: refused (damaged)
+  ok   alarm state file damaged: refused (alarm state file)
+  ok   journal line damaged: refused (journal)
+  ok   journal sequence goes backwards: refused (sequence)
+  ok   one torn line at the end is allowed
+killloop self test: PASS
+  round 1 (kill after 2464 ms): VERIFY ok audit_lines=470 audit_damaged=0 runs=1 rotations=2 sent=155 journal_lines=3 journal_damaged=0 plc_writes=155 state=valid files=3
+  round 2 (kill after 1026 ms): VERIFY ok audit_lines=664 audit_damaged=0 runs=2 rotations=2 sent=219 journal_lines=5 journal_damaged=0 plc_writes=64 state=valid files=3
+  round 3 (kill after 1092 ms): VERIFY ok audit_lines=870 audit_damaged=0 runs=3 rotations=3 sent=287 journal_lines=5 journal_damaged=0 plc_writes=67 state=valid files=4
+  round 4 (kill after 367 ms): VERIFY ok audit_lines=938 audit_damaged=0 runs=4 rotations=4 sent=309 journal_lines=5 journal_damaged=0 plc_writes=21 state=valid files=5
+  round 5 (kill after 816 ms): VERIFY ok audit_lines=1088 audit_damaged=0 runs=5 rotations=4 sent=358 journal_lines=5 journal_damaged=0 plc_writes=49 state=valid files=5
+  round 6 (stop after 1573 ms): VERIFY ok audit_lines=1389 audit_damaged=0 runs=6 rotations=6 sent=457 journal_lines=5 journal_damaged=0 plc_writes=99 state=valid files=7
+  round 7 (kill after 858 ms): VERIFY ok audit_lines=1548 audit_damaged=0 runs=7 rotations=6 sent=509 journal_lines=5 journal_damaged=0 plc_writes=52 state=valid files=7
+  round 8 (kill after 356 ms): VERIFY ok audit_lines=1614 audit_damaged=0 runs=8 rotations=7 sent=530 journal_lines=5 journal_damaged=0 plc_writes=21 state=valid files=8
+  round 9 (kill after 764 ms): VERIFY ok audit_lines=1757 audit_damaged=0 runs=9 rotations=7 sent=577 journal_lines=5 journal_damaged=0 plc_writes=47 state=valid files=8
+  round 10 (kill after 852 ms): VERIFY ok audit_lines=1917 audit_damaged=0 runs=10 rotations=8 sent=629 journal_lines=5 journal_damaged=0 plc_writes=52 state=valid files=9
+  round 11 (kill after 683 ms): VERIFY ok audit_lines=1823 audit_damaged=0 runs=10 rotations=9 sent=598 journal_lines=5 journal_damaged=0 plc_writes=42 state=valid files=9
+  round 12 (stop after 1270 ms): VERIFY ok audit_lines=1841 audit_damaged=0 runs=11 rotations=9 sent=604 journal_lines=5 journal_damaged=0 plc_writes=79 state=valid files=9
+  round 13 (kill after 1838 ms): VERIFY ok audit_lines=1966 audit_damaged=0 runs=10 rotations=9 sent=646 journal_lines=6 journal_damaged=0 plc_writes=116 state=valid files=9
+  round 14 (kill after 1345 ms): VERIFY ok audit_lines=1998 audit_damaged=0 runs=10 rotations=9 sent=656 journal_lines=8 journal_damaged=0 plc_writes=85 state=valid files=9
+  round 15 (kill after 2365 ms): VERIFY ok audit_lines=1999 audit_damaged=0 runs=9 rotations=9 sent=657 journal_lines=9 journal_damaged=0 plc_writes=149 state=valid files=9
+  round 16 (kill after 689 ms): VERIFY ok audit_lines=1902 audit_damaged=0 runs=8 rotations=9 sent=626 journal_lines=9 journal_damaged=0 plc_writes=42 state=valid files=9
+  round 17 (kill after 1154 ms): VERIFY ok audit_lines=1897 audit_damaged=0 runs=7 rotations=9 sent=625 journal_lines=11 journal_damaged=0 plc_writes=72 state=valid files=9
+  round 18 (stop after 676 ms): VERIFY ok audit_lines=2023 audit_damaged=0 runs=8 rotations=9 sent=666 journal_lines=11 journal_damaged=0 plc_writes=41 state=valid files=9
+  round 19 (kill after 2149 ms): VERIFY ok audit_lines=1983 audit_damaged=0 runs=7 rotations=9 sent=654 journal_lines=12 journal_damaged=0 plc_writes=135 state=valid files=9
+  round 20 (kill after 1408 ms): VERIFY ok audit_lines=1798 audit_damaged=0 runs=6 rotations=8 sent=593 journal_lines=14 journal_damaged=0 plc_writes=87 state=valid files=8
+  round 21 (kill after 706 ms): VERIFY ok audit_lines=1706 audit_damaged=0 runs=6 rotations=8 sent=563 journal_lines=14 journal_damaged=0 plc_writes=43 state=valid files=8
+  round 22 (kill after 2154 ms): VERIFY ok audit_lines=1668 audit_damaged=0 runs=6 rotations=8 sent=550 journal_lines=15 journal_damaged=0 plc_writes=135 state=valid files=8
+  round 23 (kill after 1750 ms): VERIFY ok audit_lines=1775 audit_damaged=0 runs=6 rotations=8 sent=585 journal_lines=18 journal_damaged=0 plc_writes=109 state=valid files=8
+  round 24 (stop after 1307 ms): VERIFY ok audit_lines=1799 audit_damaged=0 runs=5 rotations=9 sent=593 journal_lines=20 journal_damaged=0 plc_writes=82 state=valid files=9
+  round 25 (kill after 1051 ms): VERIFY ok audit_lines=1997 audit_damaged=0 runs=6 rotations=9 sent=658 journal_lines=20 journal_damaged=0 plc_writes=65 state=valid files=9
+  round 26 (kill after 2316 ms): VERIFY ok audit_lines=1989 audit_damaged=0 runs=6 rotations=9 sent=655 journal_lines=21 journal_damaged=0 plc_writes=146 state=valid files=9
+  round 27 (kill after 1643 ms): VERIFY ok audit_lines=1852 audit_damaged=0 runs=5 rotations=9 sent=609 journal_lines=23 journal_damaged=0 plc_writes=103 state=valid files=9
+  round 28 (kill after 1251 ms): VERIFY ok audit_lines=1866 audit_damaged=0 runs=6 rotations=9 sent=613 journal_lines=23 journal_damaged=0 plc_writes=78 state=valid files=9
+  round 29 (kill after 893 ms): VERIFY ok audit_lines=1812 audit_damaged=0 runs=6 rotations=9 sent=596 journal_lines=23 journal_damaged=0 plc_writes=56 state=valid files=9
+  round 30 (stop after 710 ms): VERIFY ok audit_lines=1946 audit_damaged=0 runs=7 rotations=9 sent=640 journal_lines=23 journal_damaged=0 plc_writes=44 state=valid files=9
+  round 31 (kill after 1771 ms): VERIFY ok audit_lines=1834 audit_damaged=0 runs=7 rotations=9 sent=603 journal_lines=24 journal_damaged=0 plc_writes=111 state=valid files=9
+  round 32 (kill after 1330 ms): VERIFY ok audit_lines=1862 audit_damaged=0 runs=6 rotations=9 sent=613 journal_lines=26 journal_damaged=0 plc_writes=83 state=valid files=9
+  round 33 (kill after 470 ms): VERIFY ok audit_lines=1950 audit_damaged=0 runs=7 rotations=9 sent=642 journal_lines=26 journal_damaged=0 plc_writes=29 state=valid files=9
+  round 34 (kill after 998 ms): VERIFY ok audit_lines=1917 audit_damaged=0 runs=8 rotations=9 sent=631 journal_lines=26 journal_damaged=0 plc_writes=63 state=valid files=9
+  round 35 (kill after 641 ms): VERIFY ok audit_lines=1809 audit_damaged=0 runs=8 rotations=9 sent=594 journal_lines=26 journal_damaged=0 plc_writes=37 state=valid files=9
+  round 36 (stop after 1612 ms): VERIFY ok audit_lines=1890 audit_damaged=0 runs=9 rotations=9 sent=621 journal_lines=26 journal_damaged=0 plc_writes=101 state=valid files=9
+  round 37 (kill after 2133 ms): VERIFY ok audit_lines=1847 audit_damaged=0 runs=8 rotations=9 sent=607 journal_lines=27 journal_damaged=0 plc_writes=134 state=valid files=9
+  round 38 (kill after 1934 ms): VERIFY ok audit_lines=1990 audit_damaged=0 runs=7 rotations=9 sent=654 journal_lines=30 journal_damaged=0 plc_writes=122 state=valid files=9
+  round 39 (kill after 2045 ms): VERIFY ok audit_lines=1933 audit_damaged=0 runs=7 rotations=9 sent=635 journal_lines=33 journal_damaged=0 plc_writes=128 state=valid files=9
+  round 40 (kill after 397 ms): VERIFY ok audit_lines=2006 audit_damaged=0 runs=8 rotations=9 sent=659 journal_lines=33 journal_damaged=0 plc_writes=24 state=valid files=9
+  round 41 (kill after 1635 ms): VERIFY ok audit_lines=1870 audit_damaged=0 runs=6 rotations=9 sent=616 journal_lines=35 journal_damaged=0 plc_writes=103 state=valid files=9
+  round 42 (stop after 1318 ms): VERIFY ok audit_lines=1897 audit_damaged=0 runs=6 rotations=9 sent=625 journal_lines=35 journal_damaged=0 plc_writes=83 state=valid files=9
+  round 43 (kill after 1482 ms): VERIFY ok audit_lines=1955 audit_damaged=0 runs=6 rotations=9 sent=644 journal_lines=35 journal_damaged=0 plc_writes=93 state=valid files=9
+  round 44 (kill after 1337 ms): VERIFY ok audit_lines=1987 audit_damaged=0 runs=7 rotations=9 sent=655 journal_lines=35 journal_damaged=0 plc_writes=84 state=valid files=9
+  round 45 (kill after 1796 ms): VERIFY ok audit_lines=1883 audit_damaged=0 runs=6 rotations=9 sent=622 journal_lines=36 journal_damaged=0 plc_writes=114 state=valid files=9
+  round 46 (kill after 1007 ms): VERIFY ok audit_lines=1853 audit_damaged=0 runs=7 rotations=9 sent=612 journal_lines=38 journal_damaged=0 plc_writes=63 state=valid files=9
+  round 47 (kill after 896 ms): VERIFY ok audit_lines=2023 audit_damaged=0 runs=8 rotations=9 sent=668 journal_lines=38 journal_damaged=0 plc_writes=56 state=valid files=9
+  round 48 (stop after 1713 ms): VERIFY ok audit_lines=1902 audit_damaged=0 runs=7 rotations=9 sent=628 journal_lines=38 journal_damaged=0 plc_writes=108 state=valid files=9
+  round 49 (kill after 394 ms): VERIFY ok audit_lines=1975 audit_damaged=0 runs=8 rotations=9 sent=652 journal_lines=38 journal_damaged=0 plc_writes=24 state=valid files=9
+  round 50 (kill after 1764 ms): VERIFY ok audit_lines=1861 audit_damaged=0 runs=7 rotations=9 sent=614 journal_lines=39 journal_damaged=0 plc_writes=111 state=valid files=9
+  round 51 (kill after 652 ms): VERIFY ok audit_lines=1983 audit_damaged=0 runs=8 rotations=9 sent=654 journal_lines=39 journal_damaged=0 plc_writes=40 state=valid files=9
+  round 52 (kill after 1311 ms): VERIFY ok audit_lines=2009 audit_damaged=0 runs=8 rotations=9 sent=664 journal_lines=41 journal_damaged=0 plc_writes=82 state=valid files=9
+  round 53 (kill after 1638 ms): VERIFY ok audit_lines=1874 audit_damaged=0 runs=8 rotations=9 sent=619 journal_lines=41 journal_damaged=0 plc_writes=103 state=valid files=9
+  round 54 (stop after 821 ms): VERIFY ok audit_lines=1805 audit_damaged=0 runs=8 rotations=9 sent=595 journal_lines=41 journal_damaged=0 plc_writes=51 state=valid files=9
+  round 55 (kill after 831 ms): VERIFY ok audit_lines=1962 audit_damaged=0 runs=9 rotations=9 sent=647 journal_lines=41 journal_damaged=0 plc_writes=52 state=valid files=9
+  round 56 (kill after 1466 ms): VERIFY ok audit_lines=2017 audit_damaged=0 runs=8 rotations=9 sent=666 journal_lines=41 journal_damaged=0 plc_writes=93 state=valid files=9
+  round 57 (kill after 669 ms): VERIFY ok audit_lines=1920 audit_damaged=0 runs=9 rotations=9 sent=634 journal_lines=41 journal_damaged=0 plc_writes=41 state=valid files=9
+  round 58 (kill after 495 ms): VERIFY ok audit_lines=2011 audit_damaged=0 runs=10 rotations=9 sent=664 journal_lines=41 journal_damaged=0 plc_writes=29 state=valid files=9
+  round 59 (kill after 1231 ms): VERIFY ok audit_lines=2018 audit_damaged=0 runs=9 rotations=9 sent=667 journal_lines=41 journal_damaged=0 plc_writes=77 state=valid files=9
+  round 60 (stop after 330 ms): VERIFY ok audit_lines=1855 audit_damaged=0 runs=10 rotations=9 sent=611 journal_lines=41 journal_damaged=0 plc_writes=19 state=valid files=9
+  round 61 (kill after 539 ms): VERIFY ok audit_lines=1955 audit_damaged=0 runs=11 rotations=9 sent=644 journal_lines=41 journal_damaged=0 plc_writes=32 state=valid files=9
+  round 62 (kill after 888 ms): VERIFY ok audit_lines=1897 audit_damaged=0 runs=10 rotations=9 sent=625 journal_lines=41 journal_damaged=0 plc_writes=55 state=valid files=9
+  round 63 (kill after 2188 ms): VERIFY ok audit_lines=1866 audit_damaged=0 runs=10 rotations=9 sent=615 journal_lines=42 journal_damaged=0 plc_writes=138 state=valid files=9
+  round 64 (kill after 724 ms): VERIFY ok audit_lines=2003 audit_damaged=0 runs=11 rotations=9 sent=660 journal_lines=42 journal_damaged=0 plc_writes=45 state=valid files=9
+  round 65 (kill after 2245 ms): VERIFY ok audit_lines=1982 audit_damaged=0 runs=9 rotations=9 sent=653 journal_lines=45 journal_damaged=0 plc_writes=142 state=valid files=9
+  round 66 (stop after 2418 ms): VERIFY ok audit_lines=1994 audit_damaged=0 runs=7 rotations=9 sent=657 journal_lines=48 journal_damaged=0 plc_writes=153 state=valid files=9
+  round 67 (kill after 2132 ms): VERIFY ok audit_lines=1952 audit_damaged=0 runs=5 rotations=9 sent=643 journal_lines=51 journal_damaged=0 plc_writes=135 state=valid files=9
+  round 68 (kill after 367 ms): VERIFY ok audit_lines=2020 audit_damaged=0 runs=6 rotations=9 sent=665 journal_lines=51 journal_damaged=0 plc_writes=22 state=valid files=9
+  round 69 (kill after 378 ms): VERIFY ok audit_lines=1866 audit_damaged=0 runs=6 rotations=9 sent=614 journal_lines=51 journal_damaged=0 plc_writes=23 state=valid files=9
+  round 70 (kill after 740 ms): VERIFY ok audit_lines=2005 audit_damaged=0 runs=7 rotations=9 sent=660 journal_lines=51 journal_damaged=0 plc_writes=45 state=valid files=9
+  round 71 (kill after 712 ms): VERIFY ok audit_lines=1913 audit_damaged=0 runs=8 rotations=9 sent=629 journal_lines=52 journal_damaged=0 plc_writes=43 state=valid files=9
+  round 72 (stop after 1788 ms): VERIFY ok audit_lines=1803 audit_damaged=0 runs=7 rotations=9 sent=592 journal_lines=54 journal_damaged=0 plc_writes=111 state=valid files=9
+  round 73 (kill after 570 ms): VERIFY ok audit_lines=1910 audit_damaged=0 runs=8 rotations=9 sent=627 journal_lines=54 journal_damaged=0 plc_writes=35 state=valid files=9
+  round 74 (kill after 1903 ms): VERIFY ok audit_lines=1827 audit_damaged=0 runs=8 rotations=9 sent=600 journal_lines=57 journal_damaged=0 plc_writes=121 state=valid files=9
+  round 75 (kill after 2038 ms): VERIFY ok audit_lines=1993 audit_damaged=0 runs=8 rotations=9 sent=655 journal_lines=60 journal_damaged=0 plc_writes=129 state=valid files=9
+  round 76 (kill after 2475 ms): VERIFY ok audit_lines=1794 audit_damaged=0 runs=5 rotations=8 sent=591 journal_lines=63 journal_damaged=0 plc_writes=158 state=valid files=8
+  round 77 (kill after 411 ms): VERIFY ok audit_lines=1647 audit_damaged=0 runs=5 rotations=8 sent=543 journal_lines=63 journal_damaged=0 plc_writes=25 state=valid files=8
+  round 78 (stop after 1915 ms): VERIFY ok audit_lines=1794 audit_damaged=0 runs=6 rotations=8 sent=590 journal_lines=66 journal_damaged=0 plc_writes=122 state=valid files=8
+  round 79 (kill after 2185 ms): VERIFY ok audit_lines=1763 audit_damaged=0 runs=5 rotations=8 sent=582 journal_lines=69 journal_damaged=0 plc_writes=138 state=valid files=8
+  round 80 (kill after 1910 ms): VERIFY ok audit_lines=1905 audit_damaged=0 runs=5 rotations=9 sent=628 journal_lines=72 journal_damaged=0 plc_writes=121 state=valid files=9
+  round 81 (kill after 1176 ms): VERIFY ok audit_lines=1903 audit_damaged=0 runs=5 rotations=9 sent=627 journal_lines=74 journal_damaged=0 plc_writes=73 state=valid files=9
+  round 82 (kill after 1530 ms): VERIFY ok audit_lines=1972 audit_damaged=0 runs=6 rotations=9 sent=650 journal_lines=74 journal_damaged=0 plc_writes=96 state=valid files=9
+  round 83 (kill after 1205 ms): VERIFY ok audit_lines=1980 audit_damaged=0 runs=6 rotations=9 sent=652 journal_lines=74 journal_damaged=0 plc_writes=76 state=valid files=9
+  round 84 (stop after 1129 ms): VERIFY ok audit_lines=1970 audit_damaged=0 runs=6 rotations=9 sent=649 journal_lines=74 journal_damaged=0 plc_writes=71 state=valid files=9
+  round 85 (kill after 1672 ms): VERIFY ok audit_lines=1842 audit_damaged=0 runs=6 rotations=9 sent=608 journal_lines=74 journal_damaged=0 plc_writes=105 state=valid files=9
+  round 86 (kill after 1084 ms): VERIFY ok audit_lines=1824 audit_damaged=0 runs=6 rotations=9 sent=601 journal_lines=74 journal_damaged=0 plc_writes=68 state=valid files=9
+  round 87 (kill after 2188 ms): VERIFY ok audit_lines=2017 audit_damaged=0 runs=7 rotations=9 sent=665 journal_lines=75 journal_damaged=0 plc_writes=138 state=valid files=9
+  round 88 (kill after 2117 ms): VERIFY ok audit_lines=1972 audit_damaged=0 runs=6 rotations=9 sent=650 journal_lines=78 journal_damaged=0 plc_writes=133 state=valid files=9
+  round 89 (kill after 892 ms): VERIFY ok audit_lines=1916 audit_damaged=0 runs=6 rotations=9 sent=631 journal_lines=80 journal_damaged=0 plc_writes=55 state=valid files=9
+  round 90 (stop after 1862 ms): VERIFY ok audit_lines=1824 audit_damaged=0 runs=5 rotations=9 sent=601 journal_lines=81 journal_damaged=0 plc_writes=118 state=valid files=9
+  round 91 (kill after 2328 ms): VERIFY ok audit_lines=1821 audit_damaged=0 runs=5 rotations=9 sent=599 journal_lines=84 journal_damaged=0 plc_writes=147 state=valid files=9
+  round 92 (kill after 1160 ms): VERIFY ok audit_lines=1815 audit_damaged=0 runs=5 rotations=9 sent=596 journal_lines=86 journal_damaged=0 plc_writes=72 state=valid files=9
+  round 93 (kill after 1340 ms): VERIFY ok audit_lines=1846 audit_damaged=0 runs=5 rotations=9 sent=607 journal_lines=86 journal_damaged=0 plc_writes=84 state=valid files=9
+  round 94 (kill after 861 ms): VERIFY ok audit_lines=2008 audit_damaged=0 runs=6 rotations=9 sent=660 journal_lines=86 journal_damaged=0 plc_writes=53 state=valid files=9
+  round 95 (kill after 1606 ms): VERIFY ok audit_lines=1866 audit_damaged=0 runs=6 rotations=9 sent=613 journal_lines=86 journal_damaged=0 plc_writes=101 state=valid files=9
+  round 96 (stop after 1530 ms): VERIFY ok audit_lines=1934 audit_damaged=0 runs=6 rotations=9 sent=637 journal_lines=86 journal_damaged=0 plc_writes=97 state=valid files=9
+  round 97 (kill after 2420 ms): VERIFY ok audit_lines=1947 audit_damaged=0 runs=6 rotations=9 sent=642 journal_lines=87 journal_damaged=0 plc_writes=152 state=valid files=9
+  round 98 (kill after 439 ms): VERIFY ok audit_lines=1804 audit_damaged=0 runs=7 rotations=9 sent=592 journal_lines=87 journal_damaged=0 plc_writes=25 state=valid files=9
+  round 99 (kill after 2110 ms): VERIFY ok audit_lines=1982 audit_damaged=0 runs=7 rotations=9 sent=651 journal_lines=90 journal_damaged=0 plc_writes=133 state=valid files=9
+  round 100 (kill after 2034 ms): VERIFY ok audit_lines=1922 audit_damaged=0 runs=5 rotations=9 sent=633 journal_lines=93 journal_damaged=0 plc_writes=129 state=valid files=9
+  round 101 (kill after 1206 ms): VERIFY ok audit_lines=1930 audit_damaged=0 runs=6 rotations=9 sent=635 journal_lines=95 journal_damaged=0 plc_writes=76 state=valid files=9
+  round 102 (stop after 1509 ms): VERIFY ok audit_lines=1995 audit_damaged=0 runs=6 rotations=9 sent=657 journal_lines=95 journal_damaged=0 plc_writes=96 state=valid files=9
+  round 103 (kill after 2227 ms): VERIFY ok audit_lines=1972 audit_damaged=0 runs=6 rotations=9 sent=649 journal_lines=96 journal_damaged=0 plc_writes=140 state=valid files=9
+  round 104 (kill after 571 ms): VERIFY ok audit_lines=1855 audit_damaged=0 runs=6 rotations=9 sent=610 journal_lines=96 journal_damaged=0 plc_writes=34 state=valid files=9
+  round 105 (kill after 766 ms): VERIFY ok audit_lines=1999 audit_damaged=0 runs=7 rotations=9 sent=657 journal_lines=97 journal_damaged=0 plc_writes=47 state=valid files=9
+  round 106 (kill after 1063 ms): VERIFY ok audit_lines=1974 audit_damaged=0 runs=7 rotations=9 sent=650 journal_lines=98 journal_damaged=0 plc_writes=66 state=valid files=9
+  round 107 (kill after 1588 ms): VERIFY ok audit_lines=1830 audit_damaged=0 runs=7 rotations=9 sent=602 journal_lines=98 journal_damaged=0 plc_writes=100 state=valid files=9
+  round 108 (stop after 2329 ms): VERIFY ok audit_lines=1825 audit_damaged=0 runs=6 rotations=9 sent=601 journal_lines=99 journal_damaged=0 plc_writes=147 state=valid files=9
+  round 109 (kill after 1972 ms): VERIFY ok audit_lines=1976 audit_damaged=0 runs=6 rotations=9 sent=650 journal_lines=102 journal_damaged=0 plc_writes=124 state=valid files=9
+  round 110 (kill after 809 ms): VERIFY ok audit_lines=1906 audit_damaged=0 runs=7 rotations=9 sent=626 journal_lines=104 journal_damaged=0 plc_writes=50 state=valid files=9
+  round 111 (kill after 2005 ms): VERIFY ok audit_lines=1843 audit_damaged=0 runs=5 rotations=9 sent=607 journal_lines=106 journal_damaged=0 plc_writes=127 state=valid files=9
+  round 112 (kill after 841 ms): VERIFY ok audit_lines=2005 audit_damaged=0 runs=6 rotations=9 sent=660 journal_lines=108 journal_damaged=0 plc_writes=53 state=valid files=9
+  round 113 (kill after 1451 ms): VERIFY ok audit_lines=1835 audit_damaged=0 runs=6 rotations=9 sent=603 journal_lines=109 journal_damaged=0 plc_writes=91 state=valid files=9
+  round 114 (stop after 2002 ms): VERIFY ok audit_lines=1994 audit_damaged=0 runs=6 rotations=9 sent=656 journal_lines=110 journal_damaged=0 plc_writes=127 state=valid files=9
+  round 115 (kill after 1133 ms): VERIFY ok audit_lines=1986 audit_damaged=0 runs=7 rotations=9 sent=652 journal_lines=112 journal_damaged=0 plc_writes=70 state=valid files=9
+  round 116 (kill after 563 ms): VERIFY ok audit_lines=1867 audit_damaged=0 runs=7 rotations=9 sent=614 journal_lines=112 journal_damaged=0 plc_writes=35 state=valid files=9
+  round 117 (kill after 1251 ms): VERIFY ok audit_lines=1880 audit_damaged=0 runs=7 rotations=9 sent=618 journal_lines=112 journal_damaged=0 plc_writes=78 state=valid files=9
+  round 118 (kill after 1395 ms): VERIFY ok audit_lines=1921 audit_damaged=0 runs=7 rotations=9 sent=632 journal_lines=112 journal_damaged=0 plc_writes=88 state=valid files=9
+  round 119 (kill after 2324 ms): VERIFY ok audit_lines=1916 audit_damaged=0 runs=6 rotations=9 sent=631 journal_lines=113 journal_damaged=0 plc_writes=147 state=valid files=9
+  round 120 (stop after 699 ms): VERIFY ok audit_lines=1826 audit_damaged=0 runs=7 rotations=9 sent=601 journal_lines=113 journal_damaged=0 plc_writes=44 state=valid files=9
+  round 121 (kill after 1404 ms): VERIFY ok audit_lines=1871 audit_damaged=0 runs=7 rotations=9 sent=616 journal_lines=115 journal_damaged=0 plc_writes=89 state=valid files=9
+  round 122 (kill after 1297 ms): VERIFY ok audit_lines=1895 audit_damaged=0 runs=7 rotations=9 sent=625 journal_lines=115 journal_damaged=0 plc_writes=82 state=valid files=9
+  round 123 (kill after 1623 ms): VERIFY ok audit_lines=1978 audit_damaged=0 runs=7 rotations=9 sent=653 journal_lines=115 journal_damaged=0 plc_writes=102 state=valid files=9
+  round 124 (kill after 2121 ms): VERIFY ok audit_lines=1934 audit_damaged=0 runs=6 rotations=9 sent=638 journal_lines=116 journal_damaged=0 plc_writes=134 state=valid files=9
+  round 125 (kill after 1542 ms): VERIFY ok audit_lines=2003 audit_damaged=0 runs=6 rotations=9 sent=661 journal_lines=118 journal_damaged=0 plc_writes=97 state=valid files=9
+  round 126 (stop after 1861 ms): VERIFY ok audit_lines=1912 audit_damaged=0 runs=6 rotations=9 sent=630 journal_lines=119 journal_damaged=0 plc_writes=118 state=valid files=9
+  round 127 (kill after 2326 ms): VERIFY ok audit_lines=1907 audit_damaged=0 runs=5 rotations=9 sent=629 journal_lines=122 journal_damaged=0 plc_writes=147 state=valid files=9
+  round 128 (kill after 1302 ms): VERIFY ok audit_lines=1932 audit_damaged=0 runs=5 rotations=9 sent=636 journal_lines=124 journal_damaged=0 plc_writes=82 state=valid files=9
+  round 129 (kill after 1133 ms): VERIFY ok audit_lines=1923 audit_damaged=0 runs=5 rotations=9 sent=633 journal_lines=124 journal_damaged=0 plc_writes=71 state=valid files=9
+  round 130 (kill after 2020 ms): VERIFY ok audit_lines=1861 audit_damaged=0 runs=5 rotations=9 sent=613 journal_lines=125 journal_damaged=0 plc_writes=127 state=valid files=9
+  round 131 (kill after 1222 ms): VERIFY ok audit_lines=1869 audit_damaged=0 runs=5 rotations=9 sent=615 journal_lines=127 journal_damaged=0 plc_writes=76 state=valid files=9
+  round 132 (stop after 1727 ms): VERIFY ok audit_lines=1975 audit_damaged=0 runs=6 rotations=9 sent=650 journal_lines=127 journal_damaged=0 plc_writes=109 state=valid files=9
+  round 133 (kill after 2171 ms): VERIFY ok audit_lines=1941 audit_damaged=0 runs=6 rotations=9 sent=639 journal_lines=128 journal_damaged=0 plc_writes=137 state=valid files=9
+  round 134 (kill after 1262 ms): VERIFY ok audit_lines=1958 audit_damaged=0 runs=6 rotations=9 sent=644 journal_lines=130 journal_damaged=0 plc_writes=79 state=valid files=9
+  round 135 (kill after 1939 ms): VERIFY ok audit_lines=1880 audit_damaged=0 runs=5 rotations=9 sent=620 journal_lines=131 journal_damaged=0 plc_writes=123 state=valid files=9
+  round 136 (kill after 1458 ms): VERIFY ok audit_lines=1936 audit_damaged=0 runs=6 rotations=9 sent=638 journal_lines=133 journal_damaged=0 plc_writes=91 state=valid files=9
+  round 137 (kill after 2434 ms): VERIFY ok audit_lines=1952 audit_damaged=0 runs=5 rotations=9 sent=645 journal_lines=134 journal_damaged=0 plc_writes=154 state=valid files=9
+  round 138 (stop after 2482 ms): VERIFY ok audit_lines=1978 audit_damaged=0 runs=5 rotations=9 sent=653 journal_lines=137 journal_damaged=0 plc_writes=157 state=valid files=9
+  round 139 (kill after 1691 ms): VERIFY ok audit_lines=1853 audit_damaged=0 runs=4 rotations=9 sent=612 journal_lines=139 journal_damaged=0 plc_writes=106 state=valid files=9
+  round 140 (kill after 477 ms): VERIFY ok audit_lines=1944 audit_damaged=0 runs=5 rotations=9 sent=642 journal_lines=139 journal_damaged=0 plc_writes=30 state=valid files=9
+  round 141 (kill after 2304 ms): VERIFY ok audit_lines=1936 audit_damaged=0 runs=5 rotations=9 sent=639 journal_lines=140 journal_damaged=0 plc_writes=146 state=valid files=9
+  round 142 (kill after 642 ms): VERIFY ok audit_lines=1833 audit_damaged=0 runs=5 rotations=9 sent=605 journal_lines=140 journal_damaged=0 plc_writes=40 state=valid files=9
+  round 143 (kill after 1189 ms): VERIFY ok audit_lines=1835 audit_damaged=0 runs=6 rotations=9 sent=604 journal_lines=142 journal_damaged=0 plc_writes=74 state=valid files=9
+  round 144 (stop after 2251 ms): VERIFY ok audit_lines=1818 audit_damaged=0 runs=6 rotations=9 sent=600 journal_lines=143 journal_damaged=0 plc_writes=143 state=valid files=9
+  round 145 (kill after 1528 ms): VERIFY ok audit_lines=1885 audit_damaged=0 runs=6 rotations=9 sent=622 journal_lines=145 journal_damaged=0 plc_writes=96 state=valid files=9
+  round 146 (kill after 2019 ms): VERIFY ok audit_lines=1821 audit_damaged=0 runs=5 rotations=9 sent=601 journal_lines=146 journal_damaged=0 plc_writes=127 state=valid files=9
+  round 147 (kill after 849 ms): VERIFY ok audit_lines=1983 audit_damaged=0 runs=6 rotations=9 sent=654 journal_lines=148 journal_damaged=0 plc_writes=53 state=valid files=9
+  round 148 (kill after 1026 ms): VERIFY ok audit_lines=1956 audit_damaged=0 runs=7 rotations=9 sent=644 journal_lines=149 journal_damaged=0 plc_writes=64 state=valid files=9
+  round 149 (kill after 1292 ms): VERIFY ok audit_lines=1977 audit_damaged=0 runs=7 rotations=9 sent=651 journal_lines=149 journal_damaged=0 plc_writes=81 state=valid files=9
+  round 150 (stop after 2367 ms): VERIFY ok audit_lines=1980 audit_damaged=0 runs=6 rotations=9 sent=653 journal_lines=150 journal_damaged=0 plc_writes=150 state=valid files=9
+killloop: PASS (150 rounds: 125 kills, 25 clean stops)
+  last state: VERIFY ok audit_lines=1980 audit_damaged=0 runs=6 rotations=9 sent=653 journal_lines=150 journal_damaged=0 plc_writes=150 state=valid files=9
+exit=0

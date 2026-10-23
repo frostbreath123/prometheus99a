@@ -1,0 +1,12 @@
+gate (full) on build-musl/prometheus99
+  ok   stripped size (bytes): 297088 <= 322000
+  ok   static data .data+.bss (bytes): 405640 <= 440000
+  ok   no Argon2id code in the executable
+  ok   no shared library needed (one static file)
+gate (full): PASS
+gate (lite) on build-musl-lite/prometheus99
+  ok   stripped size (bytes): 268416 <= 290000
+  ok   static data .data+.bss (bytes): 321760 <= 350000
+  ok   no Argon2id code in the executable
+  ok   no shared library needed (one static file)
+gate (lite): PASS

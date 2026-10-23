@@ -1,0 +1,73 @@
+bash tests/hmi/config_exec_test.sh build-san-address config/hmi.example.json
+== signing tool usage
+  ok   no arguments: exit 2
+  ok   unknown command: exit 2
+  ok   missing value: exit 2
+  ok   bad serial: exit 2
+  ok   repeated option: exit 2
+  ok   keygen without --key: exit 2
+== keygen and sign
+  ok   sign without a key refused
+  ok   keygen writes 32 bytes
+  ok   key is created with mode 600
+  ok   keygen never overwrites a key
+  ok   first signature has serial 1
+  ok   signature file is 88 bytes
+  ok   sign reports the write master switch
+  ok   signing again increases the serial
+  ok   --serial is honoured
+== the tool refuses to sign a bad configuration
+  ok   invalid configuration is not signed
+  ok   configuration without allowed_hosts is not signed
+  ok   host outside the allow-list is not signed
+  ok   a short key is refused
+== verify
+  ok   verify accepts the signed configuration
+  ok   verify does not touch the device's serial state
+  ok   verify rejects an edited file
+== production executable: accepted
+  ok   signed configuration accepted
+  ok   audit has CONFIG_ACCEPTED serial=5
+  ok   the runtime connected to the loopback listener (2)
+  ok   serial state file written
+  ok   warns when the service user owns the configuration
+== production executable: every kind of tampering is safe mode
+  ok   missing signature: rejected (signature_missing)
+  ok   missing signature: audit has CONFIG_REJECTED reason=signature_missing
+  ok   missing signature: no PLC connection was made (safe mode)
+  ok   one flipped bit: rejected (config_corrupt)
+  ok   one flipped bit: audit has CONFIG_REJECTED reason=config_corrupt
+  ok   one flipped bit: no PLC connection was made (safe mode)
+  ok   writes_enabled turned on by hand: rejected (config_corrupt)
+  ok   writes_enabled turned on by hand: audit has CONFIG_REJECTED reason=config_corrupt
+  ok   writes_enabled turned on by hand: no PLC connection was made (safe mode)
+  ok   writes stayed off
+  ok   wrong key: rejected (signature_mismatch)
+  ok   wrong key: audit has CONFIG_REJECTED reason=signature_mismatch
+  ok   wrong key: no PLC connection was made (safe mode)
+  ok   older signed configuration put back: rejected (rollback)
+  ok   older signed configuration put back: audit has CONFIG_REJECTED reason=rollback
+  ok   older signed configuration put back: no PLC connection was made (safe mode)
+  ok   a higher serial is accepted again
+  ok   world-readable key: rejected (key_mode)
+  ok   world-readable key: audit has CONFIG_REJECTED reason=key_mode
+  ok   world-readable key: no PLC connection was made (safe mode)
+  ok   world-writable configuration: rejected (config_mode)
+  ok   world-writable configuration: audit has CONFIG_REJECTED reason=config_mode
+  ok   world-writable configuration: no PLC connection was made (safe mode)
+  ok   world-writable signature: rejected (config_mode)
+  ok   world-writable signature: audit has CONFIG_REJECTED reason=config_mode
+  ok   world-writable signature: no PLC connection was made (safe mode)
+  ok   missing key: rejected (key_missing)
+  ok   missing key: audit has CONFIG_REJECTED reason=key_missing
+  ok   missing key: no PLC connection was made (safe mode)
+  ok   missing configuration: rejected (config_unreadable)
+  ok   missing configuration: audit has CONFIG_REJECTED reason=config_unreadable
+  ok   missing configuration: no PLC connection was made (safe mode)
+  ok   a damaged serial file is reported and treated as absent
+  ok   restored configuration is accepted again
+== the signed text is parsed only after the signature verifies
+  ok   unsigned garbage: rejected (config_corrupt)
+  ok   unsigned garbage: audit has CONFIG_REJECTED reason=config_corrupt
+  ok   unsigned garbage: no PLC connection was made (safe mode)
+config exec test: PASS

@@ -1,0 +1,160 @@
+executable: build-linux/prometheus99-bench
+unstripped_bytes: 416000
+stripped_bytes:   358624
+
+== size -A (stripped)
+section                size     addr
+.interp                  28      792
+.note.gnu.property       48      824
+.note.gnu.build-id       36      872
+.note.ABI-tag            32      908
+.gnu.hash                40      944
+.dynsym                1896      984
+.dynstr                1084     2880
+.gnu.version            158     3964
+.gnu.version_r          176     4128
+.rela.dyn              6432     4304
+.rela.plt              1728    10736
+.init                    27    16384
+.plt                   1168    16416
+.plt.got                 16    17584
+.plt.sec               1152    17600
+.text                263105    18752
+.fini                    13   281860
+.rodata               14112   282624
+.eh_frame_hdr          7708   296736
+.eh_frame             43904   304448
+.init_array               8   353232
+.fini_array               8   353240
+.data.rel.ro           5984   353248
+.dynamic                528   359232
+.got                    672   359760
+.data                    24   360448
+.bss                 460840   360480
+.comment                 45        0
+
+== size (Berkeley, stripped)
+   text	   data	    bss	    dec	    hex	filename
+ 342863	   7224	 460840	 810927	  c5faf	/tmp/tmp.swk136bZvr
+
+== shared libraries needed
+ 0x0000000000000001 (NEEDED)             Shared library: [libmodbus.so.5]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+file: build-linux/prometheus99-bench: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=cd2572912a9ccf8d32b936d4e267d25313d4c58e, for GNU/Linux 3.2.0, not stripped
+
+== 40 largest text symbols (bytes)
+0000000000163520 0000000000006633 T lv_draw_sw_box_shadow
+0000000000191568 0000000000003643 t img_draw_core
+0000000000229104 0000000000003518 t lv_obj_event
+0000000000175408 0000000000003202 T lv_draw_sw_border
+0000000000222640 0000000000003197 T lv_obj_refr_size
+0000000000186288 0000000000003124 T lv_draw_sw_line
+0000000000240896 0000000000002874 T lv_obj_get_scrollbar_area
+0000000000260128 0000000000002864 T lv_display_refr_timer
+0000000000159856 0000000000002688 T lv_draw_label_iterate_characters
+0000000000112336 0000000000002576 T hmi_cfgedit_apply
+0000000000278336 0000000000002440 t lv_chart_event
+0000000000094416 0000000000002344 T hmi_cfgsec_load
+0000000000200160 0000000000002342 T lv_draw_sw_arc
+0000000000018768 0000000000002334 T main
+0000000000268016 0000000000002178 t lv_label_refr_text.part.0
+0000000000106880 0000000000002164 T hmi_config_serialize
+0000000000065232 0000000000002136 T hmi_writes_submit_as
+0000000000030000 0000000000002117 t overview_build
+0000000000045104 0000000000002082 t config_update
+0000000000083536 0000000000002080 T hmi_config_parse
+0000000000081456 0000000000002071 t top_tags
+0000000000170160 0000000000002070 T lv_draw_sw_fill
+0000000000189648 0000000000001906 T lv_draw_sw_transform
+0000000000157648 0000000000001848 T lv_draw_rect
+0000000000272240 0000000000001834 t draw_series_line
+0000000000180160 0000000000001809 t lv_draw_mask_line
+0000000000172240 0000000000001789 T lv_draw_sw_triangle
+0000000000036720 0000000000001748 t trends_build
+0000000000079296 0000000000001714 t parse_object
+0000000000184576 0000000000001711 T lv_draw_sw_mask_radius_init
+0000000000027536 0000000000001705 t overview_update
+0000000000023216 0000000000001688 T hmi_ui_init
+0000000000071744 0000000000001680 t ack_request
+0000000000256864 0000000000001518 t refr_obj.part.0
+0000000000239248 0000000000001479 t scroll_area_into_view
+0000000000089104 0000000000001456 T hmi_runtime_start_ex
+0000000000043408 0000000000001440 t config_build
+0000000000233568 0000000000001439 T lv_obj_init_draw_rect_dsc
+0000000000270208 0000000000001421 t lv_label_event
+0000000000101856 0000000000001416 T hmi_audit_parse_journal
+
+== 25 largest static data objects (.data/.bss, bytes)
+0000000000372480 0000000000131408 b g_rt
+0000000000705792 0000000000114688 b work_mem_int.0
+0000000000551840 0000000000032769 b s_chk_text
+0000000000672800 0000000000032769 b cfg.0
+0000000000603136 0000000000032769 b buf.0
+0000000000503888 0000000000032000 b s_bench_draw
+0000000000652320 0000000000020480 b tail.0
+0000000000635936 0000000000016384 b toks.1
+0000000000584640 0000000000011968 b s_chk
+0000000000360512 0000000000011968 b g_cfg
+0000000000547680 0000000000004136 b req.0
+0000000000596704 0000000000004096 b s_pend
+0000000000542304 0000000000003840 b s_raw
+0000000000537376 0000000000001920 b s_rows
+0000000000539872 0000000000001472 b s_rows
+0000000000355296 0000000000001200 d TAG_FIELDS
+0000000000541344 0000000000000960 b s_dec
+0000000000601760 0000000000000896 b s_rows
+0000000000546592 0000000000000840 b t_sys
+0000000000820480 0000000000000840 B lv_global
+0000000000357280 0000000000000640 d ALARM_FIELDS
+0000000000354176 0000000000000560 d TOP_FIELDS
+0000000000539328 0000000000000480 b t_journal
+0000000000536576 0000000000000480 b t_journal
+0000000000354784 0000000000000480 d PLC_FIELDS
+
+== bytes per source group from the linker map (input sections that were kept)
+  298755  src/hmi (and file statics) data_bss
+  114918  lvgl/stdlib data_bss
+   72253  app sources, other code_rodata
+   60872  lvgl/draw code_rodata
+   57863  src/hmi (and file statics) code_rodata
+   55392  lvgl/core code_rodata
+   45778  src/ui data_bss
+   30131  lvgl/misc code_rodata
+   17143  lvgl/widgets code_rodata
+   15202  other: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/Scrt1.o data_bss
+    7882  other: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/Scrt1.o code_rodata
+    7213  src/ui code_rodata
+    6680  app sources, other data_bss
+    5367  lvgl/stdlib code_rodata
+    3919  lvgl/libs code_rodata
+    3260  lvgl/display code_rodata
+    2883  monocypher code_rodata
+    2667  lvgl/font code_rodata
+    1663  lvgl/indev code_rodata
+    1312  lvgl/misc data_bss
+    1196  lvgl/draw data_bss
+     887  src/hmi/plc_libmodbus code_rodata
+     886  lvgl/lv_init data_bss
+     628  lvgl/themes code_rodata
+     570  lvgl/core data_bss
+     424  lvgl/lv_init code_rodata
+     330  lvgl/widgets data_bss
+     225  lvgl/layouts code_rodata
+     207  lvgl/tick code_rodata
+     199  lvgl/osal code_rodata
+     185  other: /usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o code_rodata
+     138  lvgl/font data_bss
+      92  lvgl/osal data_bss
+      92  lvgl/indev data_bss
+      92  lvgl/drivers data_bss
+      70  other: /usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o data_bss
+      46  other: /usr/lib/gcc/x86_64-linux-gnu/13/crtendS.o data_bss
+      46  lvgl/tick data_bss
+      46  lvgl/themes data_bss
+      46  lvgl/libs data_bss
+      46  lvgl/layouts data_bss
+      46  lvgl/display data_bss
+      30  other: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/crti.o data_bss
+      10  other: /usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/crtn.o data_bss
+       4  other: /usr/lib/gcc/x86_64-linux-gnu/13/crtendS.o code_rodata

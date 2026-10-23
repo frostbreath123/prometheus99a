@@ -1,0 +1,5 @@
+label: phase1_musl   date: 2026-10-23T10:36:58Z   runs: 15
+cold_start_ms: 23
+warm_start_ms (runs 2..): 10 12 12 14 12 12 12 11 12 13 12 10 12 11
+warm min=10 median=12 max=14 ms
+(poll granularity about 2 ms plus process start; includes configuration signature check, runtime threads and the LVGL screen build)

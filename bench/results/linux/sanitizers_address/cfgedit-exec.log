@@ -1,0 +1,117 @@
+cc -std=gnu99 -O2 -Wall -Wextra -Wpedantic -ffunction-sections -fdata-sections -fstack-protector-strong -D_FORTIFY_SOURCE=2 -fPIE -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 src/app/p99_cfg.c src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_util.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c src/hmi/hmi_store.c src/hmi/hmi_auditfmt.c src/hmi/hmi_trend.c src/hmi/hmi_config_write.c src/hmi/hmi_cfgedit.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c -o build-san-address/p99_cfg -Wl,--gc-sections -Wl,-z,relro,-z,now -pie -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1 -lm -lpthread
+bash tests/hmi/cfgedit_exec_test.sh build-san-address config/hmi.example.json
+== usage
+  ok   no arguments: exit 2
+  ok   missing options: exit 2
+  ok   a unit name with shell characters: exit 2
+  ok   no request: nothing happens, exit 0
+== a good request
+  ok   applied: exit 0
+  ok   result: applied serial=2 changes=3 by=eng1
+  ok   the request is removed
+  ok   serial plus one
+  ok   the device's own check accepts it, with the new host
+  ok   the new limit is in the file
+  ok   mode 0644 for both files
+  ok   the previous pair is kept
+  ok   the kept pair still verifies, with serial 1
+  ok   audit has CONFIG_CHANGED with the user and a wall stamp
+  ok   the configuration is still owned by root
+== refused requests leave everything unchanged
+  ok   stale serial: refused: rejected: stale request: made for serial 1, the configuration is serial 2
+  ok   stale serial: the request is removed
+  ok   stale serial: configuration and signature unchanged
+  ok   serial from the future: refused: rejected: stale request: made for serial 3, the configuration is serial 2
+  ok   serial from the future: the request is removed
+  ok   serial from the future: configuration and signature unchanged
+  ok   the same setting twice: refused: rejected: bad request: the same setting twice: TANK_LEVEL
+  ok   the same setting twice: the request is removed
+  ok   the same setting twice: configuration and signature unchanged
+  ok   unknown key (write switch): refused: rejected: bad request: unknown key: writes_enabled
+  ok   unknown key (write switch): the request is removed
+  ok   unknown key (write switch): configuration and signature unchanged
+  ok   forbidden key (write limit): refused: rejected: bad request: unknown key: tag.TANK_LEVEL.write.max
+  ok   forbidden key (write limit): the request is removed
+  ok   forbidden key (write limit): configuration and signature unchanged
+  ok   forbidden key (allow-list): refused: rejected: bad request: unknown key: plc.allowed_hosts
+  ok   forbidden key (allow-list): the request is removed
+  ok   forbidden key (allow-list): configuration and signature unchanged
+  ok   forbidden key (address): refused: rejected: bad request: unknown key: tag.TANK_LEVEL.address
+  ok   forbidden key (address): the request is removed
+  ok   forbidden key (address): configuration and signature unchanged
+  ok   host outside the allow-list: refused: rejected: plc.host is not in plc.allowed_hosts: 10.9.9.9
+  ok   host outside the allow-list: the request is removed
+  ok   host outside the allow-list: configuration and signature unchanged
+  ok   no such tag: refused: rejected: no such tag: NOSUCH
+  ok   no such tag: the request is removed
+  ok   no such tag: configuration and signature unchanged
+  ok   limit outside the tag range: refused: rejected: an alarm limit must lie inside the tag's min and max: TANK_LEVEL
+  ok   limit outside the tag range: the request is removed
+  ok   limit outside the tag range: configuration and signature unchanged
+  ok   limit above the high-high limit: refused: rejected: the changed configuration is invalid: high_high must exceed high
+  ok   limit above the high-high limit: the request is removed
+  ok   limit above the high-high limit: configuration and signature unchanged
+  ok   a change that changes nothing: refused: rejected: nothing would change
+  ok   a change that changes nothing: the request is removed
+  ok   a change that changes nothing: configuration and signature unchanged
+  ok   missing END: refused: rejected: bad request: the request has no END line
+  ok   missing END: the request is removed
+  ok   missing END: configuration and signature unchanged
+  ok   bytes after END: refused: rejected: bad request: bytes after END
+  ok   bytes after END: the request is removed
+  ok   bytes after END: configuration and signature unchanged
+  ok   a control character: refused: rejected: bad request: illegal character
+  ok   a control character: the request is removed
+  ok   a control character: configuration and signature unchanged
+== a request that is not what it should be as a file
+  ok   symbolic link: refused: rejected: the request is a symbolic link
+  ok   symbolic link: the request is removed
+  ok   symbolic link: configuration and signature unchanged
+  ok   the link target is untouched
+  ok   wrong owner: refused: rejected: the request has the wrong owner
+  ok   wrong owner: the request is removed
+  ok   wrong owner: configuration and signature unchanged
+  ok   group-writable request: refused: rejected: the request is writable by group or others
+  ok   group-writable request: the request is removed
+  ok   group-writable request: configuration and signature unchanged
+  ok   second hard link: refused: rejected: the request has more than one link
+  ok   second hard link: the request is removed
+  ok   second hard link: configuration and signature unchanged
+  ok   oversized request: refused: rejected: the request is larger than 8 KiB
+  ok   oversized request: the request is removed
+  ok   oversized request: configuration and signature unchanged
+  ok   named pipe: refused: rejected: the request is not a regular file
+  ok   named pipe: the request is removed
+  ok   named pipe: configuration and signature unchanged
+  ok   a directory in place of the request: exit 3, nothing changed
+== the current configuration must verify first
+  ok   edited configuration: refused: rejected: the current configuration does not verify (config_corrupt)
+  ok   edited configuration: the request is removed
+  ok   edited configuration: configuration and signature unchanged
+  ok   wrong key: refused: rejected: the current configuration does not verify (signature_mismatch)
+  ok   wrong key: the request is removed
+  ok   wrong key: configuration and signature unchanged
+  ok   missing signature: refused
+  ok   group-writable configuration: refused
+== the audit record comes first
+  ok   no audit file: refused: rejected: the audit record could not be written, so nothing was changed
+  ok   no audit file: the request is removed
+  ok   no audit file: configuration and signature unchanged
+  ok   audit file is a symbolic link: refused: rejected: the audit record could not be written, so nothing was changed
+  ok   audit file is a symbolic link: the request is removed
+  ok   audit file is a symbolic link: configuration and signature unchanged
+  ok   the audit link target is untouched
+  ok   audit file with the wrong owner: refused: rejected: the audit record could not be written, so nothing was changed
+  ok   audit file with the wrong owner: the request is removed
+  ok   audit file with the wrong owner: configuration and signature unchanged
+== the spool directory
+  ok   a world-writable spool directory: exit 3, nothing changed
+  ok   a symbolic link as the spool directory: exit 3
+== a second good request after all the refusals
+  ok   applied again: applied serial=3 changes=2 by=-
+  ok   still verifies
+== the largest serial cannot be increased
+  ok   serial 4294967295: refused: rejected: the serial cannot be increased any further
+  ok   serial 4294967295: the request is removed
+  ok   serial 4294967295: configuration and signature unchanged
+cfgedit-exec: all checks passed

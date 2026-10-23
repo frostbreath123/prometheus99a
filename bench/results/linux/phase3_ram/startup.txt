@@ -1,0 +1,5 @@
+label: phase3_ram   date: 2026-10-23T11:08:47Z   runs: 15
+cold_start_ms: 18
+warm_start_ms (runs 2..): 12 10 11 10 10 12 9 9 11 10 14 14 10 10
+warm min=9 median=10 max=14 ms
+(poll granularity about 2 ms plus process start; includes configuration signature check, runtime threads and the LVGL screen build)

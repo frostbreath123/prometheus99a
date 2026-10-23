@@ -1,0 +1,10 @@
+label: final_recovery   date: 2026-10-23T14:31:53Z   host: 6.18.54.1-microsoft-standard-WSL2
+normal polling: about 10 requests per second (4 tags, poll_ms 200 to 1000); link events so far: 0
+PLC hangs (reads requests, never answers): the link event (loss) appeared after 4134 ms; requests received during the 25 s: 5
+PLC answers again: the link event (return) appeared after 5399 ms
+PLC drops every connection: the link event (loss) appeared after 1153 ms; requests received during the 25 s: 49
+PLC answers again: the link event (return) appeared after 531 ms
+normal polling again: about 10 requests per second
+the executable is still running (no crash, no hang)
+exit status on SIGTERM: 0
+journal lines about the link (kept in recovery_journal.txt): 4

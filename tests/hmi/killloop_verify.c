@@ -2,7 +2,7 @@
  * was killed (or stopped) and checks what must hold whatever the moment of the
  * kill was. Exit status 0 when everything holds, 1 otherwise, with the reason.
  *
- *   usage: killloop_verify DIR MAX_TORN
+ *   usage: killloop_verify DIR MAX_TORN [CONFIG.json]
  *
  * MAX_TORN is how many unfinished records each of the audit file and the
  * journal may contain in total (at most one per kill so far).
@@ -122,7 +122,8 @@ static size_t g_n_sent_raw;
 
 int main(int argc, char **argv)
 {
-    if (argc != 3) return fail("usage", "killloop_verify DIR MAX_TORN");
+    if (argc != 3 && argc != 4) return fail("usage", "killloop_verify DIR MAX_TORN [CONFIG.json]");
+    const char *cfg_path = argc == 4 ? argv[3] : NULL;   /* the journal is read with these tag names; default: the kill-loop's own configuration */
     const char *dir = argv[1];
     int max_torn = atoi(argv[2]);
     char path[400];
@@ -213,7 +214,14 @@ int main(int argc, char **argv)
     /* ---- alarm journal ---- */
     static hmi_app_cfg_t cfg;
     char err[128];
-    if (!parse(GOOD_CFG, &cfg, err)) return fail("test configuration", err);
+    const char *cfg_text = GOOD_CFG;
+    if (cfg_path) {
+        size_t cl = 0;
+        char *cb = slurp_file(cfg_path, &cl);
+        if (!cb) return fail("cannot read the configuration", cfg_path);
+        cfg_text = cb;   /* kept for the life of the program */
+    }
+    if (!parse(cfg_text, &cfg, err)) return fail("test configuration", err);
     const char *names[HMI_MAX_TAGS];
     for (size_t i = 0; i < cfg.n_tags; i++) names[i] = cfg.tags[i].name;
     int j_lines = 0, j_bad = 0;

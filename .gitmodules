@@ -1,0 +1,6 @@
+[submodule "third_party/lvgl"]
+	path = third_party/lvgl
+	url = https://github.com/lvgl/lvgl.git
+[submodule "third_party/libmodbus"]
+	path = third_party/libmodbus
+	url = https://github.com/stephane/libmodbus.git
