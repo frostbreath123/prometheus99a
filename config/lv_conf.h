@@ -1131,13 +1131,12 @@
 
 /* ---- Prometheus99 overrides ---- */
 #ifdef P99_LINUX_TARGET
+    /* LVGL's own fbdev driver is not used: src/app/main_linux.c has a small driver that converts to the framebuffer's depth */
     #undef LV_USE_LINUX_FBDEV
-    #define LV_USE_LINUX_FBDEV 1
+    #define LV_USE_LINUX_FBDEV 0
     #undef LV_USE_EVDEV
     #define LV_USE_EVDEV 1
-    /* the fbdev driver draws through a partial buffer of this many lines (800 x 2 bytes each): 20 lines is 32 KB,
-     * the library default of 60 is 96 KB; see docs/OPTIMIZATION_ROADMAP.md, phase 2, for the render times */
-    #undef LV_LINUX_FBDEV_BUFFER_SIZE
-    #define LV_LINUX_FBDEV_BUFFER_SIZE 20
+    /* the strip height of the display backends (P99_DRAW_LINES in src/app/display.h) is 20 lines, 32 KB; the library
+     * default of 60 would be 96 KB; see docs/OPTIMIZATION_ROADMAP.md, phase 2, for the render times */
 #endif
 #endif /*End of "Content enable"*/

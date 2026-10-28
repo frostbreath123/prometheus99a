@@ -16,7 +16,7 @@
 # dynamically (LGPL-2.1+). Record the version used in docs/LINUX_VALIDATION.md.
 
 # Presentation layer: one file per screen plus the shared header (see src/ui/ui_priv.h).
-UI_SRC := src/ui/hmi_ui.c src/ui/ui_ack.c src/ui/ui_nav.c src/ui/ui_overview.c src/ui/ui_alarms.c src/ui/ui_trends.c src/ui/ui_settings.c src/ui/ui_config.c src/ui/ui_theme.c src/ui/font/p99_font.c
+include sources.mk
 CC ?= gcc
 BUILD = build-linux
 LVGL = third_party/lvgl
@@ -64,8 +64,7 @@ endif
 LVGL_CFLAGS = -fwrapv -DLV_CONF_INCLUDE_SIMPLE -Iconfig -I$(LVGL)
 LVGL_LINUX = -DP99_LINUX_TARGET
 
-HMI_CORE = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \
-           src/hmi/hmi_config.c src/hmi/hmi_runtime.c src/hmi/hmi_watchdog.c src/hmi/hmi_authz.c src/hmi/hmi_cli.c src/hmi/hmi_util.c src/hmi/hmi_mac.c src/hmi/hmi_cfgsec.c src/hmi/hmi_store.c src/hmi/hmi_auditfmt.c src/hmi/hmi_trend.c src/hmi/hmi_config_write.c src/hmi/hmi_cfgedit.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c src/hmi/hmi_platform_posix.c
+HMI_CORE = $(HMI_CORE_COMMON) src/hmi/hmi_platform_posix.c
 FAKE_PLC = tests/hmi/fake_modbus_server_posix.c
 WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
 
@@ -82,7 +81,7 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit boot
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
@@ -102,15 +101,17 @@ $(BUILD)/ui_headless: tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC
 	  $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_H) -o $@ \
 	  $(LDFLAGS) $(MB_LIBS) -lm -lpthread $(WRAP)
 
-$(BUILD)/prometheus99: src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
+# The device program also contains the root helper: started under the name p99_cfg (a link to this file) it applies a
+# configuration request (P99_MULTICALL), so the device needs one file instead of two.
+$(BUILD)/prometheus99: src/app/main_linux.c src/app/display_fbdev.c src/app/p99_cfg.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c \
+	$(CC) $(CFLAGS) -DP99_MULTICALL $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_fbdev.c src/app/p99_cfg.c $(UI_SRC) src/ui/hmi_view.c \
 	  src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
 
 # Test build: also accepts --unsigned-config (no signature check). NEVER deploy it.
-$(BUILD)/prometheus99-sim: src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
+$(BUILD)/prometheus99-sim: src/app/main_linux.c src/app/display_fbdev.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c $(UI_SRC) \
+	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_fbdev.c $(UI_SRC) \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
 
 # Configuration signing tool (see src/app/p99_sign.c).
@@ -160,8 +161,8 @@ hmi: $(BUILD)/prometheus99 $(BUILD)/p99_sign $(BUILD)/p99_cfg
 
 hmi-sim: $(BUILD)/prometheus99-sim
 
-# Needs a framebuffer (/dev/fb0) and evdev touch/mouse. Not a test. Uses the
-# simulation build, which is the only one that accepts --role.
+# Needs a framebuffer (/dev/fb0) and evdev touch/mouse. Not a test. Uses the simulation build, which also accepts
+# --unsigned-config (the claimed --role works in both builds).
 hmi-run-sim: $(BUILD)/prometheus99-sim
 	./$(BUILD)/prometheus99-sim --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
 
@@ -206,8 +207,8 @@ $(BUILD)/hang_server: tests/hmi/hang_server.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $< -o $@
 
-# Real executables: invalid flags exit 2; the production build refuses --role;
-# the simulation build starts with each valid role.
+# Real executables: invalid flags exit 2; both builds accept --role (a claimed role, not authenticated); a missing
+# framebuffer, or a device that is not one, exits 2; the simulation build also accepts --unsigned-config.
 cli-exec: $(BUILD)/prometheus99 $(BUILD)/prometheus99-sim $(BUILD)/p99_sign
 	bash tests/hmi/cli_exec_test.sh $(BUILD) config/hmi.example.json
 
@@ -242,11 +243,11 @@ killloop: $(BUILD)/killloop_child $(BUILD)/killloop_verify
 .PHONY: killloop
 
 # ---- measurement (see bench/README.md) ----
-# The real executable with a regular file as its framebuffer (-DP99_FILE_FB, src/app/main_linux.c),
+# The real executable with a regular file as its framebuffer (src/app/display_file.c),
 # the simulation role handling and a linker map, so PSS, threads and sizes can be measured without a display.
-$(BUILD)/prometheus99-bench: src/app/main_linux.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
+$(BUILD)/prometheus99-bench: src/app/main_linux.c src/app/display_file.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 -DP99_FILE_FB $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c $(UI_SRC) \
+	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_file.c $(UI_SRC) \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) -Wl,-Map=$(BUILD)/prometheus99-bench.map \
 	  $(MB_LIBS) -lm -lpthread
 
@@ -257,3 +258,15 @@ $(BUILD)/fake_plc: tests/hmi/fake_plc_main.c $(FAKE_PLC) tests/hmi/fake_modbus_s
 hmi-bench: $(BUILD)/prometheus99-bench $(BUILD)/fake_plc $(BUILD)/p99_sign
 
 .PHONY: hmi-bench
+
+# ---- desktop window build (development and demonstration, not the device) ----
+# The same program in an SDL2 window (sudo apt install libsdl2-dev), for a machine with a window system such as WSLg.
+#   make -f Makefile.linux BUILD=build-sdl hmi-sdl
+$(BUILD)/prometheus99-sdl: src/app/main_linux.c src/app/display_sdl.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) $(shell sdl2-config --cflags) src/app/main_linux.c src/app/display_sdl.c $(UI_SRC) \
+	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) $(shell sdl2-config --libs) -lm -lpthread
+
+hmi-sdl: $(BUILD)/prometheus99-sdl $(BUILD)/fake_plc $(BUILD)/p99_sign
+
+.PHONY: hmi-sdl

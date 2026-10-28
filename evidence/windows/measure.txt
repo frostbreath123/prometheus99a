@@ -1,0 +1,9 @@
+exe_bytes=304640
+tour_finished_by_itself=True
+wall_seconds=28.8
+cpu_seconds=0.58  avg_cpu_percent_of_one_core=2.01
+pictures=10
+private_ws_kb  min/max=3492/3508
+private_bytes_kb  max=4324
+working_set_kb  max=14180
+samples=13

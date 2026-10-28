@@ -1,0 +1,25 @@
+p99-guest: kernel 6.18.58-0-virt aarch64
+p99-guest: crw-------    1 root     root       29,   0 Oct 23 22:25 /dev/fb0
+p99-guest: 
+p99-guest: /dev/input/:
+p99-guest: total 0
+p99-guest: crw-------    1 root     root       13,  64 Oct 23 22:25 event0
+p99-guest: fb0 32
+p99-guest: fb0 800,480
+p99-guest: prometheus99 pid 433, PLC 10.0.2.2:45429
+prometheus99: role=operator (claimed on the command line, not authenticated)
+prometheus99: warning: nothing authenticates this role; anyone who can start the process or edit its service unit can choose it
+prometheus99: framebuffer /dev/fb0 800x480, 32 bits per pixel (converted from RGB565 row by row)
+prometheus99: configuration verified (signature serial 1)
+prometheus99: warning: the service user can modify the configuration file; a compromised service could rewrite it (the signature would still be checked at the next start)
+prometheus99: warning: the service user can modify the configuration key file
+p99-guest: MEM pss_kb=633 rss_kb=636 fds=6
+p99-guest: MEM pss_kb=645 rss_kb=648 fds=6
+p99-guest: MEM pss_kb=649 rss_kb=652 fds=6
+p99-guest: MEM pss_kb=657 rss_kb=660 fds=6
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=6
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=6
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=5
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=6
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=6
+p99-guest: MEM pss_kb=665 rss_kb=668 fds=6

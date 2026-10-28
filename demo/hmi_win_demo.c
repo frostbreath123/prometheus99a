@@ -25,6 +25,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "ui_targets.h"   /* generated from demo/ui_targets.txt by the Makefile */
 
 #define W 800
 #define H 480
@@ -42,6 +43,7 @@ static uint32_t *g_bits;
 static volatile bool g_running = true;
 static int g_mx, g_my;
 static bool g_down;
+static bool g_press_pending;   /* a press seen since the last read: reported once even if the button was released before LVGL read it */
 static uint8_t s_buf[W * 48 * 2] __attribute__((aligned(64)));
 
 static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
@@ -66,7 +68,8 @@ static void pointer_cb(lv_indev_t *i, lv_indev_data_t *data)
     (void)i;
     data->point.x = g_mx;
     data->point.y = g_my;
-    data->state = g_down ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->state = (g_down || g_press_pending) ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    g_press_pending = false;
 }
 
 static uint32_t tick_cb(void) { return (uint32_t)hmi_now_ms(); }
@@ -100,7 +103,7 @@ static void cycle_role(void);
 static LRESULT CALLBACK wnd_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
 {
     switch (m) {
-        case WM_LBUTTONDOWN: g_mx = (short)LOWORD(lp); g_my = (short)HIWORD(lp); g_down = true; SetCapture(h); return 0;
+        case WM_LBUTTONDOWN: g_mx = (short)LOWORD(lp); g_my = (short)HIWORD(lp); g_down = true; g_press_pending = true; SetCapture(h); return 0;
         case WM_MOUSEMOVE: g_mx = (short)LOWORD(lp); g_my = (short)HIWORD(lp); return 0;
         case WM_LBUTTONUP: g_mx = (short)LOWORD(lp); g_my = (short)HIWORD(lp); g_down = false; ReleaseCapture(); return 0;
         case WM_KEYDOWN:
@@ -266,6 +269,110 @@ static void demo_helper_step(uint64_t now)
     build_ui();
 }
 
+/* ------------------------------------------------------------------ scripted tour (--tour DIR)
+ * Drives the real UI through its pointer input and the fake PLC through its Modbus registers, and saves what the
+ * window shows (the same 800 x 480 picture that is on the screen) as BMP files in DIR, plus a log of what it did.
+ * It is a repeatable demonstration and a test aid: normal operation, a high alarm, acknowledgement, a setpoint
+ * write, trends and settings, a cut PLC link and its recovery, and a viewer who cannot write. */
+static char g_tour_dir[260];
+static FILE *g_tour_log;
+
+static void tour_save(const char *name)
+{
+    char path[400];
+    snprintf(path, sizeof(path), "%s/%s.bmp", g_tour_dir, name);
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    uint32_t px = (uint32_t)W * H * 3u, total = 54u + px;
+    uint8_t hdr[54] = { 'B', 'M' };
+    memcpy(hdr + 2, &total, 4);
+    uint32_t off = 54, dib = 40, w = W, planes_bits = 1u | (24u << 16);
+    int32_t h = H;
+    memcpy(hdr + 10, &off, 4);
+    memcpy(hdr + 14, &dib, 4);
+    memcpy(hdr + 18, &w, 4);
+    memcpy(hdr + 22, &h, 4);
+    memcpy(hdr + 26, &planes_bits, 4);
+    memcpy(hdr + 34, &px, 4);
+    fwrite(hdr, 1, sizeof(hdr), f);
+    static uint8_t row[W * 3];
+    for (int y = H - 1; y >= 0; y--) {   /* BMP rows run bottom to top */
+        for (int x = 0; x < W; x++) {
+            uint32_t p = g_bits[y * W + x];
+            row[x * 3 + 0] = (uint8_t)p;          /* blue */
+            row[x * 3 + 1] = (uint8_t)(p >> 8);   /* green */
+            row[x * 3 + 2] = (uint8_t)(p >> 16);  /* red */
+        }
+        fwrite(row, 1, sizeof(row), f);
+    }
+    fclose(f);
+}
+
+enum { T_WAIT, T_PRESS, T_RELEASE, T_TANK, T_LINK, T_ROLE, T_SHOT, T_END };
+typedef struct { uint32_t at_ms; int act; int a, b; const char *text; } tour_step_t;
+
+/* The touch targets (TARGET_<NAME> = x, y) come from demo/ui_targets.txt, which the Makefile turns into ui_targets.h. */
+static const tour_step_t TOUR[] = {
+    { 2500,  T_SHOT,    0, 0,   "01_overview_normal" },
+    { 3000,  T_TANK,  910, 0,   "TANK_LEVEL set to 91.0 % on the PLC (high limit 80)" },
+    { 5200,  T_SHOT,    0, 0,   "02_alarm_high_unacknowledged" },
+    { 5500,  T_PRESS, TARGET_TAB_ALARMS, "tap ALARMS" },
+    { 5650,  T_RELEASE, 0, 0,   "" },
+    { 6800,  T_SHOT,    0, 0,   "03_alarm_list" },
+    { 7000,  T_PRESS, TARGET_ACK_ALL, "tap ACK ALL" },
+    { 7150,  T_RELEASE, 0, 0,   "" },
+    { 8200,  T_SHOT,    0, 0,   "04_alarm_acknowledged" },
+    { 8400,  T_TANK,  500, 0,   "TANK_LEVEL back to 50.0 %" },
+    { 8600,  T_PRESS, TARGET_TAB_OVERVIEW, "tap OVERVIEW" },
+    { 8750,  T_RELEASE, 0, 0,   "" },
+    { 9300,  T_PRESS, TARGET_SETPOINT_PLUS, "tap setpoint +" },
+    { 9450,  T_RELEASE, 0, 0,   "" },
+    { 9700,  T_PRESS, TARGET_SETPOINT_PLUS, "tap setpoint +" },
+    { 9850,  T_RELEASE, 0, 0,   "" },
+    { 10100, T_PRESS, TARGET_SETPOINT_SEND, "tap SEND (authorised write by the operator)" },
+    { 10250, T_RELEASE, 0, 0,   "" },
+    { 11800, T_SHOT,    0, 0,   "05_setpoint_written" },
+    { 12000, T_PRESS, TARGET_TAB_TRENDS, "tap TRENDS" },
+    { 12150, T_RELEASE, 0, 0,   "" },
+    { 13300, T_SHOT,    0, 0,   "06_trends" },
+    { 13500, T_PRESS, TARGET_TAB_SETTINGS, "tap SETTINGS" },
+    { 13650, T_RELEASE, 0, 0,   "" },
+    { 14700, T_SHOT,    0, 0,   "07_settings" },
+    { 14900, T_PRESS, TARGET_TAB_OVERVIEW, "tap OVERVIEW" },
+    { 15050, T_RELEASE, 0, 0,   "" },
+    { 15500, T_LINK,    0, 0,   "PLC link cut" },
+    { 19500, T_SHOT,    0, 0,   "08_plc_disconnected" },
+    { 19700, T_LINK,    0, 0,   "PLC link restored" },
+    { 26000, T_SHOT,    0, 0,   "09_recovered" },
+    { 26200, T_ROLE,    0, 0,   "role cycled to engineer" },
+    { 26400, T_ROLE,    0, 0,   "role cycled to admin" },
+    { 26600, T_ROLE,    0, 0,   "role cycled to viewer" },
+    { 28000, T_SHOT,    0, 0,   "10_viewer_no_write" },
+    { 28500, T_END,     0, 0,   "tour finished" },
+};
+
+static void tour_step(uint64_t now)
+{
+    static uint64_t t0;
+    static size_t next;
+    if (!g_tour_dir[0] || next >= sizeof(TOUR) / sizeof(TOUR[0])) return;
+    if (!t0) t0 = now;
+    while (next < sizeof(TOUR) / sizeof(TOUR[0]) && now - t0 >= TOUR[next].at_ms) {
+        const tour_step_t *s = &TOUR[next++];
+        if (g_tour_log && s->text[0]) fprintf(g_tour_log, "%6u ms  %s\n", (unsigned)(now - t0), s->text);
+        switch (s->act) {
+            case T_PRESS: g_mx = s->a; g_my = s->b; g_down = true; g_press_pending = true; break;
+            case T_RELEASE: g_down = false; break;
+            case T_TANK: fms_set_holding(g_plc, 0, (uint16_t)s->a); break;
+            case T_LINK: toggle_link(); break;
+            case T_ROLE: cycle_role(); break;
+            case T_SHOT: tour_save(s->text); break;
+            case T_END: g_running = false; break;
+            default: break;
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ start up */
 static void fail(const char *what)
 {
@@ -275,7 +382,17 @@ static void fail(const char *what)
 int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 {
     (void)prev; (void)show;
-    bool no_help = cmd && strstr(cmd, "--no-help") != NULL;
+    const char *tour = cmd ? strstr(cmd, "--tour ") : NULL;
+    bool no_help = (cmd && strstr(cmd, "--no-help") != NULL) || tour != NULL;
+    if (tour) {
+        snprintf(g_tour_dir, sizeof(g_tour_dir), "%s", tour + 7);
+        char *sp = strchr(g_tour_dir, ' ');
+        if (sp) *sp = '\0';
+        _mkdir(g_tour_dir);
+        char lp[300];
+        snprintf(lp, sizeof(lp), "%s/tour.log", g_tour_dir);
+        g_tour_log = fopen(lp, "w");
+    }
     if (cmd && strstr(cmd, "--role viewer")) g_role = HMI_ROLE_VIEWER;
     else if (cmd && strstr(cmd, "--role engineer")) g_role = HMI_ROLE_ENGINEER;
     else if (cmd && strstr(cmd, "--role admin")) g_role = HMI_ROLE_ADMIN;
@@ -332,6 +449,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
         }
         uint64_t now = hmi_now_ms();
         plant_step(now);
+        tour_step(now);
         demo_helper_step(now);
         lv_timer_handler();
         Sleep(8);
@@ -340,5 +458,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     hmi_runtime_stop(&g_rt);
     if (g_drv) plc_libmodbus_destroy(g_drv);
     fms_stop(g_plc);
+    if (g_tour_log) fclose(g_tour_log);
     return 0;
 }

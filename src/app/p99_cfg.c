@@ -294,7 +294,7 @@ static int cmd_apply(const opts_t *o)
         return rc;
     }
     struct stat rs;
-    static uint8_t req_text[HMI_CFGEDIT_REQUEST_MAX + 2];
+    uint8_t req_text[HMI_CFGEDIT_REQUEST_MAX + 2] = { 0 };   /* on the stack, not static: the helper is a mode of the device program and static buffers would count in its data size */
     size_t req_len = 0;
     int rc;
     if (fstat(rfd, &rs) != 0 || !S_ISREG(rs.st_mode)) {
@@ -319,8 +319,8 @@ static int cmd_apply(const opts_t *o)
     }
 
     /* 2. the current configuration, verified as the device verifies it */
-    static hmi_app_cfg_t cur, next;
-    static uint8_t cur_cfg[HMI_CONFIG_MAX_BYTES + 1], cur_sig[HMI_CFGSEC_SIG_SIZE + 1];
+    hmi_app_cfg_t cur = { 0 }, next = { 0 };
+    uint8_t cur_cfg[HMI_CONFIG_MAX_BYTES + 1] = { 0 }, cur_sig[HMI_CFGSEC_SIG_SIZE + 1] = { 0 };
     hmi_cfgsec_paths_t paths = { o->config, NULL, o->key, NULL };
     hmi_cfgsec_info_t info;
     hmi_cfgsec_result_t sr = hmi_cfgsec_load(&paths, &cur, &info);
@@ -366,7 +366,7 @@ static int cmd_apply(const opts_t *o)
         close(dirfd);
         return rc;
     }
-    static char text[HMI_CONFIG_MAX_BYTES + 1];
+    char text[HMI_CONFIG_MAX_BYTES + 1] = { 0 };
     size_t text_len = 0, effective = 0;
     if (!hmi_cfgedit_apply(&req, &cur, &next, text, sizeof(text), &text_len, &effective, err, sizeof(err))) {
         char t[260];
@@ -437,7 +437,13 @@ static int cmd_apply(const opts_t *o)
     return rc;
 }
 
+/* Built into the device program when it is started under the name p99_cfg (P99_MULTICALL, see main_linux.c), so that the
+ * device needs one file instead of two. The stand-alone program is built the same way for the tests. */
+#ifdef P99_MULTICALL
+int p99_cfg_main(int argc, char **argv)
+#else
 int main(int argc, char **argv)
+#endif
 {
     if (argc < 2 || strcmp(argv[1], "apply") != 0) return usage();
     opts_t o;

@@ -52,7 +52,8 @@ int main(int argc, char **argv)
     unsigned step = 0;
     while (!g_stop && time(NULL) - t0 < seconds) {
         double ph = (double)step * step_ms / 1000.0 / 60.0 * 6.283185307 * speed; /* one cycle per 60 s at speed 1 */
-        fms_set_holding(s, 0, (uint16_t)(550.0 + 440.0 * sin(ph)));        /* TANK_LEVEL 11.0 .. 99.0 % */
+        /* TANK_LEVEL 11.0 .. 99.0 %; once an operator has written a setpoint it keeps that value, so the written value can be seen */
+        if (fms_write_count(s) == 0) fms_set_holding(s, 0, (uint16_t)(550.0 + 440.0 * sin(ph)));
         fms_set_holding(s, 1, (uint16_t)(int16_t)(500.0 + 450.0 * sin(ph * 0.5)));  /* TEMP 5.0 .. 95.0 C */
         uint32_t batch = (uint32_t)((double)step * step_ms / 1000.0);   /* BATCH_COUNT counts seconds */
         fms_set_input(s, 100, (uint16_t)(batch >> 16));                      /* high word first */

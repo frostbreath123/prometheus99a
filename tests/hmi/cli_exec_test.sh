@@ -5,7 +5,7 @@
 #   - --role is honoured in both builds, is announced as "claimed ... not authenticated", and a role above
 #     viewer also produces a warning. The default role is viewer.
 #   - --unsigned-config exists only in the test build (HMI_TEST_ROLE) and is refused by the other.
-# Uses /dev/null as the framebuffer and a loopback config.
+# Uses "--fb none" (no display) and a loopback config.
 #   usage: cli_exec_test.sh <build dir> <config template>
 B=${1:-build-linux}
 TPL=${2:-config/hmi.example.json}
@@ -18,7 +18,7 @@ ok() { echo "  ok   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 PROD="$B/prometheus99"
 SIM="$B/prometheus99-sim"
-COMMON=(--config "$W/cfg.json" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" --fb /dev/null --touch /nonexistent)
+COMMON=(--config "$W/cfg.json" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" --fb none --touch /nonexistent)
 
 expect_exit2() { # binary, description, args...
   local bin=$1 d=$2; shift 2
@@ -64,6 +64,11 @@ for BIN in "$PROD" "$SIM"; do
   expect_exit2 "$BIN" "$n: stray argument"               "${COMMON[@]}" stray
   expect_exit2 "$BIN" "$n: repeated --role"              "${COMMON[@]}" --role viewer --role admin
   expect_exit2 "$BIN" "$n: --role=value form"            "${COMMON[@]}" --role=admin
+  # the display is created first: a missing device, or a device that is not a framebuffer, stops the program (only
+  # "--fb none" runs without a display)
+  NOFB=(--config "$W/cfg.json" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" --touch /nonexistent)
+  expect_exit2_msg "$BIN" "$n: missing framebuffer device"      "cannot use the framebuffer" "${NOFB[@]}" --fb /nonexistent/fb0
+  expect_exit2_msg "$BIN" "$n: device that is not a framebuffer" "use --fb none" "${NOFB[@]}" --fb /dev/null
 done
 
 # Both builds: the claimed role is announced; above viewer there is also a warning.
@@ -89,7 +94,7 @@ expect_exit2 "$SIM" "simulation: repeated --config-key" "${COMMON[@]}" --config-
 # Test build: banner and unsigned configuration.
 expect_runs "$SIM" "simulation: test banner" "TEST BUILD" "${COMMON[@]}" --audit "$W/a.log" --role operator
 cp "$W/cfg.json" "$W/unsigned.json"
-expect_runs "$SIM" "simulation: --unsigned-config says it is unverified" "configuration NOT verified" --config "$W/unsigned.json" --fb /dev/null --touch /nonexistent --unsigned-config
+expect_runs "$SIM" "simulation: --unsigned-config says it is unverified" "configuration NOT verified" --config "$W/unsigned.json" --fb none --touch /nonexistent --unsigned-config
 
 rm -rf "$W"
 [ $fail -eq 0 ] && echo "cli exec test: PASS" || echo "cli exec test: FAIL"

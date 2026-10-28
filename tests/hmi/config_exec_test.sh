@@ -1,7 +1,7 @@
 #!/bin/bash
 # Real-executable checks for configuration integrity (Linux): the signing tool
 # and what the production executable does with every kind of bad configuration.
-# No display and no real PLC: /dev/null as framebuffer, a loopback listener that
+# No display and no real PLC: "--fb none" (no display), a loopback listener that
 # only counts connections.
 #   usage: config_exec_test.sh <build dir> <config template>
 B=${1:-build-linux}
@@ -41,7 +41,7 @@ stop_listener() { [ $HAVE_PY -eq 1 ] && wait $LP 2>/dev/null; }
 run_app() { # extra args after the fixed ones; stderr goes to $W/app.out, listener counts connections
   start_listener
   "$APP" --config "$C" --config-key "$K" --config-state "$S" --audit "$A" \
-         --fb /dev/null --touch /nonexistent "$@" > "$W/app.out" 2>&1 &
+         --fb none --touch /nonexistent "$@" > "$W/app.out" 2>&1 &
   local p=$!
   sleep 1.5
   kill -TERM $p 2>/dev/null; wait $p 2>/dev/null

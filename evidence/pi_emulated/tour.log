@@ -1,0 +1,23 @@
+     0 ms  connected to QEMU
+   502 ms  the program started in the guest
+  5005 ms  picture 01_overview_normal ok
+  6509 ms  picture 02_state_a ok
+  6760 ms  tap ALARMS
+  9764 ms  picture 03_alarm_list ok
+ 10018 ms  tap ACK ALL
+ 13020 ms  picture 04_after_ack ok
+ 13272 ms  tap OVERVIEW
+ 15524 ms  tap setpoint +
+ 16977 ms  tap setpoint +
+ 18430 ms  tap SEND (authorised write by the operator)
+ 22934 ms  picture 05_setpoint_written ok
+ 23186 ms  tap TRENDS
+ 26690 ms  picture 06_trends ok
+ 26941 ms  tap SETTINGS
+ 29944 ms  picture 07_settings ok
+ 30197 ms  tap OVERVIEW
+ 32197 ms  PLC link cut (fake PLC on the host drops the connection)
+ 40699 ms  picture 08_plc_disconnected ok
+ 40700 ms  PLC link restored
+ 55206 ms  picture 09_recovered ok
+ 55206 ms  done

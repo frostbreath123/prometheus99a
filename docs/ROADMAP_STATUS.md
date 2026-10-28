@@ -15,6 +15,80 @@ HMI Runtime Architecture and Engineering Documentation" (design baseline v0.2,
 Section numbers below (§) refer to that document. `docs/ADR-0001-runtime-boundaries.md`
 records the intentional deviations from it.
 
+## Where things stand on 2026-10-23 (read this first)
+
+This file is the requirements audit and completion roadmap. It was written as a read-only audit on
+2026-10-22 and then kept current: the "Update" sections below, newest first (M4, then M1, M2, M3),
+record what each milestone changed. Sections 1 and 2 describe the state at the time of the audit and are
+kept as history; the requirements matrix (section 4) carries the current status of every row. Nothing in
+this file was removed; the statuses, evidence, discrepancies, milestones M1 to M9, blockers and acceptance
+criteria are all below.
+
+Git: branch `feature/authorization-hardening`, in sync with `origin`
+(`https://github.com/frostbreath123/prometheus99a.git`). Milestones M1 to M3 are commits `fe165c2`,
+`e858465` and `defa45f`. M4 is commits `b6b7ef9` (the milestone) and `f3ccb68` (the Windows demo
+scripts). Uncommitted at the time of writing: `docs/OPTIMIZATION_ROADMAP.md`, the handoff edits to this
+file and to `PROJECT_RESUME.md`, and the generated `demo/prometheus99_demo.html` (left out on purpose).
+
+| Milestone | State | Evidence and what is left |
+|---|---|---|
+| M1 Authentication and sessions | **Removed by decision on 2026-10-23** | the login, user store and Argon2id hash are gone; the role is a claimed `--role` (docs/AUTHENTICATION.md); the code is in `fe165c2` and the later commits |
+| M2 Configuration integrity and safe startup | Done on the host | `e858465`; not run under real systemd as the service user, no power-cut test of the serial write |
+| M3 Persistence and storage | Done on the host | `defa45f`; no real power cut, no trace ring (row 42) |
+| M4 HMI functionality | Done on the host | `b6b7ef9`; screens, trends, priority, accounts, configuration helper `p99_cfg`, units, `--spool`; units never run under real systemd, nothing shown on a real display |
+| M5 Raspberry Pi bring-up | Not started, blocked on hardware | everything on target |
+| M6 Verification hardening | Partly | sanitizers, kill-loop, mutation checks, an aarch64 run under qemu-user and a CI workflow (never run) exist; cppcheck, clang-tidy, fuzzing and scripted fault injection on a real network are not done |
+| M7 Measurement and soak | Host part done, board part blocked on hardware | host measurements with `bench/` scripts (start-up, transitions, touch-to-pixels, CPU, PSS, heavy update, recovery, soak); see ENGINEERING_REPORT.md; nothing on a board |
+| M8 Compliance and documentation | Partly | ADR, README, LINUX_VALIDATION, SCREENS, AUTHENTICATION (removal), THIRD_PARTY (musl, font, LGPL note) and `.gitmodules` exist; threat model, IEC 62443 mapping, SBOM, licence review and version 0 tag are not done |
+| M9 OPC UA spike | Not started | |
+
+Tally of the 55 rows (2026-10-23): 28 CV, 5 IU, 10 PI, 8 NI, 2 BL, 1 OF, 1 RM (removed by decision: row 30).
+
+New since the M4 update below: a size and memory plan, [OPTIMIZATION_ROADMAP.md](OPTIMIZATION_ROADMAP.md).
+The owner wants a final size of a few hundred KB and a whole process under 1 MB. The plan fixes the
+metric (PSS from `smaps_rollup`, framebuffer reported separately), gives the measured baseline (stripped
+Linux executable 695 KB, static data 499 KB, Argon2id hash 8 MiB per login) and phases 0 to 7. All
+"after" figures in it are estimates. It must be read with the mentor's email of 12 October 2026 (Modbus
+TCP first with open-source libraries, LVGL and no Qt, develop on a PC then validate on a Raspberry Pi or
+ARM board, measure startup, render and transition time, touch latency, CPU and memory, stability and
+recovery, keep authentication, secure configuration, validation, timeouts and reconnection). That plan
+touches rows 4, 5, 37, 48 and 50, and it needs five owner decisions (static musl or glibc, the password
+hash memory cost, a lite profile, OPC UA as a separate build, the Pi model).
+
+Also new: a Windows live demo (`demo/run_live.bat`, `build/hmi_win_demo.exe`, a Win32 window with the real UI
+against the fake PLC) and a slideshow (`demo/run_demo.bat`). Both are demonstrations, not the product, and
+`demo/README.md` states the differences from the device.
+
+## Update 2026-10-23: size and memory work (phases 0 to 7 of OPTIMIZATION_ROADMAP.md), authentication removed
+
+Status: implemented and verified on the development host only (WSL2 Ubuntu 24.04, Windows MSYS2, aarch64 under qemu-user).
+Nothing ran on a Raspberry Pi, a real display, a real touch panel or a real PLC. Nothing is committed. The full account,
+with measurements and test conditions, is in [ENGINEERING_REPORT.md](ENGINEERING_REPORT.md).
+
+What changed for the requirements:
+
+- **Row 30 (authentication) is removed by decision.** The owner chose to remove the login, the user store and the
+  Argon2id hash instead of shrinking or replacing it. The role is now the claimed `--role` of the process (default viewer)
+  in both builds, enforced in the core, not authenticated (`docs/AUTHENTICATION.md`). Rows that depended on accounts
+  (login, roles from accounts, lockout, idle logout) are no longer met.
+- **Row 7 (screens)** lost the login and accounts screens; **row 9 (pixel format)** went from not implemented to partly:
+  RGB565 only, a framebuffer of another depth is refused, no 4-bit target exists in LVGL 9.2.2.
+- Matrix tally now: 28 CV, 5 IU, 10 PI, 8 NI, 2 BL, 1 OF, 1 RM.
+
+What exists now (host evidence):
+
+| Milestone-like item | State |
+|---|---|
+| M6 verification | sanitizers (AddressSanitizer, UBSan, ThreadSanitizer) run clean on the development build, the kill-loop passed 150 rounds, an aarch64 build runs the suites under qemu-user. CI workflow written, **not run**. cppcheck, clang-tidy, fuzzing, scripted fault injection on a real network: not done |
+| M7 measurement | host-only measurements of start-up, render, transitions, touch-to-pixels, CPU, PSS, heavy update, soak and recovery with scripts in `bench/`; the board part is not started |
+| M8 documents | `.gitmodules` fixed; threat model, IEC 62443 mapping, SBOM, licence review, version tag: not done |
+| M5 | not started, blocked on hardware |
+
+Test counts on the final tree: Linux core 3,262 checks, view model 197, headless UI scenario 205 assertions (full) and
+127 (lite), end-to-end 75, executable tests (`cli-exec`, `config-exec`, `cfgedit-exec`, `liveness`) pass, config golden
+identical, screenshot gate 23 files pass; Windows core 3,240. The earlier totals (3,925 and 3,887) fell because about 620
+checks belonged to the removed login layer.
+
 ## Update 2026-10-22: milestone M4 (screens, trends, priority, settings) is implemented
 
 Status: steps 4.0 to 4.6 are implemented and verified on the development host only
@@ -115,7 +189,7 @@ a restart between the renames, rendering and touch of the CONFIG view on a devic
 when the helper exits with status 3 and leaves a request (the path unit would start it again
 until the start limit), and everything that needs a Raspberry Pi or a real PLC.
 
-## Update 2026-10-22: milestone M1 (authentication and sessions) is implemented
+## Update 2026-10-22: milestone M1 (authentication and sessions) is implemented (superseded: removed on 2026-10-23, see AUTHENTICATION.md)
 
 Decisions given by the project owner on 2026-10-22: roadmap order M1 to M5
 approved; Monocypher chosen (D1); a root-owned key file for the configuration
@@ -368,9 +442,9 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 | # | § | Requirement | Status | Evidence and files | Remaining |
 |---|---|---|---|---|---|
 | 6 | 7.3, 8.1 | Real LVGL v9, binder, update on change | CV (H, headless) | `src/ui/hmi_ui.c`, `ui_headless` 36 assertions, 0 idle flushes | on-target behaviour (rows 9, 10) |
-| 7 | 1, 7.1 | Screens: overview, alarms, trends, settings, login | CV (H) | overview (paged), alarms, trends, settings (system, accounts, configuration) and login; headless UI scenario 277 assertions; see SCREENS.md | rendering and touch on a device (row 50) |
+| 7 | 1, 7.1 | Screens: overview, alarms, trends, settings | CV (H) | overview (paged), alarms, trends, settings (system, configuration); headless UI scenario 205 assertions, screenshots checked against the palette; the login and accounts screens were removed on 2026-10-23; see SCREENS.md | rendering and touch on a device (row 50) |
 | 8 | 8.1 | Trend charts | CV (H) | `hmi_trend`, `ui_trends.c`; min and max per bucket, only GOOD data, gaps; `test_trend` 90 checks, runtime test, UI scenario with the hung-PLC gap; ASan and TSan clean | Pi (rendering) |
-| 9 | 8.1 | Pixel-format match, DRM, SDL development backend | NI | `LV_COLOR_DEPTH 16` fixed; fbdev only; no SDL or DRM | probe bits per pixel, add what the Pi needs (M5) |
+| 9 | 8.1 | Pixel-format match, DRM, SDL development backend | PI | RGB565 only is compiled into the drawing code and the fbdev start refuses a framebuffer that is not 16 bits; no 4-bit target exists in LVGL 9.2.2 (SCREENS.md); no SDL or DRM; never run on a real framebuffer | probe bits per pixel on the Pi, add DRM if the Pi needs it (M5) |
 | 10 | 6 | fbdev and evdev on a real device | IU, BL | compiled and linked; only `--fb /dev/null` was run | Pi hardware |
 
 ### Communications
@@ -409,8 +483,8 @@ All CV rows are host, simulated-PLC or WSL2 evidence only.
 
 | # | § | Requirement | Status | Evidence and files | Remaining |
 |---|---|---|---|---|---|
-| 29 | 10 | Roles enforced in the core | CV (H) | `hmi_authz`, `hmi_alarm`, `hmi_writes`; since M1 the role handed to the core is the session role (`hmi_auth_role`), and `--role` exists only in a test build | none for the host; Pi |
-| 30 | 10 | Authentication, password KDF, first-boot credentials, lockout, idle logout | CV (H) | `hmi_kdf`, `hmi_users`, `hmi_auth`, login screen in `hmi_ui.c`, `p99_user`; Argon2id RFC 9106 vector, 237 auth checks, UI scenario, executable tests; see AUTHENTICATION.md | hash time on the Pi, real touchscreen entry, power-cut test of the store write |
+| 29 | 10 | Roles enforced in the core | CV (H) | `hmi_authz`, `hmi_alarm`, `hmi_writes`, `hmi_cfgedit`; since 2026-10-23 the role is the claimed `--role` of the process (default viewer) in both builds, nothing authenticates it (AUTHENTICATION.md) | none for the host; Pi |
+| 30 | 10 | Authentication, password KDF, first-boot credentials, lockout, idle logout | RM (removed by decision, 2026-10-23) | the whole login layer, the user store, the password hash (Argon2id) and `p99_user` were removed on the owner's instruction to meet the memory goal; no replacement; see AUTHENTICATION.md | the requirement is not met; if it is wanted again a design with a small memory cost must be chosen (AUTHENTICATION.md, last section) |
 | 31 | 5.4 | Strict configuration validation | CV (H) | config golden 184, `test_config` 89 | none |
 | 32 | 5.4, 10 | Configuration integrity (CRC, HMAC), safe defaults and banner | CV (H) | `hmi_mac`, `hmi_cfgsec`, `p99_sign`; detached HMAC-SHA-512 signature, key file, CRC to separate damage from tampering, rollback serial, safe mode with banner; 223 cfgsec checks, `config-exec`; on-device changes through `p99_cfg` (`cfgedit-exec`, 868 `cfgedit` checks); see CONFIG_INTEGRITY.md | run under real systemd with root-owned files, including the helper and its path unit |
 | 33 | 10 | Allow-list of PLC addresses | CV (H) | `plc.allowed_hosts` in the signed configuration; the tool will not sign and the device will not run a host that is not in it | none for the host |

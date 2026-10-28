@@ -1,4 +1,5 @@
 # Persistence and storage (milestone M3)
+> **Note, 2026-10-23:** the login, the user store and the password hash described in the parts of this file that mention logins or accounts were removed from the product (`docs/AUTHENTICATION.md`). Those passages are kept as the record of M1 to M4 and no longer describe the program: there are no login or account records in the audit file and no user file, and the audit line shows `user=-`.
 
 Status: implemented and verified on the development host only (Windows with
 MSYS2, and WSL2 Ubuntu 24.04). Nothing in this document was run on a Raspberry

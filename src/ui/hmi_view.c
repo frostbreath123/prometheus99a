@@ -371,3 +371,15 @@ void hmi_view_claimed_role_text(hmi_role_t role, char *buf, size_t cap)
     if (role == HMI_ROLE_VIEWER) snprintf(buf, cap, "Role: VIEWER (read only)");
     else snprintf(buf, cap, "Role: %s, set when the program was started, NOT authenticated", hmi_role_name(role));
 }
+
+void hmi_view_alarm_row(const hmi_alarm_row_t *a, const char *const *names, size_t n_names, uint64_t now_ms,
+                        hmi_view_alarm_row_t *out)
+{
+    snprintf(out->priority, sizeof(out->priority), "%s", hmi_view_priority_text(a->priority));
+    out->priority_tone = hmi_view_priority_tone(a->priority);
+    snprintf(out->name, sizeof(out->name), "%s", hmi_view_alarm_point_name(names, n_names, a->point));
+    hmi_view_alarm_text(&a->pt, out->state, sizeof(out->state));
+    out->state_tone = hmi_view_alarm_tone(&a->pt);
+    hmi_view_age_text(now_ms >= a->pt.since_ms ? now_ms - a->pt.since_ms : 0, out->age, sizeof(out->age));
+    out->waiting = a->pt.state == HMI_AL_ACTIVE_UNACK || a->pt.state == HMI_AL_RTN_UNACK;
+}

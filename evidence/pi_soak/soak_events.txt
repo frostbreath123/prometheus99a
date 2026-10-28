@@ -1,0 +1,17 @@
+program started 0 s after boot start
+300 s: fault 1 (connections dropped)
+360 s: PLC restored
+660 s: fault 2 (connections dropped)
+720 s: PLC restored
+1020 s: fault 3 (connections dropped)
+1080 s: PLC restored
+1380 s: fault 4 (connections dropped)
+1440 s: PLC restored
+1740 s: fault 5 (connections dropped)
+1800 s: PLC restored
+2100 s: fault 6 (connections dropped)
+2160 s: PLC restored
+2460 s: fault 7 (connections dropped)
+2520 s: PLC restored
+ended at 2520 s; faults injected: 7
+program still running at the end: yes
