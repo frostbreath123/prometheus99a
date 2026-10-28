@@ -86,9 +86,9 @@ plus end-to-end against real libmodbus):
 | Real PLC interoperability, word/byte order of real devices | **not tested** |
 | Raspberry Pi: CPU, RAM, startup, frame time, touch latency | **not measured** |
 | Sanitizers (WSL2 gcc) | ASan+UBSan and TSan clean on core and e2e (TSan first found 3 races in the core test code itself, fixed; none in `src/hmi`) |
-| Authentication, password hashing, lockout, idle logout, first-boot administrator, `p99_user` | implemented and host-tested (Windows and WSL2, see [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)); **not run on a Raspberry Pi or a real touchscreen**, hash time on the target not measured |
+| Authentication (login, password hashing, accounts) | **removed on 2026-10-23** by the owner's decision; the role is a claimed `--role` and nothing authenticates it (see [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)) |
 | Storage worker, audit file with wall-clock stamps and rotation, alarm journal on disk, alarm state saved on change, write rate limit, second check before sending, shutdown budget | implemented and host-tested (Windows and WSL2; kill-loop of 150 SIGKILL/stop rounds; sanitizers; see [docs/STORAGE.md](docs/STORAGE.md)); **no power-cut test, nothing run on the storage of a Raspberry Pi** |
-| Trend chart, overview, alarm list, settings (system, accounts, configuration) | implemented and host-tested in the headless UI harness (see [docs/SCREENS.md](docs/SCREENS.md)); **not shown on a real display or touched** |
+| Trend chart, overview, alarm list, settings (system, configuration) | implemented and host-tested in the headless UI harness (see [docs/SCREENS.md](docs/SCREENS.md)); **not shown on a real display or touched** |
 | Liveness supervision (sd_notify READY and WATCHDOG, `HB nn` header mark, `deploy/prometheus99.service`) | tested on WSL2 with a fake notify socket (SIGSTOP, SIGCONT, SIGKILL, hung PLC) and with a transient real-systemd unit; **not run on a Raspberry Pi**, unit not installed under its real user and paths |
 | Configuration integrity (detached HMAC-SHA-512 signature, key file, rollback serial, PLC allow-list, safe mode), `p99_sign` | implemented and host-tested (Windows and WSL2, see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)); **not run under real systemd as the service user, nor on a Raspberry Pi** |
 | Changing alarm settings and the PLC address from the screen (request to the root helper `p99_cfg`, new signature, restart) | implemented and host-tested (WSL2 as root, `cfgedit-exec`; see [docs/CONFIG_INTEGRITY.md](docs/CONFIG_INTEGRITY.md)); **units checked with `systemd-analyze verify` only, never run under real systemd**. Config reload without a restart is not implemented |
@@ -112,10 +112,15 @@ sudo apt install build-essential pkg-config libmodbus-dev
 make -f Makefile.linux test
 make -f Makefile.linux e2e
 make -f Makefile.linux ui-host
-make -f Makefile.linux hmi          # prometheus99 and the offline user tool p99_user
-make -f Makefile.linux hmi-sim      # test build that accepts --role; never deploy it
-make -f Makefile.linux cli-exec auth-exec config-exec
+make -f Makefile.linux hmi          # prometheus99, p99_sign and p99_cfg
+make -f Makefile.linux hmi-sim      # test build that also accepts --unsigned-config; never deploy it
+make -f Makefile.linux cli-exec config-exec cfgedit-exec liveness
 make -f Makefile.linux killloop     # SIGKILL the runtime at random moments, verify the files (KILL_ROUNDS=150)
+
+# the small build for a device: static musl, size optimised, no shared library (sudo apt install musl-tools)
+make -f Makefile.linux STATIC=1 CC=musl-gcc BUILD=build-musl hmi
+make -f Makefile.linux STATIC=1 LITE=1 CC=musl-gcc BUILD=build-musl-lite hmi   # lite profile: no trends, no CONFIG view
+bash bench/gate.sh build-musl full   # size and memory gate on the product executable (needs the target hmi built the same way)
 ```
 
 Do not run `./build-linux/prometheus99` with `config/hmi.example.json` as
@@ -159,28 +164,22 @@ for this repository's own code ([LICENSE](LICENSE)).
 
 ## Roles and authorization
 
-- **Roles come from logging in.** The device starts as Viewer. A person logs in
-  on the screen, and the role of that account is the role the UI hands to the
-  core. Passwords are hashed with Argon2id, failed logins are delayed and then
-  locked, and an idle session ends after five minutes. While no user file
-  exists the login screen offers to create the administrator. Accounts are
-  managed offline with `p99_user`. The design, parameters and limits are in
-  [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
-- **`--role` is a test option only.** The production executable refuses it with
-  exit status 2. The simulation build (`make -f Makefile.linux hmi-sim`)
-  honours it, says so at start-up, and shows a permanent "TEST ROLE ... NOT
-  AUTHENTICATED" banner. It must not be deployed. Unknown roles, unknown
-  options, missing values and repeated options exit with status 2 in both
-  builds.
+- **There is no login.** The role is given with `--role viewer|operator|engineer|admin` by whoever starts the process
+  (the service unit); the default is viewer. It is a claimed role: nothing authenticates it, and anyone who can start
+  the process or edit the unit can choose it. The program says so at start-up, with a warning for any role above
+  viewer, and the header and the SYSTEM view show the role. The password hash and the accounts were removed; the
+  limits and the options if authentication is wanted again are in
+  [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md). Unknown roles, unknown options (including the removed `--users`),
+  missing values and repeated options exit with status 2.
 - Authorization is enforced in the core, not only in the UI. Acknowledging
   alarms needs Operator or above; writing a tag needs the tag's configured
   minimum role. The UI dims the ACK ALL button for a Viewer and shows the
   refusal, but the core refuses regardless.
-- Alarm acknowledgements, logins, logouts and lockouts are written to the audit
-  file next to PLC writes. A granted acknowledgement and a successful login are
+- Alarm acknowledgements, writes and configuration requests are written to the audit
+  file. A granted acknowledgement is
   refused if a configured audit file cannot be written; without `--audit` they
   work and are not recorded. The acknowledgement and write lines carry the role
-  and, since M2, the logged-in user (`user=<name>`).
+  and, since there are no accounts, `user=-`.
 - Every audit line starts with the milliseconds since boot (monotonic) and ends
   with a wall-clock time and `sync=ok` or `sync=no`. A device that starts without
   a correct clock writes `sync=no`; do not trust the date of such lines. A `BOOT`

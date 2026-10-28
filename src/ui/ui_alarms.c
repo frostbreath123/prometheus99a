@@ -18,7 +18,6 @@ static arow_t s_rows[AL_ROWS];
 static size_t s_page, s_pages;
 static lv_obj_t *s_pg_lbl, *s_none, *s_journal;
 static char t_pg[16], t_journal[480];
-static bool s_none_shown;
 
 static void alarms_reset(void)
 {
@@ -28,7 +27,6 @@ static void alarms_reset(void)
     s_pg_lbl = s_none = s_journal = NULL;
     memset(t_pg, 0, sizeof(t_pg));
     memset(t_journal, 0, sizeof(t_journal));
-    s_none_shown = false;
 }
 
 size_t ui_alarms_page(void) { return s_page; }
@@ -111,6 +109,9 @@ static void alarms_build(lv_obj_t *page)
         set_row_visible(r, false);
     }
     s_none = ui_mk_label(page, 12, AL_ROW_Y0 + 6, hmi_view_no_alarms_text(), C_MUTED);
+    /* created hidden: the first update shows it when the list is empty. A label left visible here once stayed on top of
+     * the first alarm row when the screen was first drawn while an alarm was active (found in the Windows demo tour). */
+    lv_obj_add_flag(s_none, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *pnl = lv_obj_create(page);
     lv_obj_set_size(pnl, 800, 100);
@@ -159,19 +160,15 @@ static void alarms_update(void)
         r->point = a->point;
         r->shown = a->pt;
 
-        char b[UI_TXT];
-        ui_set_text(r->pri, r->t_pri, sizeof(r->t_pri), hmi_view_priority_text(a->priority));
-        ui_set_color(r->pri, &r->c_pri, ui_tone_color(hmi_view_priority_tone(a->priority)));
-        ui_set_text(r->name, r->t_name, sizeof(r->t_name), hmi_view_alarm_point_name(names, n_names, a->point));
-        hmi_view_alarm_text(&a->pt, b, sizeof(b));
-        ui_set_text(r->state, r->t_state, sizeof(r->t_state), b);
-        ui_set_color(r->state, &r->c_state, ui_tone_color(hmi_view_alarm_tone(&a->pt)));
-        hmi_view_age_text(now >= a->pt.since_ms ? now - a->pt.since_ms : 0, b, sizeof(b));
-        ui_set_text(r->age, r->t_age, sizeof(r->t_age), b);
-
-        /* Only an alarm that is waiting for acknowledgement can be acknowledged. */
-        bool waiting = a->pt.state == HMI_AL_ACTIVE_UNACK || a->pt.state == HMI_AL_RTN_UNACK;
-        bool on = may_ack && waiting;
+        hmi_view_alarm_row_t v;
+        hmi_view_alarm_row(a, names, n_names, now, &v);
+        ui_set_text(r->pri, r->t_pri, sizeof(r->t_pri), v.priority);
+        ui_set_color(r->pri, &r->c_pri, ui_tone_color(v.priority_tone));
+        ui_set_text(r->name, r->t_name, sizeof(r->t_name), v.name);
+        ui_set_text(r->state, r->t_state, sizeof(r->t_state), v.state);
+        ui_set_color(r->state, &r->c_state, ui_tone_color(v.state_tone));
+        ui_set_text(r->age, r->t_age, sizeof(r->t_age), v.age);
+        bool on = may_ack && v.waiting;
         if (fresh || on != r->btn_on) {
             r->btn_on = on;
             if (on) lv_obj_remove_state(r->btn, LV_STATE_DISABLED);
@@ -179,9 +176,10 @@ static void alarms_update(void)
         }
     }
 
-    if ((n == 0) != s_none_shown) {
-        s_none_shown = (n == 0);
-        if (s_none_shown) lv_obj_remove_flag(s_none, LV_OBJ_FLAG_HIDDEN);
+    /* the label is shown exactly when the list is empty; the widget itself says whether it is shown now (it is created
+     * hidden), so there is no second copy of that state to drift. Guarded because adding or removing a flag redraws. */
+    if ((n == 0) == lv_obj_has_flag(s_none, LV_OBJ_FLAG_HIDDEN)) {
+        if (n == 0) lv_obj_remove_flag(s_none, LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(s_none, LV_OBJ_FLAG_HIDDEN);
     }
 

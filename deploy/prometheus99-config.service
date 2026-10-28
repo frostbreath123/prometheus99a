@@ -9,7 +9,8 @@
 # Exit status 1 means "refused" (the result file says why) and is not a failure of the unit.
 #
 # Install (as root, after the steps in prometheus99.service):
-#   install -m 0755 build-linux/p99_cfg /usr/local/bin/p99_cfg
+#   ln -sf prometheus99 /usr/local/bin/p99_cfg        # the device program started under this name is the root helper (P99_MULTICALL)
+#   (the separate build-linux/p99_cfg of "make hmi" is the same helper as its own file, used by the tests)
 #   install -d -o root -g root -m 0755 /var/spool          # normally exists
 #   install -d -o prometheus -g prometheus -m 0750 /var/spool/prometheus99
 #   install -m 0644 deploy/prometheus99-config.service deploy/prometheus99-config.path /etc/systemd/system/

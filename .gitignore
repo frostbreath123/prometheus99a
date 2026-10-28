@@ -14,3 +14,10 @@
 *.swp
 /build-*/
 /cfgedit_spool_test/
+
+# Demo and review leftovers
+/demo_data/
+/.agents/
+/.claude/skills/
+skills-lock.json
+Makefile.bak*

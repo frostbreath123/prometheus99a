@@ -134,6 +134,20 @@ void hmi_view_storage_text(bool fault, uint32_t written, uint32_t failed, char *
 void hmi_view_clock_text(bool valid, bool synced, char *buf, size_t cap);
 void hmi_view_tags_text(size_t tags, size_t trended, size_t with_alarm, char *buf, size_t cap);
 
+/* ---- one row of the alarm list, ready to draw ---- */
+typedef struct {
+    char priority[8];
+    hmi_tone_t priority_tone;
+    char name[HMI_NAME_LEN + 8];     /* the tag name, or "PLC LINK" */
+    char state[40];
+    hmi_tone_t state_tone;
+    char age[16];
+    bool waiting;                    /* only an alarm that waits for acknowledgement can be acknowledged */
+} hmi_view_alarm_row_t;
+/* names are the tag names in table order (n_names of them); now_ms is the clock the alarm's since_ms uses. */
+void hmi_view_alarm_row(const hmi_alarm_row_t *a, const char *const *names, size_t n_names, uint64_t now_ms,
+                        hmi_view_alarm_row_t *out);
+
 /* One line about the claimed role (the program has no login): "Role: VIEWER (read only)" or the role with a warning that nothing authenticates it. */
 void hmi_view_claimed_role_text(hmi_role_t role, char *buf, size_t cap);
 

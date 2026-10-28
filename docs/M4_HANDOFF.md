@@ -1,4 +1,5 @@
 # M4 handoff: state at the end of the milestone (2026-10-22)
+> **Note, 2026-10-23:** the login, the user store and the password hash described in the parts of this file that mention logins or accounts were removed from the product (`docs/AUTHENTICATION.md`). Those passages are kept as the record of M1 to M4 and no longer describe the program: there are no login or account records in the audit file and no user file, and the audit line shows `user=-`.
 
 This file records the state of milestone M4 so a new session can continue without the earlier
 conversation. Nothing was committed or pushed. The owner approved the M4 plan with the

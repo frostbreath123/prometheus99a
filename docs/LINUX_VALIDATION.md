@@ -1,4 +1,5 @@
 # Linux validation record
+> **Note, 2026-10-23:** the login, the user store and the password hash described in the parts of this file that mention logins or accounts were removed from the product (`docs/AUTHENTICATION.md`). Those passages are kept as the record of M1 to M4 and no longer describe the program: there are no login or account records in the audit file and no user file, and the audit line shows `user=-`.
 
 **Status: executed on WSL2 (host PC), 2026-10-15. Not executed on a
 Raspberry Pi, not executed on a real framebuffer or touch device, not run
@@ -261,3 +262,30 @@ an array name in `hmi_config_write.c`; renamed.
 Limits: the units were not run, the restart of the service by the helper was not tried, the
 sanitizers were not run on the LVGL harness or the full executable, and nothing was rendered on a
 real display.
+
+## Size and memory work, authentication removed (2026-10-23)
+
+Run on WSL2 Ubuntu 24.04 (kernel 6.18.54, gcc 13.3, musl-gcc 1.2.4, aarch64-linux-gnu-gcc 13 with qemu-user 8.2.2).
+The measurements and the reading of them are in `docs/ENGINEERING_REPORT.md`; this table is the record of what ran.
+
+| What | Command | Result |
+|---|---|---|
+| Core tests, dynamic glibc `-O2` | `make -f Makefile.linux test` | 3,262 checks, 0 failed (3,925 before the login layer was removed) |
+| View model, config golden, notify | `test-view`, `test-config-golden`, `test-notify` | 197 checks; identical; 13 checks |
+| Headless UI scenario, full and lite | `make ui-host`, `make LITE=1 BUILD=build-lite ui-host` | 205 and 127 assertions, 0 failed; both include the RAM gate |
+| Screenshot gate | `make ui-shots` | 23 screenshots inside the 11-colour palette (the chart within 1.5 %), 4-bit round trip exact |
+| End to end | `make e2e` | 75 checks, 0 failed |
+| Executables | `cli-exec`, `config-exec`, `cfgedit-exec` (as root), `liveness` | all pass |
+| The same under static musl, `-Os`, LTO | `make STATIC=1 CC=musl-gcc BUILD=build-musl ...` | the same suites pass |
+| aarch64 under qemu-user | cross build of the static tree; `test`, `test-view`, `e2e`, `ui-host` | 3,262, 197, 75 and 205, 0 failed (`bench/results/linux/arm64`) |
+| AddressSanitizer + UBSan | `make SAN=address ...` | eight suites clean (`bench/results/linux/sanitizers_address`) |
+| ThreadSanitizer | `setarch x86_64 -R make SAN=thread ...` | core, end to end and liveness clean; the UI scenario reported a data race in the **test fixture** (`fake_modbus_server*.c`), fixed with relaxed atomics (rerun noted below) |
+| Kill-loop | `make killloop KILL_ROUNDS=150` | 150 rounds (125 kills, 25 clean stops), every round verified (`bench/results/killloop_phase3.txt`) |
+| Size and memory gates | `bench/gate.sh build-musl full`, `... build-musl-lite lite` | pass on the product executable: 297,088 and 268,416 bytes stripped, 405,640 and 321,760 bytes static data, no Argon2id, no shared library |
+
+Defects found by these runs: UBSan reported a signed overflow inside LVGL's chart (a "no value" point times the height, `lv_chart.c` line
+847): the LVGL objects are compiled with `-fwrapv`; ThreadSanitizer's data race in the test fixture, as above; the TSan runtime of this
+kernel cannot map memory with the default address-space randomisation, so it runs under `setarch -R` (no system setting is changed).
+
+Limits: the sanitizers ran on the development build, not on the static LTO build; qemu is an emulator, not a measurement; nothing ran on a
+Raspberry Pi, a framebuffer, a touch panel, a real PLC or real systemd.

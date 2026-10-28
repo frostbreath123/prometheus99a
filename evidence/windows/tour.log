@@ -1,0 +1,27 @@
+  2504 ms  01_overview_normal
+  3013 ms  TANK_LEVEL set to 91.0 % on the PLC (high limit 80)
+  5201 ms  02_alarm_high_unacknowledged
+  5504 ms  tap ALARMS
+  6816 ms  03_alarm_list
+  7006 ms  tap ACK ALL
+  8206 ms  04_alarm_acknowledged
+  8415 ms  TANK_LEVEL back to 50.0 %
+  8606 ms  tap OVERVIEW
+  9310 ms  tap setpoint +
+  9709 ms  tap setpoint +
+ 10107 ms  tap SEND (authorised write by the operator)
+ 11806 ms  05_setpoint_written
+ 12014 ms  tap TRENDS
+ 13308 ms  06_trends
+ 13515 ms  tap SETTINGS
+ 14701 ms  07_settings
+ 14908 ms  tap OVERVIEW
+ 15514 ms  PLC link cut
+ 19505 ms  08_plc_disconnected
+ 19713 ms  PLC link restored
+ 26001 ms  09_recovered
+ 26208 ms  role cycled to engineer
+ 26415 ms  role cycled to admin
+ 26606 ms  role cycled to viewer
+ 28009 ms  10_viewer_no_write
+ 28505 ms  tour finished

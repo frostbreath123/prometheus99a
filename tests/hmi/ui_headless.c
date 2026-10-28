@@ -42,8 +42,8 @@ uint32_t alloc_count_free(void);
 static int g_checks, g_fail;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_fail++; printf("  FAIL line %d: %s\n", __LINE__, #c); } } while (0)
 static uint16_t s_fb[W * H];
-/* The partial draw buffer: as many lines as the Linux driver is configured with (LV_LINUX_FBDEV_BUFFER_SIZE in
- * config/lv_conf.h), so that the render times printed below are those of the product. */
+/* The partial draw buffer: as many lines as the display backends use (P99_DRAW_LINES in src/app/display.h), so that the
+ * render times printed below are those of the product. */
 #ifndef UI_BUF_LINES
 #define UI_BUF_LINES 20
 #endif

@@ -136,6 +136,42 @@ static void test_alarm_cells(void)
     CHECK(strlen(small) < sizeof(small));
 }
 
+static void test_alarm_row(void)
+{
+    SECTION("view: one alarm row, ready to draw");
+    const char *names[] = { "TANK_LEVEL", "TEMP" };
+    hmi_alarm_row_t a;
+    hmi_view_alarm_row_t v;
+    memset(&a, 0, sizeof(a));
+    a.point = 1;
+    a.priority = HMI_PRI_CRITICAL;
+    a.pt.state = HMI_AL_ACTIVE_UNACK;
+    a.pt.kind = HMI_ALK_HI;
+    a.pt.since_ms = 1000;
+    hmi_view_alarm_row(&a, names, 2, 4000, &v);
+    CHECK_STR(v.priority, "CRIT");
+    CHECK(v.priority_tone == hmi_view_priority_tone(HMI_PRI_CRITICAL));
+    CHECK_STR(v.name, "TEMP");
+    CHECK_STR(v.state, "HI UNACK");
+    CHECK(v.state_tone == hmi_view_alarm_tone(&a.pt));
+    CHECK_STR(v.age, "3s");
+    CHECK(v.waiting);
+
+    a.pt.state = HMI_AL_ACTIVE_ACK;                      /* acknowledged: no longer waiting */
+    hmi_view_alarm_row(&a, names, 2, 4000, &v);
+    CHECK(!v.waiting);
+    a.pt.state = HMI_AL_RTN_UNACK;                       /* back to normal but not yet acknowledged: waiting */
+    hmi_view_alarm_row(&a, names, 2, 4000, &v);
+    CHECK(v.waiting);
+
+    a.point = 2;                                         /* beyond the tags: the communications alarm */
+    hmi_view_alarm_row(&a, names, 2, 4000, &v);
+    CHECK_STR(v.name, "PLC LINK");
+    a.pt.since_ms = 9000;                                /* a clock that is behind the alarm gives 0s, never a huge age */
+    hmi_view_alarm_row(&a, names, 2, 4000, &v);
+    CHECK_STR(v.age, "0s");
+}
+
 static void test_link_and_summary(void)
 {
     SECTION("view: link indicator and alarm summary");
@@ -434,6 +470,7 @@ int main(void)
     test_decimals();
     test_value_and_quality();
     test_alarm_cells();
+    test_alarm_row();
     test_link_and_summary();
     test_setpoint();
     test_write_wording();

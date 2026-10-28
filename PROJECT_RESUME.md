@@ -1,48 +1,59 @@
 # PROJECT_RESUME.md: Prometheus99 handoff
 
-## START HERE (handoff for a new session, 2026-10-22)
+## START HERE (handoff for a new session, 2026-10-23, after the size and memory work)
 
-**M4 is implemented and uncommitted.** Read `docs/ROADMAP_STATUS.md` (its newest "Update"
-section is M4), then `docs/SCREENS.md`, then section V at the end of this file. Section U and
-the older ones describe M1 to M3 and are still true for them, except where section V says
-otherwise.
+**Read in this order:** this block, then `docs/ENGINEERING_REPORT.md` (what was done, measured and left open),
+`docs/ROADMAP_STATUS.md` (the "Where things stand" section and the 2026-10-23 update at its top, then the 55-row matrix and
+milestones M1 to M9), `docs/OPTIMIZATION_ROADMAP.md` (the plan and its section 6 answers), `docs/AUTHENTICATION.md` (now the
+record of the removal), `docs/SCREENS.md`, `docs/CONFIG_INTEGRITY.md`, `docs/STORAGE.md`,
+`docs/ADR-0001-runtime-boundaries.md` (read its addenda) and `docs/M4_HANDOFF.md`. Sections S to V at the end of this file are
+per-milestone summaries from before 2026-10-23; sections A to R are older history. Anything about login, accounts or Argon2id
+in them is obsolete.
 
-State, checked on the development host only (Windows MSYS2 and WSL2; nothing on a Raspberry
-Pi, a real PLC, a real display or real systemd): steps 4.0 to 4.6 are done. The screens
-(overview, alarms, trends, settings with system, accounts and configuration views), alarm
-priority, trends, account management, the configuration writer and request format
-(`hmi_config_write`, `hmi_cfgedit`), the root helper `p99_cfg`, the two systemd units for it
-and `--spool` exist. Last verified numbers (rerun, do not trust): Windows core 3887 checks,
-WSL2 core 3925, view-model 313, headless UI scenario 277 assertions, config golden identical,
-`cfgedit-exec` passes as root, ASan and TSan clean on the new modules, 33 of 34 mutations
-caught. Three intermittent Windows failures (`runtime` at `test_runtime.c:606` and line 226,
-`auth` at lines 881 to 891) were explained and fixed: two test timing margins, and a retry of the
-file replace in `hmi_platform_win32.c` (a scanner holding the file open); see the M4 section of
-`docs/ROADMAP_STATUS.md`.
-The three stray files that were in the repository root at the start of M4 (`cs_cfg.json`,
-`cs_cfg.json.sig`, `cs_key.bin`) are fixtures of `tests/hmi/test_cfgsec.c`; they were gone after
-the 4.6 test runs, so the test's own cleanup removed them. Nothing was deleted by hand.
+**State (host evidence only: Windows MSYS2, WSL2 Ubuntu 24.04, aarch64 under qemu-user; nothing on a Raspberry Pi, a real
+PLC, a real display or real systemd):**
+- Milestones M1 to M4 were committed and pushed (`2ca7c75`, `fe165c2`, `e858465`, `defa45f`, `b6b7ef9`, `f3ccb68` on branch
+  `feature/authorization-hardening`, remote `https://github.com/frostbreath123/prometheus99a.git`). The 2026-10-23 code work is committed
+  locally (not pushed) as `c02fbdf` (authentication removed, LVGL slimmed, RAM diet) and `82dc3f0` (static, lite and sanitizer builds,
+  bench, gates, CI). The documents of 2026-10-23 (this file, `docs/*`, README) were still uncommitted when this was written; run `git status`.
+- **Authentication was removed on the owner's instruction** (login, user store, Argon2id, lockout, idle logout, accounts, `p99_user`).
+  The role is the claimed `--role` (default viewer) in both builds, enforced in the core, not authenticated.
+- **Small static build:** `make -f Makefile.linux STATIC=1 CC=musl-gcc BUILD=build-musl hmi` (static musl, `-Os`, LTO). On the host,
+  stripped product executable 297,088 bytes (the measurement build is 284,800; the baseline product was about 695 KB and the baseline measurement build 666,008, each plus three shared libraries); PSS of the running measurement build 552 KB after the
+  first frame and 608 KB after ten minutes, without the framebuffer mapping (baseline 1,422 and 1,431 KB). A lite profile
+  (`LITE=1`) is 268,416 bytes for the product and 484 KB at the first frame (524 KB after five minutes). Details and conditions: `docs/ENGINEERING_REPORT.md`, section 6.
+- **UI:** one 1-bit DejaVu 14 px font, an 11-colour palette, own theme, LVGL reduced to object, label, button and chart, TRENDS and
+  CONFIG built on first use, 20-line draw buffer, RGB565 only (the program refuses another framebuffer depth).
+- **Test counts (final tree):** Linux core 3,262 checks, view 197, headless UI scenario 205 assertions (lite profile 127),
+  end-to-end 75, executable tests pass, kill-loop 150 rounds pass, screenshot gate 23 files pass; Windows core 3,240.
+  Rerun them; do not trust this line.
+- Requirements matrix tally: 28 complete on the host, 5 implemented unverified, 10 partly, 8 not implemented, 2 blocked,
+  1 optional, 1 removed by decision (authentication).
 
-Exact next steps:
-1. The owner reviews M4, then commits when they say so (no commit, push or GitHub change
-   unless asked).
-2. CI (GitHub Actions on Ubuntu plus a `.gitmodules` fix) was approved by the owner but is not
-   started and is outside M4.
-3. When a Raspberry Pi and a real systemd are available: run the units, the helper and its
-   restart of the service, then the display and touch (the number pad), then row 50 of the
-   roadmap.
-Rules unchanged: no commit, push or GitHub change unless asked; no real PLC; do not touch the
-frozen legacy prototype; chat in caveman style, files in plain sentences. Repository source
-files are LF, not CRLF (the older instruction said CRLF; this was reported). Write patch
-scripts with the Write tool, not shell heredocs.
+**Exact next steps:** (1) the owner's answers to the questions in `docs/OPTIMIZATION_ROADMAP.md` section 6 (Modbus RTU, 16-bit
+framebuffer, no authentication, Pi model); (2) commit the documents and push only when the owner asks (the CI file and
+`.gitmodules` have never run); (3) M5: bring the static aarch64 build up on a Raspberry Pi with the panel and repeat the
+measurements with `bench/` (the plan with acceptance criteria is in `docs/ENGINEERING_REPORT.md`, section 11); (4) M8 documents
+(threat model, IEC 62443 mapping, SBOM, licence review, version 0 tag); (5) decide authentication again if wanted.
 
-Read in this order: `docs/ROADMAP_STATUS.md` (requirements matrix of 55 rows
-against the mentor's document, discrepancies, milestones M1 to M9, blockers,
-acceptance criteria; the four "Update" sections at its top, for M1, M2, M3 and M4,
-are the current state),
-then sections S, T and U at the end of this file, then `docs/ADR-0001-runtime-boundaries.md`
-(read its addenda), then `docs/AUTHENTICATION.md`, `docs/CONFIG_INTEGRITY.md`
-and `docs/STORAGE.md`.
+**Rules (agreed with the owner, unchanged):** no commit, push or GitHub change unless the owner asks; no real PLC connection or real
+control writes; do not modify the frozen legacy prototype (`src/layer*.c`, `src/main.c`, `include/`, `tests/test_core.c`,
+`prometheus99.exe`); report documentation conflicts instead of choosing silently; update documentation only with verified facts;
+chat replies in caveman style, saved files in plain full sentences. Repository source files are LF. The portable core stays
+independent of LVGL and of the operating system (all OS access is in `hmi_platform_*.c`).
+
+**How to run things:** see `docs/ENGINEERING_REPORT.md`, section 11 (all commands). In short: Windows (Git Bash or MSYS2 UCRT64)
+`mingw32-make test-hmi test-view test-config-golden ui-host`; WSL2 `make -f Makefile.linux test test-view ui-host ui-shots e2e
+cli-exec config-exec cfgedit-exec liveness`, the static build as above, `bench/` scripts for measurements. The helper scripts
+used in the sessions are in `bench/`; the WSL tree is a rsync copy (`/root/p99`), because the build runs faster there.
+
+**Tool notes learned the hard way:** shell and Python heredocs in this environment mangle backslashes and `\n`, so write scripts and
+patches with the Write tool (for `sed -i` with a replacement that contains `\n`, use a file and `r`). Git Bash paths (`/c/...`)
+and WSL paths (`/mnt/c/...`) differ inside scripts. Git Bash rewrites path arguments to Linux tools unless `MSYS_NO_PATHCONV=1`
+is set. A `pkill -f` pattern can match the command that runs it. ThreadSanitizer on this kernel needs `setarch x86_64 -R`.
+A Windows scanner can hold a file open for a few milliseconds and make a file replace fail; the platform layer retries. A
+timed-out runtime stop leaves a worker thread running by design.
+
 The requirements baseline is the mentor's document, kept outside the repository at
 `C:\Users\Admin\Downloads\Prometheus99 Industrial HMI Runtime Architecture and Engineering Documentation.md`.
 Sections A to R below are older history and are partly out of date.

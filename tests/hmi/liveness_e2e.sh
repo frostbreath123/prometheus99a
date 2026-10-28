@@ -3,7 +3,7 @@
 # A fake systemd notify socket receives READY=1 and WATCHDOG=1. The process is
 # then frozen with SIGSTOP (pings must stop), resumed with SIGCONT (pings must
 # resume) and finally killed with SIGKILL (pings must stop for good).
-# Uses a loopback config and /dev/null as the framebuffer: no display, no PLC.
+# Uses a loopback config and "--fb none" (no display): no display, no PLC.
 #   usage: liveness_e2e.sh <build dir> <config template>
 set -u
 B=${1:-build-linux}
@@ -20,7 +20,7 @@ LP=$!
 for i in $(seq 1 50); do grep -q listening "$W/notify.log" 2>/dev/null && break; sleep 0.1; done
 
 NOTIFY_SOCKET="$W/notify.sock" WATCHDOG_USEC=1000000 \
-  "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
+  "$B/prometheus99" --config "$W/cfg.json" --fb none --touch /nonexistent \
   --audit "$W/audit.log" --alarms "$W/alarms.bin" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" > "$W/app.out" 2>&1 &
 APP=$!
 
@@ -54,7 +54,7 @@ sleep 0.5
 LP2=$!
 for i in $(seq 1 50); do grep -q listening "$W/notify2.log" 2>/dev/null && break; sleep 0.1; done
 NOTIFY_SOCKET="$W/notify2.sock" WATCHDOG_USEC=1000000 \
-  "$B/prometheus99" --config "$W/cfg.json" --fb /dev/null --touch /nonexistent \
+  "$B/prometheus99" --config "$W/cfg.json" --fb none --touch /nonexistent \
   --audit "$W/audit2.log" --alarms "$W/alarms2.bin" --config-key "$W/cfg.key" --config-state "$W/cfg.serial" > "$W/app2.out" 2>&1 &
 APP2=$!
 sleep 8

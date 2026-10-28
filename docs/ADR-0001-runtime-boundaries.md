@@ -120,7 +120,7 @@ Decision:
 Not changed: PLC write authorization, audit-before-send and fail-closed
 behaviour for PLC writes (252 write checks and the e2e suite pass unchanged).
 
-## Addendum 2026-10-22: authentication and sessions
+## Addendum 2026-10-22: authentication and sessions (superseded on 2026-10-23: removed, see the last addendum)
 
 Context: roles were claimed on the command line (addendum 2026-10-15), which is
 not access control. Roadmap milestone M1 replaces it with a login. Details,
@@ -293,3 +293,33 @@ Consequences:
   without a restart.
 - The pool for the UI grew from 128 KB to 192 KB.
 - Nothing here ran under real systemd, on a Raspberry Pi, on a display or with a real PLC.
+
+## Addendum 2026-10-23: authentication removed, small static build, one font and a palette
+
+Context: the owner asked for a process under 1 MB and a size of a few hundred KB, and for the Argon2id password hash
+(8 MiB per login) to be removed from the scope. Details and measurements are in
+`docs/OPTIMIZATION_ROADMAP.md`; the removal is in `docs/AUTHENTICATION.md`.
+
+Decisions:
+- **No authentication.** The "Addendum 2026-10-22: authentication and sessions" above no longer describes the product. The
+  login, the user store, the password hash, lockout, idle logout and account management are gone. The role is the
+  claimed `--role` of the process (default viewer) in both builds, and the core still decides on every call (the
+  decision point of the "authorization in the core, claimed role" addendum is now the only source of the role).
+  Rejected: replacing Argon2id by another hash (the owner chose removal); keeping `--role` refused in the production
+  build, which would have made an operator panel impossible.
+- **Core boundary unchanged.** The portable core still has no LVGL and no operating system calls. Two helpers
+  (`hmi_crc32`, `hmi_wipe`) moved from the removed modules to `src/hmi/hmi_util.c`; Monocypher is included only by
+  `hmi_mac.c` and `hmi_util.c`.
+- **The device build is static musl.** `Makefile.linux STATIC=1 CC=musl-gcc`: one file, size optimised with link-time
+  optimisation, no unwind tables, libmodbus compiled from its source (LGPL: the object files or the build must be
+  deliverable, `docs/THIRD_PARTY.md`). The development build stays dynamic glibc so that sanitizers work.
+- **The UI has one font, one theme and eleven colours** (`src/ui/ui_theme.c`, `src/ui/font`). LVGL is configured for
+  the widgets the screens use and for RGB565 only; the framebuffer must be 16 bits.
+- **Profiles.** `LITE=1` (compile time) removes the trend screen, the CONFIG view and the chart widget, and halves the
+  tag table; the full profile is the default.
+- **Lazy screens.** TRENDS and the CONFIG view are built on first use and then kept.
+
+Consequences:
+- Requirements that assumed accounts are no longer met and are recorded as removed by decision.
+- The audit trail names the role but not a person (`user=-`).
+- Nothing here ran on a Raspberry Pi, a real display, a real touch panel or a real PLC.
