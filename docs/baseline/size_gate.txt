@@ -1,0 +1,9 @@
+stripped bytes: 321712
+   text	   data	    bss	    dec	    hex	filename
+ 307626	   7408	 431128	 746162	  b62b2	build-musl/prometheus99
+gate (full) on build-musl/prometheus99
+  ok   stripped size (bytes): 321712 <= 322000
+  ok   static data .data+.bss (bytes): 438536 <= 440000
+  ok   no Argon2id code in the executable
+  ok   no shared library needed (one static file)
+gate (full): PASS

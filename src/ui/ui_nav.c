@@ -65,15 +65,18 @@ static void tab_cb(lv_event_t *e)
 
 void ui_nav_build(lv_obj_t *scr)
 {
-    int w = 800 / (int)N_SCREENS;
+    /* The tabs share the real width equally; each edge is rounded from the left so the last tab ends exactly at the right edge. */
     for (size_t i = 0; i < N_SCREENS; i++) {
-        s_tab[i] = ui_mk_button(scr, (int)i * w, TAB_Y, w, TAB_H, SCREENS[i]->title, tab_cb, (void *)(intptr_t)i);
+        int x0 = (int)(i * (size_t)ui_w / N_SCREENS), x1 = (int)((i + 1) * (size_t)ui_w / N_SCREENS);
+        s_tab[i] = ui_mk_button(scr, 0, TAB_Y, 0, TAB_H, SCREENS[i]->title, tab_cb, (void *)(intptr_t)i);
+        lv_obj_set_pos(s_tab[i], x0, ui_y(TAB_Y));
+        lv_obj_set_width(s_tab[i], x1 - x0);
         lv_obj_set_style_radius(s_tab[i], 0, 0);
     }
     for (size_t i = 0; i < N_SCREENS; i++) {
         lv_obj_t *p = lv_obj_create(scr);
-        lv_obj_set_size(p, 800, UI_PAGE_H);
-        lv_obj_set_pos(p, 0, UI_PAGE_Y);
+        lv_obj_set_size(p, ui_w, ui_h - ui_y(UI_PAGE_Y));
+        lv_obj_set_pos(p, 0, ui_y(UI_PAGE_Y));
         lv_obj_set_style_bg_opa(p, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(p, 0, 0);
         lv_obj_set_style_radius(p, 0, 0);

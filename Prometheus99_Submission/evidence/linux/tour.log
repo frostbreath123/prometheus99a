@@ -1,0 +1,23 @@
+   521 ms  program started (pid 66807, window 8388610)
+  1637 ms  picture 01_overview_normal
+  5147 ms  picture 02_alarm_high_unacknowledged
+  5149 ms  tap ALARMS
+  6825 ms  picture 03_alarm_list
+  6826 ms  tap ACK ALL
+  8498 ms  picture 04_alarm_acknowledged
+  8499 ms  tap OVERVIEW
+  9458 ms  tap setpoint +
+ 10117 ms  tap setpoint +
+ 10777 ms  tap SEND (authorised write by the operator)
+ 13140 ms  picture 05_setpoint_written
+ 13142 ms  tap TRENDS
+ 15107 ms  picture 06_trends
+ 15109 ms  tap SETTINGS
+ 16773 ms  picture 07_settings
+ 16774 ms  tap OVERVIEW
+ 17737 ms  PLC link cut (fake PLC drops the connection)
+ 23045 ms  picture 08_plc_disconnected
+ 23046 ms  PLC link restored
+ 31357 ms  picture 09_recovered
+ 31400 ms  program stopped
+ 35213 ms  picture 10_viewer_no_write

@@ -1,0 +1,11 @@
+# Where the touch targets of the 800 x 480 screens are: name, x, y (pixels, centre of the target).
+# The three tour drivers (the Windows demo, demo/linux_tour.sh, emulation/pi/drive.py) read this one file, so a layout
+# change is made here once. Positions come from src/ui (tab bar y=62, header button, setpoint panel).
+tab_overview 100 62
+tab_alarms 300 62
+tab_trends 500 62
+tab_settings 700 62
+ack_all 750 20
+setpoint_minus 37 432
+setpoint_plus 105 432
+setpoint_send 198 432

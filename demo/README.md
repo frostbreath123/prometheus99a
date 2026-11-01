@@ -1,29 +1,27 @@
-# Demo of the Prometheus99 HMI
+# Demos and tour scripts
 
-Two ways to show the HMI to other people. Both are demonstrations, not the product.
+Everything here is a demonstration or a test aid, not the product. The device program is built on Linux (see the top-level README).
 
-## 1. Live window (Windows)
+## Windows live demo
 
-Double-click `demo/run_live.bat`, or run `mingw32-make demo-live`. It builds `build/hmi_win_demo.exe` and
-opens a window of 800 by 480 pixels. A mouse click stands in for a touch.
+1. Install MSYS2 (https://www.msys2.org), open the "MSYS2 UCRT64" shell and install the compiler and make:
+   ```sh
+   pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make
+   ```
+2. Put `C:\msys64\ucrt64\bin` on the Windows PATH (or run the next step inside the UCRT64 shell).
+3. Double-click `demo\run_live.bat`, or from the repository folder run `mingw32-make demo-live` (or `mingw32-make -f Makefile.windows demo-live`). The first build compiles LVGL and takes a few minutes. Build from a short folder path such as `C:\p99`.
 
-- The real LVGL screens, the real runtime and the real libmodbus driver run against the test fake PLC
-  (`tests/hmi/fake_modbus_server.c`). The values move, so trends, alarms and quality colours show something.
-- There is no login. Press F1 for the help, F3 to change the claimed role (viewer, operator, engineer, admin), or start the
-  program with `--role admin` and so on. The default is operator.
-- F2 cuts or restores the PLC link. F3 changes the role. Esc closes.
-- Things to try: TRENDS, the alarm list, a setpoint above 80 on TANK_LEVEL as the operator,
-  SETTINGS then CONFIG as the engineer (APPLY needs two presses).
+A window of 800 by 480 pixels opens; a mouse click stands in for a touch. The real LVGL screens, the real runtime and the real libmodbus driver run against a fake PLC (`tests/hmi/fake_modbus_server.c`). F1 help, F2 cut or restore the PLC link, F3 change the claimed role (viewer, operator, engineer, admin), Esc closes. `--role admin` and so on set the role at start; `--tour DIR` runs the scripted tour and saves pictures; `--no-help` skips the help box.
 
-What is different from the real device:
-- The PLC is a fake. Nothing real is connected.
-- The configuration is not signed. A small stand-in for the root helper `p99_cfg` runs inside the program.
-  It applies a change request from the CONFIG screen with the same rules, writes the audit line and the
-  result, then restarts the runtime with the new configuration. The role stays; the trend starts again.
-- The window is drawn with plain Win32 GDI. The real device draws on a Linux framebuffer.
-- Nothing here was measured on a Raspberry Pi or shown on a real display.
+Differences from the real device: the PLC is fake; the configuration is not signed (a small stand-in for the root helper `p99_cfg` runs inside the program); the window is drawn with plain Win32 GDI, not a Linux framebuffer; nothing here was measured on a Raspberry Pi.
 
-## 2. Slideshow (any computer, offline)
+## Scripted tours (screenshots and measurements)
 
-Double-click `demo/run_demo.bat`. It runs the headless harness and builds `demo/prometheus99_demo.html`, one
-file with 20 captioned screens that opens in any browser. Send that file to people who cannot run the program.
+| Target | Script |
+|---|---|
+| Windows demo | `powershell -ExecutionPolicy Bypass -File demo\win_capture.ps1 -Exe build-windows\hmi_win_demo.exe -Out evidence\windows` |
+| Linux window (SDL2) | `bash demo/linux_tour.sh build-sdl evidence/linux` (needs xdotool and a window system) |
+| Emulated Raspberry Pi | `emulation/pi/drive.py`, see `docs/EMULATION.md` |
+| One picture of all three | `powershell -ExecutionPolicy Bypass -File demo\make_overview_sheet.ps1` |
+
+`ui_targets.txt` holds the touch-target coordinates shared by the three tour drivers. `make_demo_config.sh` builds the demo configuration from `config/hmi.example.json`. `run_linux_sdl.sh` starts the live Linux window.

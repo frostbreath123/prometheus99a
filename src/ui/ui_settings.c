@@ -88,7 +88,7 @@ static void system_build(lv_obj_t *area)
     for (size_t i = 0; i < SYS_LINES; i++) {
         s_sys[i] = ui_mk_label(area, 8, 34 + (int)i * 30, "", C_TEXT);
         lv_label_set_long_mode(s_sys[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(s_sys[i], UI_SUBPAGE_W - 16);
+        lv_obj_set_width(s_sys[i], ui_x(UI_SUBPAGE_W - 16));
     }
 }
 
@@ -157,8 +157,8 @@ static void settings_build(lv_obj_t *page)
     for (size_t i = 0; i < N_VIEWS; i++) {
         s_btn[i] = ui_mk_button(page, 12, 8 + (int)i * (BTN_H + 8), BTN_W, BTN_H, VIEWS[i]->title, view_cb, (void *)(intptr_t)i);
         lv_obj_t *a = lv_obj_create(page);
-        lv_obj_set_size(a, UI_SUBPAGE_W, UI_PAGE_H);
-        lv_obj_set_pos(a, VIEW_X, 0);
+        lv_obj_set_size(a, ui_x(UI_SUBPAGE_W), ui_y(UI_PAGE_H));
+        lv_obj_set_pos(a, ui_x(VIEW_X), ui_y(0));
         lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(a, 0, 0);
         lv_obj_set_style_radius(a, 0, 0);

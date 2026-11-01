@@ -64,13 +64,22 @@ const char *ui_ack_text(void);
  * A screen is built once into its own page and updated only while it is the
  * visible one (nothing on a hidden screen is touched by the binder). A screen
  * is added by writing its file and adding its table to SCREENS in ui_nav.c. */
-#define UI_PAGE_Y 80   /* the pages start below the header and the tab bar */
+/* ---- layout: every position in the screen files is written on an 800 x 480 design grid and mapped to the real
+ * display by ui_x() and ui_y(). The header, the tab bar and the page area are computed once per build. ---- */
+LV_FONT_DECLARE(p99_font_18)
+LV_FONT_DECLARE(p99_font_24)
+extern int ui_w, ui_h;            /* the display resolution */
+int ui_x(int v);                  /* a horizontal design length or position on the real display */
+int ui_y(int v);                  /* a vertical one */
+void ui_layout_init(void);        /* reads the display size; called at the start of every build */
+const lv_font_t *ui_font(void);   /* the font that suits the display */
+#define UI_PAGE_Y 80   /* design units: the pages start below the header and the tab bar */
 #define UI_PAGE_H 400
 
 typedef struct {
     const char *title;                 /* tab caption */
     void (*reset)(void);               /* forget every widget pointer and cached text (before a rebuild) */
-    void (*build)(lv_obj_t *page);     /* page: 800 x UI_PAGE_H, coordinates are relative to it */
+    void (*build)(lv_obj_t *page);     /* page: 800 x UI_PAGE_H design units (ui_w by the rest of the display), positions are relative to it and go through ui_x() / ui_y() */
     void (*update)(void);              /* binder tick while visible; ui_rt is not NULL */
     bool lazy;                         /* build on the first visit, not at start: the widgets of a screen that is never opened
                                           are never allocated. Once built it stays (nothing it holds is lost by leaving it). */
@@ -81,8 +90,8 @@ extern const ui_screen_ops_t ui_screen_alarms;
 extern const ui_screen_ops_t ui_screen_trends;
 extern const ui_screen_ops_t ui_screen_settings;
 
-/* The views of the settings screen use the same shape: a page of 624 x UI_PAGE_H. */
-#define UI_SUBPAGE_W 624
+/* The views of the settings screen use the same shape: a page of UI_SUBPAGE_W x UI_PAGE_H. */
+#define UI_SUBPAGE_W 624   /* design units */
 extern const ui_screen_ops_t ui_sub_system;
 extern const ui_screen_ops_t ui_sub_config;
 

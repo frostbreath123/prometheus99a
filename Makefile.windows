@@ -108,7 +108,7 @@ test-e2e: $(BUILD)/test_e2e.exe
 	./$(BUILD)/test_e2e.exe
 
 ui-host: $(BUILD)/ui_headless.exe
-	./$(BUILD)/ui_headless.exe $(BUILD)/shot
+	./$(BUILD)/ui_headless.exe $(BUILD)/shot $(BUILD)/ui_audit.log
 
 test-hmi-all: test-hmi test-view test-config-golden test-e2e
 

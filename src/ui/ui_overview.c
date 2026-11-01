@@ -181,16 +181,16 @@ static void overview_build(lv_obj_t *page)
         /* The columns have fixed widths: a name or a value that is too long ends in dots instead of running into the next column. */
         r->name = ui_mk_label(page, 12, y, "", C_TEXT);
         lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->name, 226);
+        lv_obj_set_width(r->name, ui_x(226));
         r->value = ui_mk_label(page, 244, y, "---", C_MUTED);
         lv_label_set_long_mode(r->value, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->value, 192);
+        lv_obj_set_width(r->value, ui_x(192));
         r->quality = ui_mk_label(page, 444, y, "NO DATA", C_MUTED);
         lv_label_set_long_mode(r->quality, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->quality, 150);
+        lv_obj_set_width(r->quality, ui_x(150));
         r->alarm = ui_mk_label(page, 600, y, "", C_MUTED);
         lv_label_set_long_mode(r->alarm, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->alarm, 196);
+        lv_obj_set_width(r->alarm, ui_x(196));
     }
     for (size_t i = 0; i < n; i++) {
         if (hmi_tagdb_cfg(&rt->db, i)->write_allowed) {
@@ -203,8 +203,8 @@ static void overview_build(lv_obj_t *page)
 
     /* bottom: setpoint + journal */
     lv_obj_t *pnl = lv_obj_create(page);
-    lv_obj_set_size(pnl, 800, 100);
-    lv_obj_set_pos(pnl, 0, 300);
+    lv_obj_set_size(pnl, ui_x(800), ui_y(100));
+    lv_obj_set_pos(pnl, ui_x(0), ui_y(300));
     lv_obj_set_style_bg_color(pnl, C_PANEL, 0);
     lv_obj_set_style_border_width(pnl, 0, 0);
     lv_obj_set_style_radius(pnl, 0, 0);
@@ -217,18 +217,18 @@ static void overview_build(lv_obj_t *page)
         s_sp_btn[2] = ui_mk_button(pnl, 144, 32, 110, 40, "SEND", sp_send_cb, NULL);
         s_wr_status = ui_mk_label(pnl, 270, 44, "", C_MUTED);
         lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);   /* two lines at most, clear of the journal on the right */
-        lv_obj_set_width(s_wr_status, 284);
+        lv_obj_set_width(s_wr_status, ui_x(284));
     } else {
         s_sp_tag = -1;
         s_sp_label = ui_mk_label(pnl, 8, 6, "WRITES DISABLED", C_MUTED);
         s_wr_status = ui_mk_label(pnl, 8, 40, "", C_MUTED);
         lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(s_wr_status, 540);
+        lv_obj_set_width(s_wr_status, ui_x(540));
     }
     s_journal = ui_mk_label(pnl, 560, 4, "no alarm events", C_MUTED);
     lv_obj_t *ack_lbl = ui_mk_label(pnl, 270, 6, "", C_MUTED);
     lv_label_set_long_mode(ack_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(ack_lbl, 284);
+    lv_obj_set_width(ack_lbl, ui_x(284));
     ui_ack_bind(ack_lbl);
     s_store_fault = ui_mk_label(pnl, 270, 78, "", C_BAD);
     if (ui_role != HMI_ROLE_VIEWER) { /* a claimed role must never look like a login */

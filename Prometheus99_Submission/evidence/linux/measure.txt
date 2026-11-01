@@ -1,0 +1,5 @@
+pss_kb samples (every few seconds, operator run): 8834 8839 8863 8867 
+pss_kb max: 8867
+cpu_percent_of_one_core during the fault and recovery part: 0.73
+plc requests/writes at the end: requests=312 writes=1
+audit lines: 8

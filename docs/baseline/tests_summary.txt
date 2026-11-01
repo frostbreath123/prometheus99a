@@ -1,0 +1,30 @@
+decode: 24 checks, 0 failed
+tags: 19 checks, 0 failed
+comms: 39 checks, 0 failed
+link_health: 38 checks, 0 failed
+writes: 632 checks, 0 failed
+alarm: 206 checks, 0 failed
+config: 148 checks, 0 failed
+runtime: 179 checks, 0 failed
+watchdog: 29 checks, 0 failed
+authz: 59 checks, 0 failed
+cli: 110 checks, 0 failed
+platform: 69 checks, 0 failed
+mac: 13 checks, 0 failed
+cfgsec: 223 checks, 0 failed
+store: 454 checks, 0 failed
+auditfmt: 60 checks, 0 failed
+trend: 90 checks, 0 failed
+cfgedit: 870 checks, 0 failed
+boot: 13 checks, 0 failed
+hmi core total: 3275 checks
+208 checks, 0 failed
+config round trip: 58 accepted configurations written out and read back identically, 0 failed
+diff -u tests/hmi/config_golden.txt build-linux/config_golden.out && echo "config golden: identical"
+config golden: identical
+comms: polls_ok=1933 failed=41 exceptions=22 links_lost=7 connects_ok=8 max_poll_latency=201 ms
+scenario assertions: 205 checks, 0 failed
+75 checks, 0 failed
+cli exec test: PASS
+config exec test: PASS
+liveness e2e: PASS

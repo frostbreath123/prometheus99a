@@ -2,7 +2,7 @@
  * @file display_fbdev.c
  * @brief The framebuffer display backend of the device program (/dev/fb0, evdev touch).
  *
- * The screen is 800 x 480; on a larger framebuffer the picture is centred. The device file is written with pwrite(),
+ * The screen is the whole framebuffer (at least 640 x 400); the screens lay themselves out from its size. The device file is written with pwrite(),
  * one row of a finished strip at a time, and is not mapped, so the program holds no copy of the screen (the display
  * memory belongs to the kernel and the display driver). Supported: 16 bits per pixel RGB565, and 32 bits per pixel
  * (the channel positions are read from the device). Anything else is refused with a message.
@@ -26,7 +26,10 @@
 static int s_fd = -1;                                   /* -1: no display ("--fb none") */
 static uint32_t s_bpp, s_stride, s_xoff, s_yoff;
 static uint32_t s_rs, s_gs, s_bs;                       /* bit positions of red, green and blue at 32 bits per pixel */
-static uint8_t s_draw[P99_W * P99_DRAW_LINES * 2] __attribute__((aligned(4)));
+static uint8_t s_draw[P99_DRAW_BYTES] __attribute__((aligned(4)));
+static int s_w = P99_W, s_h = P99_H;
+
+void p99_display_size(int *w, int *h) { *w = s_w; *h = s_h; }
 
 /* A failed write leaves a stale row on the screen; the next redraw of that row fixes it, so there is nothing to recover. */
 static void put_row(const void *row, size_t len, off_t off)
@@ -39,7 +42,7 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     int32_t w = a->x2 - a->x1 + 1;
     const uint16_t *src = (const uint16_t *)px;
-    uint32_t row32[P99_W];
+    uint32_t row32[2048];   /* one converted row, on the stack so it adds no static data; the screen is at most 2048 pixels wide */
     for (int32_t y = a->y1; y <= a->y2 && s_fd >= 0; y++, src += w) {
         off_t off = (off_t)(y + s_yoff) * s_stride + (off_t)(a->x1 + s_xoff) * (s_bpp / 8u);
         if (s_bpp == 16) {
@@ -65,9 +68,9 @@ static bool open_framebuffer(const char *path)
                 strerror(errno));
         return false;
     }
-    if (v.xres < P99_W || v.yres < P99_H) {
-        fprintf(stderr, "prometheus99: the framebuffer '%s' is %ux%u; the screens need at least %dx%d\n", path,
-                (unsigned)v.xres, (unsigned)v.yres, P99_W, P99_H);
+    if (v.xres < 640 || v.yres < 400 || v.xres > 2048) {
+        fprintf(stderr, "prometheus99: the framebuffer '%s' is %ux%u; the screens need 640x400 up to 2048 pixels wide\n", path,
+                (unsigned)v.xres, (unsigned)v.yres);
         return false;
     }
     bool rgb565 = v.bits_per_pixel == 16 && v.red.offset == 11 && v.red.length == 5 && v.green.offset == 5 &&
@@ -80,8 +83,10 @@ static bool open_framebuffer(const char *path)
     }
     s_bpp = v.bits_per_pixel;
     s_stride = f.line_length;
-    s_xoff = v.xoffset + (v.xres - P99_W) / 2u;
-    s_yoff = v.yoffset + (v.yres - P99_H) / 2u;
+    s_xoff = v.xoffset;
+    s_yoff = v.yoffset;
+    s_w = (int)v.xres;
+    s_h = (int)v.yres;
     s_rs = v.red.offset;
     s_gs = v.green.offset;
     s_bs = v.blue.offset;
@@ -95,7 +100,7 @@ lv_display_t *p99_display_create(const char *fb_path, const char *touch_path)
     bool none = strcmp(fb_path, "none") == 0;
     if (none) fprintf(stderr, "prometheus99: --fb none: running without a display\n");
     else if (!open_framebuffer(fb_path)) return NULL;
-    lv_display_t *d = lv_display_create(P99_W, P99_H);
+    lv_display_t *d = lv_display_create(s_w, s_h);
     lv_display_set_color_format(d, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(d, s_draw, NULL, sizeof(s_draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(d, flush_cb);
@@ -104,3 +109,4 @@ lv_display_t *p99_display_create(const char *fb_path, const char *touch_path)
 }
 
 bool p99_display_pump(void) { return true; }
+bool p99_display_take_resize(void) { return false; }
