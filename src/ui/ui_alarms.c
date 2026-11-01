@@ -102,7 +102,7 @@ static void alarms_build(lv_obj_t *page)
         r->pri = ui_mk_label(page, 12, y + 6, "", C_TEXT);
         r->name = ui_mk_label(page, 110, y + 6, "", C_TEXT);
         lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);   /* a long name ends in dots instead of running into the state column */
-        lv_obj_set_width(r->name, 216);
+        lv_obj_set_width(r->name, ui_x(216));
         r->state = ui_mk_label(page, 330, y + 6, "", C_TEXT);
         r->age = ui_mk_label(page, 560, y + 6, "", C_MUTED);
         r->btn = ui_mk_button(page, 676, y, 120, AL_ROW_H - 4, "ACK", ack_cb, (void *)(intptr_t)i);
@@ -114,8 +114,8 @@ static void alarms_build(lv_obj_t *page)
     lv_obj_add_flag(s_none, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *pnl = lv_obj_create(page);
-    lv_obj_set_size(pnl, 800, 100);
-    lv_obj_set_pos(pnl, 0, 300);
+    lv_obj_set_size(pnl, ui_x(800), ui_y(100));
+    lv_obj_set_pos(pnl, ui_x(0), ui_y(300));
     lv_obj_set_style_bg_color(pnl, C_PANEL, 0);
     lv_obj_set_style_border_width(pnl, 0, 0);
     lv_obj_set_style_radius(pnl, 0, 0);

@@ -159,6 +159,7 @@ int main(int argc, char **argv)
 
     while (!g_stop) {
         if (!p99_display_pump()) break;
+        if (p99_display_take_resize()) hmi_ui_relayout();
         uint32_t wait = lv_timer_handler();
         if (!ready_sent) { /* the first frame has been built and flushed */
             hmi_notify("READY=1");

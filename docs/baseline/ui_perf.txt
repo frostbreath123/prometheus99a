@@ -1,0 +1,19 @@
+LVGL heap after UI build: total=104160 free=54328 used=48 KB
+heap allocation calls (app+LVGL+libmodbus objects) in 2.0 s steady state: 0
+LVGL heap with four screens built: used=55 KB, max_used=56 KB
+LVGL heap with every screen built: used=48 KB of 101 KB
+[perf] first visit of screen 1 (lazy build included): 0.3 ms
+[perf] first visit of screen 2 (lazy build included): 1.4 ms
+[perf] first visit of screen 3 (lazy build included): 0.3 ms
+[perf] first visit of screen 0 (lazy build included): 0.4 ms
+[perf] screen transition, press to last pixels: n=96 min=0.3 median=0.4 p95=33.8 max=99.6 ms
+[perf] touch press to the first pixels of the pressed button: n=120 min=1.1 median=11.4 p95=31.3 max=33.4 ms
+[perf] touch release to the first pixels of the new screen: n=120 min=1.4 median=24.6 p95=33.5 max=33.8 ms
+[perf] touches: 120 pressed and released, 0 did not change the screen, 0 ended on the wrong screen
+[perf] after 40 rounds through every screen the table differs in 0 pixels
+lv_timer_handler (render+binder) samples=2692: mean=34 us p50=10 p95=213 p99=452 max=1386 us
+flush: calls=11246 pixels=172384297 total_flush_time=26743 us
+binder ticks=1190 labels_updated=380 labels_skipped_unchanged=11369
+LVGL heap at end: used=56 KB, max_used=74 KB, frag=1%
+heap allocation calls since UI build: 9 (frees 9); counted at link level, CRT-internal allocations not included
+[end] RssAnon=2272 KB  VmRSS=5064 KB  VmHWM=5064 KB

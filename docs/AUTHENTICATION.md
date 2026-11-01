@@ -63,7 +63,7 @@ banner. A signed configuration is still required in the production build, and th
 - The configuration is still protected by an HMAC-SHA-512 signature and the rollback serial; those are unrelated to
   accounts (`docs/CONFIG_INTEGRITY.md`).
 - Requirements of the mentor's document that assumed accounts (rows of the requirements matrix in
-  `docs/ROADMAP_STATUS.md` about login, roles from accounts, lockout and idle logout) are no longer met. They are
+  `docs/history/ROADMAP_STATUS.md` about login, roles from accounts, lockout and idle logout) are no longer met. They are
   recorded there as removed by decision, not as defects.
 
 ## If authentication is wanted again

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS  Samples a Windows process: private/working-set memory, CPU %, threads, handles.
-.EXAMPLE   powershell -File bench/measure_process.ps1 -Exe .\prometheus99.exe -Seconds 20 -Out bench/results/legacy.csv
+.EXAMPLE   powershell -File bench/measure_process.ps1 -Exe .\build-windows\hmi_win_demo.exe -Seconds 20 -Out evidence/windows/process.csv
 Host measurement only. Raw samples go to the CSV; a summary is printed.
 #>
 param([string]$Exe, [int]$Seconds = 20, [string]$Out = "bench/results/process.csv", [int]$IntervalMs = 500)

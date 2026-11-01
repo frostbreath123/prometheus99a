@@ -16,8 +16,13 @@
 static SDL_Window *s_win;
 static SDL_Renderer *s_ren;
 static SDL_Texture *s_tex;
-static uint16_t s_shadow[P99_W * P99_H];
-static uint8_t s_draw[P99_W * P99_DRAW_LINES * 2] __attribute__((aligned(4)));
+static uint16_t *s_shadow;                 /* a copy of the whole frame, s_w * s_h pixels */
+static uint8_t s_draw[P99_DRAW_BYTES] __attribute__((aligned(4)));
+static lv_display_t *s_disp;
+static int s_w = P99_W, s_h = P99_H;
+static bool s_resized;
+
+void p99_display_size(int *w, int *h) { *w = s_w; *h = s_h; }
 static volatile sig_atomic_t s_shot_requested;
 static bool s_dirty;
 static int s_mx, s_my;
@@ -28,7 +33,7 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     int32_t w = a->x2 - a->x1 + 1;
     for (int32_t y = a->y1; y <= a->y2; y++)
-        memcpy(&s_shadow[(size_t)y * P99_W + (size_t)a->x1], px + (size_t)(y - a->y1) * (size_t)w * 2u, (size_t)w * 2u);
+        memcpy(&s_shadow[(size_t)y * (size_t)s_w + (size_t)a->x1], px + (size_t)(y - a->y1) * (size_t)w * 2u, (size_t)w * 2u);
     SDL_Rect r = { a->x1, a->y1, w, a->y2 - a->y1 + 1 };
     SDL_UpdateTexture(s_tex, &r, px, w * 2);
     s_dirty = true;
@@ -55,8 +60,8 @@ static void save_shot(void)
     const char *path = getenv("P99_SHOT");
     FILE *f = fopen(path ? path : "/tmp/p99_shot.ppm", "wb");
     if (!f) return;
-    fprintf(f, "P6\n%d %d\n255\n", P99_W, P99_H);
-    for (int i = 0; i < P99_W * P99_H; i++) {
+    fprintf(f, "P6\n%d %d\n255\n", s_w, s_h);
+    for (int i = 0; i < s_w * s_h; i++) {
         uint16_t p = s_shadow[i];
         uint8_t rgb[3] = { (uint8_t)(((p >> 11) & 31) * 255 / 31), (uint8_t)(((p >> 5) & 63) * 255 / 63), (uint8_t)((p & 31) * 255 / 31) };
         fwrite(rgb, 1, 3, f);
@@ -72,15 +77,24 @@ lv_display_t *p99_display_create(const char *fb_path, const char *touch_path)
         fprintf(stderr, "prometheus99: SDL_Init: %s\n", SDL_GetError());
         return NULL;
     }
+    const char *sz = getenv("P99_SIZE");   /* e.g. 1024x600; the window can be resized by hand as well */
+    int ew, eh;
+    if (sz && sscanf(sz, "%dx%d", &ew, &eh) == 2 && ew >= 640 && eh >= 400 && ew <= 3840 && eh <= 2160) {
+        s_w = ew;
+        s_h = eh;
+    }
     s_win = SDL_CreateWindow("Prometheus99 HMI (Linux, SDL2 window)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                             P99_W, P99_H, SDL_WINDOW_SHOWN);
+                             s_w, s_h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    if (s_win) SDL_SetWindowMinimumSize(s_win, 640, 400);   /* the screens need at least this much room */
     s_ren = s_win ? SDL_CreateRenderer(s_win, -1, SDL_RENDERER_SOFTWARE) : NULL;
-    s_tex = s_ren ? SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, P99_W, P99_H) : NULL;
-    if (!s_tex) {
+    s_tex = s_ren ? SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, s_w, s_h) : NULL;
+    s_shadow = calloc((size_t)3840 * 2160, sizeof(uint16_t));   /* the largest window; pages the OS never touches cost nothing */
+    if (!s_tex || !s_shadow) {
         fprintf(stderr, "prometheus99: cannot create the window: %s\n", SDL_GetError());
         return NULL;
     }
-    lv_display_t *d = lv_display_create(P99_W, P99_H);
+    lv_display_t *d = lv_display_create(s_w, s_h);
+    s_disp = d;
     lv_display_set_color_format(d, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(d, s_draw, NULL, sizeof(s_draw), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(d, flush_cb);
@@ -91,11 +105,27 @@ lv_display_t *p99_display_create(const char *fb_path, const char *touch_path)
     return d;
 }
 
+bool p99_display_take_resize(void)
+{
+    bool r = s_resized;
+    s_resized = false;
+    return r;
+}
+
 bool p99_display_pump(void)
 {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
         if (e.type == SDL_QUIT || (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) return false;
+        if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED && e.window.data1 >= 640 &&
+            e.window.data2 >= 400 && (e.window.data1 != s_w || e.window.data2 != s_h)) {
+            s_w = e.window.data1;   /* the window was resized: new texture, new resolution, the screens are laid out again */
+            s_h = e.window.data2;
+            SDL_DestroyTexture(s_tex);
+            s_tex = SDL_CreateTexture(s_ren, SDL_PIXELFORMAT_RGB565, SDL_TEXTUREACCESS_STREAMING, s_w, s_h);
+            lv_display_set_resolution(s_disp, s_w, s_h);
+            s_resized = true;
+        }
         if (e.type == SDL_MOUSEMOTION) { s_mx = e.motion.x; s_my = e.motion.y; }
         if ((e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) && e.button.button == SDL_BUTTON_LEFT) {
             s_mx = e.button.x;

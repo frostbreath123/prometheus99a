@@ -218,7 +218,7 @@ Stated limits:
 | Mutation check: MAC check, CRC check, rollback, allow-list, empty allow-list, key mode, config mode, signature mode each disabled in turn | Windows and WSL2 | each made the suite fail, then restored |
 | ASan with UBSan, and TSan, every core module | WSL2 | 0 reports |
 | Writing a configuration out and reading it back; request format, parser, whitelist, bounds, spool hand-off | Windows and WSL2 | 868 `cfgedit` checks, 0 failed; all 58 accepted corpus configurations read back identically |
-| `p99_cfg` against real files, as root | WSL2 | `cfgedit-exec` passes (every refusal listed in `ROADMAP_STATUS.md`), also with the helper built with ASan and UBSan (0 reports) |
+| `p99_cfg` against real files, as root | WSL2 | `cfgedit-exec` passes (every refusal listed in `docs/history/ROADMAP_STATUS.md`), also with the helper built with ASan and UBSan (0 reports) |
 | Mutation checks of the new rules | WSL2 | 33 of 34 caught (the survivor is an internal read-back assertion that no input can trigger) |
 | Audit identity | both | 28 new write checks, 22 new alarm checks, runtime line formats, UI scenario (84 assertions) names `user=admin` on an acknowledgement and a write |
 

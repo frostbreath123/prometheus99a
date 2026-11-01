@@ -421,8 +421,8 @@ static void set_shown(bool on)
 static lv_obj_t *mk_container(lv_obj_t *parent, int x, int y, int w, int h)
 {
     lv_obj_t *c = lv_obj_create(parent);
-    lv_obj_set_pos(c, x, y);
-    lv_obj_set_size(c, w, h);
+    lv_obj_set_pos(c, ui_x(x), ui_y(y));
+    lv_obj_set_size(c, ui_x(w), ui_y(h));
     lv_obj_set_style_bg_opa(c, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(c, 0, 0);
     lv_obj_set_style_radius(c, 0, 0);
@@ -437,7 +437,7 @@ static void config_build(lv_obj_t *area)
     ui_mk_button(s_main, 4, 0, 44, 32, "<", target_cb, (void *)(intptr_t)-1);
     s_t_name = ui_mk_label(s_main, 56, 6, "", C_TEXT);
     lv_label_set_long_mode(s_t_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_t_name, 380);
+    lv_obj_set_width(s_t_name, ui_x(380));
     ui_mk_button(s_main, 442, 0, 44, 32, ">", target_cb, (void *)(intptr_t)1);
     s_pend_lbl = ui_mk_label(s_main, 496, 6, "", C_WARN);
 
@@ -445,8 +445,8 @@ static void config_build(lv_obj_t *area)
     for (size_t i = 0; i < C_ROWS; i++) {
         crow_t *r = &s_rows[i];
         r->row = lv_button_create(s_rowsc);
-        lv_obj_set_pos(r->row, 4, (int)i * C_ROW_H);
-        lv_obj_set_size(r->row, 612, C_ROW_H - 2);
+        lv_obj_set_pos(r->row, ui_x(4), ui_y((int)i * C_ROW_H));
+        lv_obj_set_size(r->row, ui_x(612), ui_y(C_ROW_H - 2));
         lv_obj_set_style_bg_color(r->row, C_PANEL, 0);
         lv_obj_set_style_radius(r->row, 0, 0);
         lv_obj_set_style_shadow_width(r->row, 0, 0);
@@ -461,7 +461,7 @@ static void config_build(lv_obj_t *area)
     s_kpc = mk_container(s_main, 0, C_ROW_Y0, UI_SUBPAGE_W, 250);
     s_kp_lbl = ui_mk_label(s_kpc, 8, 4, "", C_TEXT);
     lv_label_set_long_mode(s_kp_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_kp_lbl, UI_SUBPAGE_W - 16);
+    lv_obj_set_width(s_kp_lbl, ui_x(UI_SUBPAGE_W - 16));
     for (size_t i = 0; i < 16; i++) {
         int cx = 4 + (int)(i % 6) * 102, cy = 44 + (int)(i / 6) * 54;
         int w = strlen(KEYS[i]) > 3 ? 150 : 96;
@@ -471,16 +471,16 @@ static void config_build(lv_obj_t *area)
 
     s_status = ui_mk_label(s_main, 8, 290, "", C_TEXT);
     lv_label_set_long_mode(s_status, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_status, UI_SUBPAGE_W - 16);
+    lv_obj_set_width(s_status, ui_x(UI_SUBPAGE_W - 16));
     s_result = ui_mk_label(s_main, 8, 320, "", C_MUTED);
     lv_label_set_long_mode(s_result, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_result, UI_SUBPAGE_W - 16);
+    lv_obj_set_width(s_result, ui_x(UI_SUBPAGE_W - 16));
     s_btn[UI_CONFIG_BTN_APPLY] = ui_mk_button(s_main, 4, 352, 200, 44, "APPLY", btn_cb, (void *)(intptr_t)UI_CONFIG_BTN_APPLY);
     s_btn[UI_CONFIG_BTN_DISCARD] = ui_mk_button(s_main, 212, 352, 160, 44, "DISCARD", btn_cb, (void *)(intptr_t)UI_CONFIG_BTN_DISCARD);
 
     s_msg = ui_mk_label(area, 8, 60, "", C_MUTED);
     lv_label_set_long_mode(s_msg, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_msg, UI_SUBPAGE_W - 16);
+    lv_obj_set_width(s_msg, ui_x(UI_SUBPAGE_W - 16));
     s_shown = true;       /* force the first set_shown to act */
     set_shown(false);
 }

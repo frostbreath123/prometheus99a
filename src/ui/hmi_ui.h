@@ -22,6 +22,8 @@ void hmi_ui_init(hmi_runtime_t *rt, hmi_role_t role, const char *banner);
  * default so idle-flush measurements stay at zero. May be changed at run
  * time from the UI thread; turning it off clears the mark. */
 void hmi_ui_enable_heartbeat(bool on);
+/* The display changed size: every screen is built again for the new size (the state of the program is not touched). */
+void hmi_ui_relayout(void);
 
 /* Counters for measurement. */
 typedef struct {

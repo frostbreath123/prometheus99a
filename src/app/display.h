@@ -14,9 +14,12 @@
 #include "lvgl.h"
 #include <stdbool.h>
 
-#define P99_W 800
+#define P99_W 800            /* the default screen size; the real size is read from the display (see p99_display_size) */
 #define P99_H 480
-#define P99_DRAW_LINES 20   /* height of one strip in lines: 20 lines of 800 pixels at 2 bytes is 32 KB */
+#define P99_DRAW_BYTES (800 * 20 * 2)   /* one strip: 32 KB whatever the screen size (20 lines at 800 pixels, fewer lines on a wider screen) */
+
+/* Size of the screen the backend created, in pixels. The screens lay themselves out from the display's own resolution. */
+void p99_display_size(int *w, int *h);
 
 /* Creates the LVGL display (and the touch input, if the backend has one). On failure it prints the reason and returns
  * NULL; the program then exits with status 2 before it touches the configuration or the PLC. */
@@ -25,5 +28,8 @@ lv_display_t *p99_display_create(const char *fb_path, const char *touch_path);
 /* Called once per loop turn, before lv_timer_handler(): window events, showing the finished frame. Returns false when
  * the user closed the window. The framebuffer backends have nothing to do and return true. */
 bool p99_display_pump(void);
+
+/* True once after the screen size changed (only the SDL window can change it); the caller lays the screens out again. */
+bool p99_display_take_resize(void);
 
 #endif

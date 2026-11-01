@@ -14,6 +14,31 @@ static char t_role[UI_TXT * 2];
 static char t_link[UI_TXT], t_alarm_sum[UI_TXT];
 static uint32_t c_link, c_alarm_sum, c_role;
 
+/* ---- layout: see ui_priv.h. The design grid is 800 x 480; text is drawn with the largest of three sizes of the one
+ * font that still fits the columns, so a bigger screen gets bigger text as well as more room. ---- */
+int ui_w = 800, ui_h = 480;
+static int s_font_step;   /* 0..2: 14, 18, 24 px */
+
+int ui_x(int v) { return (int)(((int64_t)v * ui_w + 400) / 800); }
+int ui_y(int v) { return (int)(((int64_t)v * ui_h + 240) / 480); }
+
+void ui_layout_init(void)
+{
+    lv_display_t *d = lv_display_get_default();
+    ui_w = (int)lv_display_get_horizontal_resolution(d);
+    ui_h = (int)lv_display_get_vertical_resolution(d);
+    /* The scale is the smaller of the two ratios, in per mille: a font never grows faster than the room for it. */
+    int kx = ui_w * 1000 / 800, ky = ui_h * 1000 / 480;
+    int k = kx < ky ? kx : ky;
+    s_font_step = k >= 1600 ? 2 : k >= 1200 ? 1 : 0;
+}
+
+const lv_font_t *ui_font(void)
+{
+    static const lv_font_t *const F[3] = { &p99_font, &p99_font_18, &p99_font_24 };
+    return F[s_font_step];
+}
+
 /* The only place a semantic tone becomes a colour. */
 lv_color_t ui_tone_color(hmi_tone_t t)
 {
@@ -198,21 +223,24 @@ lv_obj_t *ui_mk_label(lv_obj_t *parent, int x, int y, const char *txt, lv_color_
     lv_obj_t *l = lv_label_create(parent);
     lv_label_set_text(l, txt);
     lv_obj_set_style_text_color(l, col, 0);
-    lv_obj_set_pos(l, x, y);
+    lv_obj_set_pos(l, ui_x(x), ui_y(y));
     return l;
 }
 
 lv_obj_t *ui_mk_button(lv_obj_t *parent, int x, int y, int w, int h, const char *txt, lv_event_cb_t cb, void *ud)
 {
     lv_obj_t *b = lv_button_create(parent);
-    lv_obj_set_pos(b, x, y);
-    lv_obj_set_size(b, w, h);
+    lv_obj_set_pos(b, ui_x(x), ui_y(y));
+    lv_obj_set_size(b, ui_x(w), ui_y(h));
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, txt);
     lv_obj_center(l);
     return b;
 }
+
+static char s_banner[240];
+static bool s_banner_set;
 
 static void ui_build(hmi_runtime_t *rt, const char *banner)
 {
@@ -232,34 +260,42 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
         s_timer = NULL;
     }
 
+    ui_layout_init();
     ui_theme_install();
     lv_obj_t *scr = lv_screen_active();
+    lv_obj_set_style_text_font(scr, ui_font(), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(scr, C_TEXT, 0);
     lv_obj_set_style_bg_color(scr, C_BG, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *hdr = lv_obj_create(scr);
-    lv_obj_set_size(hdr, 800, 44);
+    lv_obj_set_size(hdr, ui_w, ui_y(44));
     lv_obj_set_pos(hdr, 0, 0);
     lv_obj_set_style_bg_color(hdr, C_PANEL, 0);
     lv_obj_set_style_border_width(hdr, 0, 0);
     lv_obj_set_style_radius(hdr, 0, 0);
     lv_obj_set_style_pad_all(hdr, 0, 0);
     lv_obj_remove_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
+    /* Positions are on the 800 x 480 design grid; every label has a fixed width, so a text that changes (the heartbeat
+     * every second) does not move or redraw its neighbours. */
     ui_mk_label(hdr, 8, 12, "PROMETHEUS99", C_TEXT);
     s_link = ui_mk_label(hdr, 130, 12, "PLC: --", C_MUTED);
     s_hb = ui_mk_label(hdr, 272, 12, "", C_MUTED);
     s_alarm_sum = ui_mk_label(hdr, 326, 12, "ALARMS: --", C_MUTED);
     s_role_lbl = ui_mk_label(hdr, 512, 12, "", C_MUTED);
+    lv_obj_set_width(s_link, ui_x(136));
+    lv_obj_set_width(s_hb, ui_x(54));
+    lv_label_set_long_mode(s_hb, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(s_alarm_sum, ui_x(180));
     lv_label_set_long_mode(s_role_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_role_lbl, 132);
+    lv_obj_set_width(s_role_lbl, ui_x(196));
     s_ack_btn = ui_mk_button(hdr, 718, 2, 78, 38, "ACK ALL", ui_ack_all_cb, NULL);
 
     if (!rt) {
         lv_obj_t *b = ui_mk_label(scr, 20, 80, banner ? banner : "NO CONFIGURATION", C_BAD);
         lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(b, 760);
+        lv_obj_set_width(b, ui_x(760));
         ui_mk_label(scr, 20, 140, "No PLC endpoint selected. Writes disabled.", C_MUTED);
     } else {
         ui_nav_build(scr);
@@ -272,5 +308,13 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
 void hmi_ui_init(hmi_runtime_t *rt, hmi_role_t role, const char *banner)
 {
     ui_role = role;
+    s_banner_set = banner != NULL;
+    if (banner) snprintf(s_banner, sizeof(s_banner), "%s", banner);
     ui_build(rt, banner);
+}
+
+void hmi_ui_relayout(void)
+{
+    lv_obj_clean(lv_screen_active());
+    ui_build(ui_rt, s_banner_set ? s_banner : NULL);
 }

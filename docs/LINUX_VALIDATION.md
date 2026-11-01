@@ -254,7 +254,7 @@ Windows host (MSYS2 UCRT64 GCC 13.2): `mingw32-make test-hmi test-view test-conf
 pass: core 3887 checks, view-model 313, corpus identical, UI scenario 277 assertions. Three
 intermittent failures of the `runtime` and `auth` tests on this host were explained and fixed (two
 test timing margins and a retry of the file replace in `hmi_platform_win32.c`; see
-`ROADMAP_STATUS.md`). `runtime` ran 60 times without a failure afterwards.
+`docs/history/ROADMAP_STATUS.md`). `runtime` ran 60 times without a failure afterwards.
 
 Defect found by the Linux build only: `BYTE_ORDER` is a macro in glibc's `endian.h` and collided with
 an array name in `hmi_config_write.c`; renamed.
@@ -266,7 +266,7 @@ real display.
 ## Size and memory work, authentication removed (2026-10-23)
 
 Run on WSL2 Ubuntu 24.04 (kernel 6.18.54, gcc 13.3, musl-gcc 1.2.4, aarch64-linux-gnu-gcc 13 with qemu-user 8.2.2).
-The measurements and the reading of them are in `docs/ENGINEERING_REPORT.md`; this table is the record of what ran.
+The measurements and the reading of them are in `docs/history/ENGINEERING_REPORT.md`; this table is the record of what ran.
 
 | What | Command | Result |
 |---|---|---|

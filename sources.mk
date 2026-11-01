@@ -2,7 +2,7 @@
 # Add or remove a source file here, once.
 
 # Presentation layer: one file per screen plus the shared header (see src/ui/ui_priv.h).
-UI_SRC := src/ui/hmi_ui.c src/ui/ui_ack.c src/ui/ui_nav.c src/ui/ui_overview.c src/ui/ui_alarms.c src/ui/ui_trends.c src/ui/ui_settings.c src/ui/ui_config.c src/ui/ui_theme.c src/ui/font/p99_font.c
+UI_SRC := src/ui/hmi_ui.c src/ui/ui_ack.c src/ui/ui_nav.c src/ui/ui_overview.c src/ui/ui_alarms.c src/ui/ui_trends.c src/ui/ui_settings.c src/ui/ui_config.c src/ui/ui_theme.c src/ui/font/p99_font.c src/ui/font/p99_font_18.c src/ui/font/p99_font_24.c
 
 # The portable core, without the operating-system file (hmi_platform_posix.c on Linux, hmi_platform_win32.c on Windows).
 HMI_CORE_COMMON = src/hmi/hmi_decode.c src/hmi/hmi_tags.c src/hmi/hmi_comms.c src/hmi/hmi_writes.c src/hmi/hmi_alarm.c \

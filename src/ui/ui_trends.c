@@ -162,8 +162,8 @@ static void trends_build(lv_obj_t *page)
     window_labels();
 
     s_chart = lv_chart_create(page);
-    lv_obj_set_pos(s_chart, 64, 40);
-    lv_obj_set_size(s_chart, 724, 236);
+    lv_obj_set_pos(s_chart, ui_x(64), ui_y(40));
+    lv_obj_set_size(s_chart, ui_x(724), ui_y(236));
     lv_chart_set_type(s_chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(s_chart, CHART_POINTS);
     lv_chart_set_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, 0, CHART_RANGE);
@@ -185,13 +185,13 @@ static void trends_build(lv_obj_t *page)
     s_axis_lo = ui_mk_label(page, 2, 258, "--", C_MUTED);
     s_status = ui_mk_label(page, 12, 284, "", C_TEXT);
     lv_label_set_long_mode(s_status, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_status, 776);
+    lv_obj_set_width(s_status, ui_x(776));
     lv_obj_t *hint1 = ui_mk_label(page, 12, 312, "Upper line: highest value in each period. Lower line: lowest.", C_MUTED);
     lv_obj_t *hint2 = ui_mk_label(page, 12, 336, "A break in the lines means no good data in that period.", C_MUTED);
 
     s_none = ui_mk_label(page, 12, 100, hmi_view_no_trend_text(), C_MUTED);
     lv_label_set_long_mode(s_none, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_none, 760);
+    lv_obj_set_width(s_none, ui_x(760));
     if (ns == 0) {
         lv_obj_t *hide[] = { s_btn_prev, s_name, s_btn_next, s_win_btn[0], s_win_btn[1], s_win_btn[2], s_chart, s_axis_hi, s_axis_lo, s_status, hint1, hint2 };
         for (size_t i = 0; i < sizeof(hide) / sizeof(hide[0]); i++) lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
