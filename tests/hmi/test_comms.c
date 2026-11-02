@@ -196,6 +196,81 @@ static void test_no_drift(void)
 }
 
 
+/* Runs the comms with the UI loop beating every 33 ms (alive) or not at all, until fake time reaches t_end. */
+static void run_ui(fx_t *f, uint64_t t_end, bool alive)
+{
+    while (g_now < t_end) {
+        if (alive) hmi_comms_ui_alive(&f->c);
+        run_until(f, g_now + 33);
+    }
+}
+
+static void test_heartbeat(void)
+{
+    SECTION("comms: PLC heartbeat counts once a second while the UI loop is alive, stops when it stalls");
+    fx_t *f = fx_new(false);
+    run_ui(f, g_now + 3000, true);
+    CHECK(f->m.n_write == 0 && f->m.hold[200] == 0); /* off unless configured */
+    fx_free(f, false);
+
+    f = fx_new(false);
+    f->c.cfg.heartbeat_period_ms = 1000;
+    f->c.cfg.heartbeat_addr = 200;
+    run_ui(f, g_now + 5000, true);
+    uint16_t v = f->m.hold[200];
+    CHECK(v >= 4 && v <= 6);
+    hmi_comms_stats_t st;
+    hmi_comms_stats(&f->c, &st);
+    CHECK(st.heartbeats_sent == v);
+    CHECK(val(f, 0).quality == HMI_Q_GOOD); /* polling goes on */
+
+    /* UI loop stalls: at most one more heartbeat (a beat seen before the stall), then the counter stops */
+    run_ui(f, g_now + 1100, false);
+    uint16_t frozen = f->m.hold[200];
+    CHECK(frozen == v || frozen == (uint16_t)(v + 1u));
+    run_ui(f, g_now + 4000, false);
+    CHECK(f->m.hold[200] == frozen);
+    CHECK(val(f, 0).quality == HMI_Q_GOOD && hmi_comms_state(&f->c) == HMI_CONN_CONNECTED);
+
+    /* UI loop runs again: the counter resumes from where it stopped */
+    run_ui(f, g_now + 2100, true);
+    CHECK(f->m.hold[200] >= (uint16_t)(frozen + 2u) && f->m.hold[200] <= (uint16_t)(frozen + 3u));
+
+    /* an exception reply proves the link; it is not counted as sent */
+    hmi_comms_stats(&f->c, &st);
+    uint32_t sent = st.heartbeats_sent;
+    f->m.write_st = HMI_IO_EXCEPTION;
+    f->m.write_exc = 2;
+    run_ui(f, g_now + 2100, true);
+    hmi_comms_stats(&f->c, &st);
+    CHECK(st.heartbeats_sent == sent && hmi_comms_state(&f->c) == HMI_CONN_CONNECTED);
+
+    /* a lost reply is a link miss, not retried */
+    f->m.write_st = HMI_IO_TIMEOUT;
+    uint32_t writes = f->m.n_write;
+    run_ui(f, g_now + 1100, true);
+    CHECK(f->m.n_write - writes <= 2);
+    hmi_comms_stats(&f->c, &st);
+    CHECK(st.heartbeats_sent == sent);
+    fx_free(f, false);
+
+    /* a driver without writes cannot carry a heartbeat */
+    mock_t m;
+    mock_init(&m);
+    hmi_plc_driver_t d = mock_drv(&m);
+    d.write_regs = NULL;
+    hmi_tag_cfg_t tc[4];
+    size_t n = 0;
+    make_tags(tc, &n);
+    hmi_tagdb_t db;
+    CHECK(hmi_tagdb_init(&db, tc, n, g_now));
+    hmi_comms_cfg_t cc = default_cc();
+    cc.heartbeat_period_ms = 1000;
+    hmi_comms_t c;
+    CHECK(!hmi_comms_init(&c, &db, &d, &cc));
+    hmi_tagdb_destroy(&db);
+}
+
 int main(void)
 {
     test_poll_and_decode();
@@ -207,5 +282,6 @@ int main(void)
     test_recovery_restores_only_polled_tags();
     test_stale_and_versions();
     test_no_drift();
+    test_heartbeat();
     return test_finish();
 }

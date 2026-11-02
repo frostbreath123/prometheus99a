@@ -145,6 +145,29 @@ longest stall of the comms thread fits the service watchdog and stop timeout.
 A configuration signed before M3 with a larger timeout is now rejected as
 `config_invalid` and the device starts in safe mode.
 
+## PLC heartbeat (2026-11-02)
+
+The optional key `plc.heartbeat_register` (a holding register address, 0 to 65535) turns on the PLC heartbeat.
+Without it nothing changes. With it, the comms thread writes a counter to that register once a second, incremented
+by one each time (it wraps at 65535), but only if the UI loop has run since the previous heartbeat
+(`hmi_comms_ui_alive`, called once per pass of the main loop in `src/app/main_linux.c`). When the screen loop
+freezes, the counter stops, and the PLC program can detect this and go to its safe state; the PLC program must
+implement that check itself. Polling continues while the counter is held.
+
+The heartbeat is a deliberate, configuration-gated exception to the audited write path (`hmi_writes`):
+
+- It is not written to the audit file, because one line a second would fill the audit file and rotate the
+  operator records out of it.
+- It is not role-checked, because no operator sends it.
+- It writes only the one register that the signed configuration names, so it cannot be redirected without
+  signing again. It is independent of `writes_enabled`, which governs operator writes.
+- A lost reply counts as a link miss, exactly like a lost poll, and is not retried; the next heartbeat carries the
+  next value. A Modbus exception reply proves the link but is not counted as a sent heartbeat.
+
+The configuration does not check that the heartbeat register is different from the tag addresses; choosing a
+register that no tag writes is the integrator's responsibility. The key survives an on-device settings change
+(the writer writes it back), and the on-device editor cannot change it.
+
 ## Changing the configuration on the device (M4)
 
 The service cannot write its configuration, so an Engineer who changes a setting on the screen

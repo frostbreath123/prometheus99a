@@ -452,6 +452,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
         tour_step(now);
         demo_helper_step(now);
         lv_timer_handler();
+        hmi_comms_ui_alive(&g_rt.comms); /* the PLC heartbeat, if configured, runs only while this loop runs */
         Sleep(8);
     }
 

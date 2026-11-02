@@ -128,6 +128,7 @@ const char *hmi_view_config_unavailable_text(void);     /* no spool directory: n
 
 /* ---- the system lines on the settings screen ---- */
 void hmi_view_plc_text(const char *host, unsigned port, unsigned unit, char *buf, size_t cap);
+void hmi_view_rtu_plc_text(const char *device, unsigned unit, char *buf, size_t cap);   /* plc.transport "rtu" */
 /* Why writes are on or off. master: the "writes_enabled" switch of the configuration. */
 void hmi_view_writes_text(bool master, bool effective, char *buf, size_t cap);
 void hmi_view_storage_text(bool fault, uint32_t written, uint32_t failed, char *buf, size_t cap);

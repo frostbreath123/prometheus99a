@@ -191,3 +191,105 @@ Framebuffer memory is reported on its own line (screen width x height x bytes pe
 - Run the Linux test suites one after another, not in parallel.
 - `pkill` patterns longer than 15 characters match nothing; use `pkill -f`.
 - Chat replies to this owner are terse ("caveman" style). Saved files use plain, full sentences.
+# AMENDMENT & EXTENSION DIRECTIVE: SCHNEIDER ELECTRIC PRODUCTION HMI SPECIFICATION
+# Target: Prometheus99 Production Hackathon Submission (Schneider Electric Track)
+# Scope: Layer on top of MASTER_PROMPT_FINAL (Phases 0–5). Do NOT replace existing safety/audit foundations.
+
+---
+
+## 1. REVISED RESOURCE GATES & HARD BOUNDARIES
+- Flash / Binary Gate: Maximum stripped static musl binary < 500 KB. Formally increase `bench/gate.sh` limit from 330,000 bytes to 450,000 bytes (giving ~120 KB of headroom for 2bpp fonts, Schneider faceplates, and mimic drawing).
+- RAM / Memory Gate: Maximum runtime Pss < 1,000 KB (1 MB). Update `POOL_PEAK_MAX_KB` in `Makefile.linux` and test harnesses from 56 KB to 64 KB to immediately clear CI/lite harness failures.
+- Non-Negotiable Core Retentions:
+  * Retain signed JSON configuration (`p99_sign`) with serial anti-rollback and safe mode.
+  * Retain core-enforced role checks and pre-send audit logging in `src/hmi/hmi_writes.c`.
+  * Retain write read-back verification (CONFIRMED / REJECTED / UNKNOWN).
+  * Retain typed tags (`u16`, `i16`, `u32`, `f32`) — NEVER clamp floats to 16 bits.
+  * Retain surviving unacknowledged alarms across comm outages (`HMI_AL_RTN_UNACK`).
+
+---
+
+## 2. SCHNEIDER ELECTRIC INDUSTRIAL PROFILE & REGISTER MAP
+Focus the HMI runtime and tag mapping on standard Schneider Electric automation architectures:
+1. Altivar Variable Speed Drive (ATV340 / ATV630):
+   * Standard CiA 402 drive state machine mapping:
+     - ETA (Statusword, 40001 / Modbus 3201): Bit 0 (Ready to switch on), Bit 1 (Switched on), Bit 2 (Operation enabled), Bit 3 (Fault), Bit 5 (Quick stop).
+     - CMD (Controlword, 40002 / Modbus 8501): Shutdown, Switch On, Enable Operation, Fault Reset.
+     - RFRD (Output Speed Reference, 40003, signed rpm / 0.1 Hz).
+     - LCR (Motor Current, 40004, 0.1 A).
+     - THD (Motor Thermal State, 40005, % nominal).
+2. Modicon M340 / M580 Process Skid:
+   * %MW100–%MW120: Process Analog Values (Tank Level 0.1%, Inflow Rate 0.1 L/min, Discharge Pressure 0.1 bar, Coolant Temp 0.1 °C).
+   * %M0–%M31: Process Digital Interlocks (Feed Pump Run, Discharge Valve Open, High-Level Interlock Latch, Emergency Stop Loop).
+3. PowerLogic PM5350 / PM8000 Feeder Meter:
+   * Real energy metrics via 32-bit floats (Voltage L-L, Active Power kW, Total PF, Frequency Hz).
+
+---
+
+## 3. UI/UX "TIER-2" ELEVATION (STEAL & REFINE)
+Bridge the presentation gap while complying with ISA-101 / ISA-18.2 standards:
+
+### A. Typography & Visual Hierarchy
+- Upgrade fonts from 1bpp to 2bpp anti-aliased (4-level blending) using `lv_font_conv` for the 3 core sizes (12px, 18px, 24px) in DejaVu Sans / Inter.
+- Implement card containers (`ui_mk_panel`) with high-contrast status pills (Running [Green], Stopped [Neutral], Tripped [Red], Interlocked [Amber]).
+- Support a Day/Outdoor high-contrast theme toggle alongside the industrial dark theme.
+
+### B. ISA-18.2 Compliant Alarm Banner & Guidance
+- Fixed top banner beneath the status bar, active whenever highest severity unacknowledged alarm exists.
+- Content:
+  * Severity Shape + Word: Critical (Red Diamond), Warning (Amber Triangle), Diagnostic (Blue Square).
+  * Tag & Value: e.g., `TK1_LEVEL: 96.2 % (Trip Limit: 95.0 %)`.
+  * Operator Action Steps: Pull `action1` and `action2` from the signed configuration (e.g., `1. Stop Feed Pump P-101` | `2. Open Emergency Spill Valve V-102`).
+  * Direct action button: Large touch-friendly `[ ACKNOWLEDGE ]`.
+
+### C. Explicit Interlock & Refusal Feedback
+- Never leave a button silently disabled or greyed without explanation.
+- Query `hmi_writes.c` error states to display clear inline operator feedback:
+  * `"Blocked: Drive Fault Latch Active"`
+  * `"Blocked: Requires Supervisor Role"`
+  * `"Rejected: Value Exceeds Setpoint Range (0–1500 RPM)"`
+
+### D. Industrial Mimic Widgets
+- **Tank Mimic Widget:** LVGL canvas or styled panel showing vertical fluid column with dynamic percentage fill, deadband tick, and warning/trip limit lines (80% High, 95% High-High).
+- **Altivar Drive Faceplate:** CiA 402 state badge (`SWITCH_ON_DISABLED`, `READY`, `RUNNING`, `FAULT`), speed setpoint slider with `+`/`-` nudge, motor current gauge, and explicit Forward / Reverse / Coast Stop controls.
+
+---
+
+## 4. ACOUSTIC ANNUNCIATOR (ALARM SOUND SYSTEM)
+Add non-blocking, silenceable alarm audio feedback:
+- Architecture: Background audio worker using SDL2 audio queue / PCM tone synthesizer (or Linux `/dev/snd`, fallback to terminal bell `\a` in headless).
+- Tone Profiles:
+  * Critical / Trip: Dual-tone alternating 800 Hz / 1000 Hz warble (200 ms pulse).
+  * Warning: Single 600 Hz chirp every 2 seconds.
+- Operator Controls:
+  * Top bar `[ Silence Horn ]` button immediately stops audio synthesis without acknowledging the alarm state in the log or PLC.
+  * Audio automatically re-sounds if an alarm escalates or a new unacknowledged alarm arrives.
+
+---
+
+## 5. STANDALONE SCHNEIDER PROCESS SIMULATOR (`tools/sim/`)
+Create a dedicated, scriptable process simulator outside `src/` (0 byte impact on production binary).
+- File: `tools/sim/schneider_sim.c` (compiles to `tools/sim/schneider_sim`).
+- Device Simulation:
+  * Port 1502: Altivar ATV340 Drive (CiA 402 state machine logic, motor ramp acceleration, thermal modeling).
+  * Port 1503: Modicon M340 Tank Skid (Physics: Inflow Pump A speed fills tank; Outflow Valve drains tank via Torricelli's law; level high interlock automatically trips pump).
+  * Port 1504: PowerLogic PM5350 (Simulates load current scaling proportionally with drive speed).
+- Real-Time Scripting & Fault Injection Channel:
+  * Interactive CLI and socket listener (`tools/sim/sim_ctl`):
+    - `fault freeze <port>`: Stop responding to Modbus TCP requests (tests comm-loss).
+    - `fault trip <dev> <error_code>`: Inject Altivar Overload (OL2) or Drive Overheat (OHF).
+    - `fault exception <port> <code>`: Return Modbus Exception 02 (Illegal Address) or 04 (Slave Device Failure).
+    - `nudge <tag> <delta>`: Manually drive level or pressure up/down to trip limits during live demos.
+    - `heartbeat latch`: Stop answering HMI heartbeat to trigger PLC safety latch.
+
+---
+
+## 6. VALIDATION & ACCEPTANCE CRITERIA
+1. `make -f Makefile.linux LITE=1 BUILD=build-lite ui-host` must pass with `POOL_PEAK_MAX_KB=64`.
+2. `bash bench/gate.sh build-musl` must pass with stripped size < 450,000 bytes.
+3. Live Cross-Run Demo:
+   * Run `tools/sim/schneider_sim` on ports 1502–1504.
+   * Start `prometheus99-sdl` with Schneider demo profile.
+   * Inject Altivar drive trip from CLI -> HMI displays red diamond, sounds horn, shows CiA 402 fault text, and displays operator guidance `Check Motor Ventilation & Reset Fault`.
+   * Operator silences horn -> Sound stops, banner remains active.
+   * Operator sends Reset -> Audit logs `RESET_SENT`, drive transitions CiA 402 state, writes confirmed via read-back.

@@ -420,7 +420,7 @@ static bool parse_tag(ctx_t *c, int obj, hmi_tag_cfg_t *t)
 
 /* ---- plc ---- */
 
-enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN, PL_ALLOWED, PL_TRANSPORT, PL_DEVICE, PL_BAUD, PL_PARITY, PL_STOP, PL_DEVICES };
+enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN, PL_ALLOWED, PL_HB, PL_TRANSPORT, PL_DEVICE, PL_BAUD, PL_PARITY, PL_STOP, PL_DEVICES };
 
 /* "allowed_hosts": the only PLC addresses this device may ever connect to, as
  * dotted-quad literals. Optional for the parser (unsigned test configurations
@@ -472,6 +472,7 @@ static const field_t PLC_FIELDS[] = {
     { "response_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, response_timeout_ms), 0, 50, HMI_RESPONSE_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "connect_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, connect_timeout_ms), 0, 50, HMI_CONNECT_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "allowed_hosts", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, plc_allowed_hosts },
+    { "heartbeat_register", K_U16, offsetof(hmi_app_cfg_t, heartbeat_register), 0, 0, 65535, NULL, NULL, NO_FLAG_OFF, 0, NULL },
 #ifdef HMI_RTU
     { "transport", K_ENUM, offsetof(hmi_app_cfg_t, transport), 8, 0, 0, TRANSPORT_OPTS, "unknown transport", NO_FLAG_OFF, 0, NULL },
     { "device", K_STR, offsetof(hmi_app_cfg_t, device), HMI_DEVICE_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
@@ -488,6 +489,7 @@ static bool parse_plc(ctx_t *c, int obj, hmi_app_cfg_t *cfg)
     seen_t st;
     if (!expect_object(c, obj, "plc")) return false;
     if (!parse_object(c, obj, &PLC_SECTION, cfg, &st)) return false;
+    cfg->heartbeat = (st.seen & (1u << PL_HB)) != 0;
 #ifdef HMI_RTU
     const unsigned rtu_keys = (1u << PL_DEVICE) | (1u << PL_BAUD) | (1u << PL_PARITY) | (1u << PL_STOP) | (1u << PL_DEVICES);
     if (cfg->transport == HMI_TRANSPORT_RTU) {

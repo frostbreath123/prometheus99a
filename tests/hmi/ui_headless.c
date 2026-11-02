@@ -42,7 +42,12 @@ uint32_t alloc_count_total(void);
 uint32_t alloc_count_free(void);
 static int g_checks, g_fail;
 #define CHECK(c) do { g_checks++; if (!(c)) { g_fail++; printf("  FAIL line %d: %s\n", __LINE__, #c); } } while (0)
-static uint16_t s_fb[W * H];
+/* The picture of the screen. Large enough for the biggest size of the layout check (P99_LAYOUT, 1920 x 1080); the
+ * scenario uses the 800 x 480 part of it. */
+#define FB_MAX_W 1920
+#define FB_MAX_H 1080
+static uint16_t s_fb[FB_MAX_W * FB_MAX_H];
+static int s_fw = W, s_fh = H;
 /* The partial draw buffer: as many lines as the display backends use (P99_DRAW_LINES in src/app/display.h), so that the
  * render times printed below are those of the product. */
 #ifndef UI_BUF_LINES
@@ -80,8 +85,8 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
     s_last_flush_us = t0;
     int w = a->x2 - a->x1 + 1, h = a->y2 - a->y1 + 1;
     const uint16_t *src = (const uint16_t *)px;
-    if (!s_probe) /* the probe draws at other sizes; the copy is only for the 800x480 picture */
-        for (int y = 0; y < h; y++) memcpy(&s_fb[(a->y1 + y) * W + a->x1], &src[y * w], (size_t)w * 2);
+    if (!s_probe) /* the heap probe takes no pictures */
+        for (int y = 0; y < h; y++) memcpy(&s_fb[(a->y1 + y) * s_fw + a->x1], &src[y * w], (size_t)w * 2);
     s_flushes++;
     s_flush_px += (uint32_t)(w * h);
     s_flush_us_total += now_us() - t0;
@@ -94,8 +99,8 @@ static void save_ppm(const char *path)
 {
     FILE *f = fopen(path, "wb");
     if (!f) return;
-    fprintf(f, "P6\n%d %d\n255\n", W, H);
-    for (int i = 0; i < W * H; i++) {
+    fprintf(f, "P6\n%d %d\n255\n", s_fw, s_fh);
+    for (int i = 0; i < s_fw * s_fh; i++) {
         uint16_t p = s_fb[i];
         uint8_t rgb[3] = { (uint8_t)(((p >> 11) & 31) * 255 / 31), (uint8_t)(((p >> 5) & 63) * 255 / 63),
                            (uint8_t)((p & 31) * 255 / 31) };
@@ -210,6 +215,249 @@ static void print_dist(const char *what, double *v, size_t n)
     printf("[perf] %s: n=%u min=%.1f median=%.1f p95=%.1f max=%.1f ms\n", what, (unsigned)n, v[0] / 1000.0,
            v[n / 2] / 1000.0, v[(size_t)((double)n * 0.95)] / 1000.0, v[n - 1] / 1000.0);
 }
+/* ---- layout check at other screen sizes (P99_LAYOUT=WxH) ----
+ * Every visible object must lie on the screen and inside its parent. A label whose one-line text is wider than the
+ * label is reported: as "cut" when its long mode shortens it (dots or clip) and as "wrapped" when it wraps. Only the
+ * first two are failures; wrapping is printed for the record. */
+static int s_lay_off, s_lay_cut, s_lay_wrap;
+
+/* The part of a label its text is drawn in: its content box, narrowed to the text's width and placed by its alignment.
+ * Labels of a fixed width are often wider than their text; only the text itself may not collide. */
+static void text_box(lv_obj_t *l, lv_area_t *box)
+{
+    lv_obj_get_content_coords(l, box);
+    lv_point_t sz;
+    lv_text_get_size(&sz, lv_label_get_text(l), lv_obj_get_style_text_font(l, LV_PART_MAIN),
+                     lv_obj_get_style_text_letter_space(l, LV_PART_MAIN), lv_obj_get_style_text_line_space(l, LV_PART_MAIN),
+                     LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    int32_t cw = box->x2 - box->x1 + 1;
+    if (sz.x >= cw) return;
+    lv_text_align_t al = lv_obj_get_style_text_align(l, LV_PART_MAIN);
+    int32_t x0 = al == LV_TEXT_ALIGN_CENTER ? (cw - sz.x) / 2 : al == LV_TEXT_ALIGN_RIGHT ? cw - sz.x : 0;
+    box->x1 += x0;
+    box->x2 = box->x1 + sz.x - 1;
+}
+
+static void layout_walk(lv_obj_t *o, const char *where, int depth)
+{
+    uint32_t n = lv_obj_get_child_count(o);
+    lv_area_t pa;
+    lv_obj_get_coords(o, &pa);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_t *c = lv_obj_get_child(o, (int32_t)i);
+        if (lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) continue;
+        lv_area_t a;
+        lv_obj_get_coords(c, &a);
+        bool is_label = lv_obj_check_type(c, &lv_label_class);
+        const char *txt = is_label ? lv_label_get_text(c) : "";
+        if (a.x1 < 0 || a.y1 < 0 || a.x2 >= s_fw || a.y2 >= s_fh || (depth > 0 && (a.x1 < pa.x1 || a.y1 < pa.y1 ||
+            a.x2 > pa.x2 || a.y2 > pa.y2))) {
+            s_lay_off++;
+            printf("  [layout] %s: object at %d,%d..%d,%d outside %s %d,%d..%d,%d '%s'\n", where, (int)a.x1, (int)a.y1,
+                   (int)a.x2, (int)a.y2, depth > 0 ? "its parent" : "the screen", (int)pa.x1, (int)pa.y1, (int)pa.x2,
+                   (int)pa.y2, txt);
+        }
+        if (is_label && txt[0]) {
+            lv_point_t sz;
+            const lv_font_t *f = lv_obj_get_style_text_font(c, LV_PART_MAIN);
+            lv_text_get_size(&sz, txt, f, lv_obj_get_style_text_letter_space(c, LV_PART_MAIN),
+                             lv_obj_get_style_text_line_space(c, LV_PART_MAIN), LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+            int32_t cw = lv_obj_get_content_width(c);
+            size_t tl = strlen(txt);
+            if (lv_label_get_long_mode(c) == LV_LABEL_LONG_DOT && tl > 3 && strcmp(txt + tl - 3, "...") == 0)
+                printf("  [layout] %s: label shortened with dots '%s'\n", where, txt); /* LVGL put the dots in */
+            if (sz.x > cw && !strchr(txt, '\n')) {
+                lv_label_long_mode_t m = lv_label_get_long_mode(c);
+                if (m == LV_LABEL_LONG_WRAP) {
+                    s_lay_wrap++;
+                    printf("  [layout] %s: wrapped label (text %d px, label %d px) '%s'\n", where, (int)sz.x, (int)cw, txt);
+                } else {
+                    s_lay_cut++;
+                    printf("  [layout] %s: CUT label (text %d px, label %d px) '%s'\n", where, (int)sz.x, (int)cw, txt);
+                }
+            }
+        }
+        /* two visible labels of the same parent may not overlap (their texts would be drawn over each other) */
+        if (is_label && txt[0])
+            for (uint32_t j = i + 1; j < n; j++) {
+                lv_obj_t *d = lv_obj_get_child(o, (int32_t)j);
+                if (lv_obj_has_flag(d, LV_OBJ_FLAG_HIDDEN) || !lv_obj_check_type(d, &lv_label_class) ||
+                    !lv_label_get_text(d)[0])
+                    continue;
+                lv_area_t ta, b;
+                text_box(c, &ta);
+                text_box(d, &b);
+                if (ta.x1 <= b.x2 && b.x1 <= ta.x2 && ta.y1 <= b.y2 && b.y1 <= ta.y2) {
+                    s_lay_off++;
+                    printf("  [layout] %s: texts overlap: '%s' %d,%d..%d,%d and '%s' %d,%d..%d,%d\n", where, txt,
+                           (int)ta.x1, (int)ta.y1, (int)ta.x2, (int)ta.y2, lv_label_get_text(d), (int)b.x1, (int)b.y1,
+                           (int)b.x2, (int)b.y2);
+                }
+            }
+        layout_walk(c, where, depth + 1);
+    }
+}
+
+static void layout_shot(const char *prefix, const char *what)
+{
+    char path[300];
+    double *none = NULL;
+    size_t nn = 0;
+    pump(0.4, &none, &nn, 0);
+    layout_walk(lv_screen_active(), what, 0);
+    snprintf(path, sizeof(path), "%s_%dx%d_%s.ppm", prefix, s_fw, s_fh, what);
+    save_ppm(path);
+}
+
+/* The test users of the login screen (also used by the scenario below). */
+static hmi_user_cfg_t *test_users(uint8_t *pin_key)
+{
+    static const uint8_t cfg_key[32] = { 0x50, 0x39, 0x39, 0x2d, 0x75, 0x69, 0x2d, 0x6c, 0x6f, 0x67, 0x69,
+                                         0x6e, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x6b, 0x65, 0x79, 0x2d,
+                                         0x6e, 0x6f, 0x74, 0x2d, 0x72, 0x65, 0x61, 0x6c, 0x21, 0x21 };
+    static hmi_user_cfg_t users[3];
+    hmi_auth_derive_key(cfg_key, sizeof(cfg_key), pin_key);
+    snprintf(users[2].name, sizeof(users[2].name), "maintenance.engineer.01"); /* the longest name: 23 characters */
+    users[2].role = HMI_ROLE_ENGINEER;
+    memset(users[2].salt, 0x43, sizeof(users[2].salt));
+    hmi_auth_hash(pin_key, users[2].salt, "8642", users[2].pin_hash);
+    snprintf(users[0].name, sizeof(users[0].name), "op1");
+    users[0].role = HMI_ROLE_OPERATOR;
+    memset(users[0].salt, 0x41, sizeof(users[0].salt));
+    hmi_auth_hash(pin_key, users[0].salt, "2468", users[0].pin_hash);
+    snprintf(users[1].name, sizeof(users[1].name), "eng1");
+    users[1].role = HMI_ROLE_ENGINEER;
+    memset(users[1].salt, 0x42, sizeof(users[1].salt));
+    hmi_auth_hash(pin_key, users[1].salt, "13579", users[1].pin_hash);
+    return users;
+}
+
+/* Builds every screen, the CONFIG view with its keypad and the login panel at the display size, takes a picture of
+ * each and checks the layout. Returns the process exit code. */
+/* Finds a visible label whose text starts with `start` (depth-first). */
+static lv_obj_t *find_label(lv_obj_t *o, const char *start)
+{
+    for (uint32_t i = 0; i < lv_obj_get_child_count(o); i++) {
+        lv_obj_t *c = lv_obj_get_child(o, (int32_t)i);
+        if (lv_obj_has_flag(c, LV_OBJ_FLAG_HIDDEN)) continue;
+        if (lv_obj_check_type(c, &lv_label_class) && strncmp(lv_label_get_text(c), start, strlen(start)) == 0) return c;
+        lv_obj_t *f = find_label(c, start);
+        if (f) return f;
+    }
+    return NULL;
+}
+
+/* Below 640 x 400: the one safe page. It says so, keeps the link and the alarm summary up to date, has no control,
+ * and the runtime goes on (an alarm is still raised and counted). */
+static int layout_safe(hmi_runtime_t *rt, fake_modbus_t *srv, const char *prefix)
+{
+    double *none = NULL;
+    size_t nn = 0;
+    hmi_ui_init(rt, HMI_ROLE_ENGINEER, NULL);
+    hmi_ui_enable_heartbeat(true);
+    pump(1.0, &none, &nn, 0);
+    CHECK(find_label(lv_screen_active(), "SCREEN TOO SMALL: ") != NULL);
+    CHECK(strcmp(hmi_ui_link_text(), "PLC: HEALTHY") == 0);
+    CHECK(find_label(lv_screen_active(), "ALARMS: none unacked") != NULL);
+    CHECK(!hmi_ui_screen_visible(HMI_UI_SCREEN_OVERVIEW));
+    hmi_ui_press_tab(HMI_UI_SCREEN_ALARMS);        /* no screens: nothing happens */
+    CHECK(!hmi_ui_screen_visible(HMI_UI_SCREEN_ALARMS));
+    layout_shot(prefix, "safe");
+    fms_set_holding(srv, 0, 900);                  /* an alarm: the summary follows */
+    pump(1.0, &none, &nn, 0);
+    CHECK(find_label(lv_screen_active(), "ALARMS: 1 UNACK") != NULL);
+    layout_shot(prefix, "safe_alarm");
+    hmi_ui_press_ack_all();                        /* what ACK ALL runs: the core still decides (engineer may ack) */
+    pump(0.5, &none, &nn, 0);
+    printf("[layout] %dx%d safe page: link '%s', ack '%s'\n", s_fw, s_fh, hmi_ui_link_text(), hmi_ui_ack_status_text());
+    printf("[layout] %dx%d: %d objects off the screen or outside their parent, %d cut labels, %d wrapped labels\n",
+           s_fw, s_fh, s_lay_off, s_lay_cut, s_lay_wrap);
+    CHECK(s_lay_off == 0 && s_lay_cut == 0);
+    printf("layout %dx%d: %d checks, %d failed\n", s_fw, s_fh, g_checks, g_fail);
+    return g_fail ? 1 : 0;
+}
+
+static int layout_mode(hmi_runtime_t *rt, fake_modbus_t *srv, const char *prefix)
+{
+    if (s_fw < 640 || s_fh < 400) return layout_safe(rt, srv, prefix);
+    char spool[256];
+    snprintf(spool, sizeof(spool), "%s_spool", prefix);
+    UI_MKDIR(spool);
+    hmi_ui_init(rt, HMI_ROLE_ENGINEER, NULL);
+#ifndef P99_LITE
+    hmi_ui_set_config_edit(spool, 7);
+#endif
+    hmi_ui_set_config_info("Configuration: serial 7, signed");
+    hmi_ui_enable_heartbeat(true);
+    double *none = NULL;
+    size_t nn = 0;
+    pump(1.0, &none, &nn, 0);
+    layout_shot(prefix, "overview_quiet");  /* no alarm: the longest alarm summary text */
+    fms_set_holding(srv, 0, 900);          /* TANK_LEVEL 90 %: a HIGH alarm, so the alarm screens have rows */
+    pump(1.0, &none, &nn, 0);
+    layout_shot(prefix, "overview");
+    hmi_ui_press_tab(HMI_UI_SCREEN_ALARMS);
+    layout_shot(prefix, "alarms");
+#ifndef P99_LITE
+    hmi_ui_press_tab(HMI_UI_SCREEN_TRENDS);
+    layout_shot(prefix, "trends");
+#endif
+    hmi_ui_press_tab(SCREEN_SETTINGS);
+    layout_shot(prefix, "settings_system");
+#ifndef P99_LITE
+    hmi_ui_press_settings_view(HMI_UI_VIEW_CONFIG);
+    layout_shot(prefix, "settings_config");
+    hmi_ui_press_config_target(1);
+    hmi_ui_press_config_row(1);
+    CHECK(hmi_ui_config_keypad_open());
+    layout_shot(prefix, "settings_keypad");
+    hmi_ui_press_config_key("CANCEL");
+#endif
+    /* the login panel, with named users */
+    static uint8_t pin_key[32];
+    hmi_user_cfg_t *users = test_users(pin_key);
+    hmi_ui_set_users(users, 3, pin_key);
+    lv_obj_clean(lv_screen_active());
+    hmi_ui_init(rt, HMI_ROLE_ADMIN, NULL);
+    pump(0.3, &none, &nn, 0);
+    layout_shot(prefix, "overview_users");
+    hmi_ui_press_login();
+    CHECK(hmi_ui_login_is_open());
+    layout_shot(prefix, "login");
+    hmi_ui_login_key('C');
+    /* a long user name is shortened with dots inside the header, never wrapped out of it */
+    hmi_ui_press_login();
+    hmi_ui_login_select(2);
+    for (const char *k = "8642"; *k; k++) hmi_ui_login_key(*k);
+    int cut0 = s_lay_cut;
+    layout_shot(prefix, "login_long_user");
+    hmi_ui_login_key('K');
+    CHECK(!hmi_ui_login_is_open() && strncmp(hmi_ui_role_text(), "maintenance.engineer.01", 23) == 0);
+    layout_shot(prefix, "overview_long_user");
+    /* the labels meant to shorten a long name with dots: "USER: ..." on the login panel, the user in the header */
+    CHECK(s_lay_cut - cut0 <= 2);
+    s_lay_cut = cut0;
+    hmi_ui_press_login();           /* LOGOUT */
+    hmi_ui_set_users(NULL, 0, NULL);
+
+    /* the PLC stops answering: the longest link text ("PLC: NO RESPONSE") */
+    lv_obj_clean(lv_screen_active());
+    hmi_ui_init(rt, HMI_ROLE_OPERATOR, NULL);
+    fms_set_mode(srv, FMS_HANG, 0);
+    /* the link goes NO RESPONSE, then DOWN while the comms reconnect, then NO RESPONSE again: wait for it */
+    for (int i = 0; i < 160 && strcmp(hmi_ui_link_text(), "PLC: NO RESPONSE") != 0; i++) pump(0.05, &none, &nn, 0);
+    CHECK(strcmp(hmi_ui_link_text(), "PLC: NO RESPONSE") == 0);
+    layout_shot(prefix, "overview_no_response");
+    fms_set_mode(srv, FMS_NORMAL, 0);
+
+    printf("[layout] %dx%d: %d objects off the screen or outside their parent, %d cut labels, %d wrapped labels\n",
+           s_fw, s_fh, s_lay_off, s_lay_cut, s_lay_wrap);
+    CHECK(s_lay_off == 0);
+    CHECK(s_lay_cut == 0);
+    printf("layout %dx%d: %d checks, %d failed\n", s_fw, s_fh, g_checks, g_fail);
+    return g_fail ? 1 : 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *prefix = argc > 1 ? argv[1] : "build/shot";
@@ -260,8 +508,16 @@ int main(int argc, char **argv)
 
     int pw = W, ph = H;
     const char *probe = getenv("P99_HEAP_PROBE");
+    const char *layout = getenv("P99_LAYOUT");
+    bool lay = false;
     if (probe && sscanf(probe, "%dx%d", &pw, &ph) == 2 && pw >= 320 && ph >= 240 && pw <= 4096 && ph <= 4096) s_probe = true;
+    else if (layout && sscanf(layout, "%dx%d", &pw, &ph) == 2 && pw >= 160 && ph >= 120 && pw <= FB_MAX_W && ph <= FB_MAX_H)
+        lay = true;
     else pw = W, ph = H;
+    if (lay) {
+        s_fw = pw;
+        s_fh = ph;
+    }
 
     lv_init();
     lv_tick_set_cb(tick_cb);
@@ -269,6 +525,12 @@ int main(int argc, char **argv)
     lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(disp, s_buf, NULL, sizeof(s_buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, flush_cb);
+    if (lay) {
+        int rc = layout_mode(&rt, srv, prefix);
+        hmi_runtime_stop(&rt);
+        fms_stop(srv);
+        return rc;
+    }
     hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
 
     lv_mem_monitor_t mon;
@@ -1178,21 +1440,8 @@ int main(int argc, char **argv)
 
     /* ---- named users: login, wrong PIN, logout, lock (hmi_auth.h, ui_login.c) ---- */
     {
-        static const uint8_t cfg_key[32] = { 0x50, 0x39, 0x39, 0x2d, 0x75, 0x69, 0x2d, 0x6c, 0x6f, 0x67, 0x69,
-                                             0x6e, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x6b, 0x65, 0x79, 0x2d,
-                                             0x6e, 0x6f, 0x74, 0x2d, 0x72, 0x65, 0x61, 0x6c, 0x21, 0x21 };
         static uint8_t pin_key[32];
-        static hmi_user_cfg_t users[2];
-        hmi_auth_derive_key(cfg_key, sizeof(cfg_key), pin_key);
-        snprintf(users[0].name, sizeof(users[0].name), "op1");
-        users[0].role = HMI_ROLE_OPERATOR;
-        memset(users[0].salt, 0x41, sizeof(users[0].salt));
-        hmi_auth_hash(pin_key, users[0].salt, "2468", users[0].pin_hash);
-        snprintf(users[1].name, sizeof(users[1].name), "eng1");
-        users[1].role = HMI_ROLE_ENGINEER;
-        memset(users[1].salt, 0x42, sizeof(users[1].salt));
-        hmi_auth_hash(pin_key, users[1].salt, "13579", users[1].pin_hash);
-
+        hmi_user_cfg_t *users = test_users(pin_key);
         hmi_ui_set_users(users, 2, pin_key);
         lv_obj_clean(lv_screen_active());
         hmi_ui_init(&rt, HMI_ROLE_ADMIN, NULL); /* a claimed role means nothing once users exist */

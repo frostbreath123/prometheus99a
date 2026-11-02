@@ -240,6 +240,24 @@ lv_obj_t *ui_mk_label(lv_obj_t *parent, int x, int y, const char *txt, lv_color_
     return l;
 }
 
+void ui_label_box(lv_obj_t *l, lv_label_long_mode_t mode, int w)
+{
+    lv_label_set_long_mode(l, mode);
+    lv_obj_set_width(l, ui_x(w));
+}
+
+lv_obj_t *ui_mk_panel(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *p = lv_obj_create(parent);
+    lv_obj_set_pos(p, x, y);
+    lv_obj_set_size(p, w, h);
+    lv_obj_set_style_border_width(p, 0, 0);
+    lv_obj_set_style_radius(p, 0, 0);
+    lv_obj_set_style_pad_all(p, 0, 0);
+    lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    return p;
+}
+
 lv_obj_t *ui_mk_button(lv_obj_t *parent, int x, int y, int w, int h, const char *txt, lv_event_cb_t cb, void *ud)
 {
     lv_obj_t *b = lv_button_create(parent);
@@ -283,37 +301,48 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
     lv_obj_set_style_bg_color(scr, C_BG, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *hdr = lv_obj_create(scr);
-    lv_obj_set_size(hdr, ui_w, ui_y(44));
-    lv_obj_set_pos(hdr, 0, 0);
+    /* Below 640 x 400 the screens do not fit (make ui-sizes): one safe screen says so and keeps showing the link and
+     * the alarm summary, with no control on it. The runtime (polling, alarms, audit) is not affected. */
+    if (rt && (ui_w < 640 || ui_h < 400)) {
+        char b[UI_TXT * 3];
+        snprintf(b, sizeof(b), "SCREEN TOO SMALL: %dx%d, the screens need 640x400. Nothing can be operated here.", ui_w,
+                 ui_h);
+        ui_label_box(ui_mk_label(scr, 16, 16, b, C_BAD), LV_LABEL_LONG_WRAP, 768);
+        s_link = ui_mk_label(scr, 16, 240, "PLC: --", C_MUTED);
+        s_alarm_sum = ui_mk_label(scr, 16, 320, "ALARMS: --", C_MUTED);
+        s_hb = ui_mk_label(scr, 16, 400, "", C_MUTED);
+        s_timer = lv_timer_create(binder_cb, 50, NULL);
+        return;
+    }
+
+    lv_obj_t *hdr = ui_mk_panel(scr, 0, 0, ui_w, ui_y(44));
     lv_obj_set_style_bg_color(hdr, C_PANEL, 0);
-    lv_obj_set_style_border_width(hdr, 0, 0);
-    lv_obj_set_style_radius(hdr, 0, 0);
-    lv_obj_set_style_pad_all(hdr, 0, 0);
-    lv_obj_remove_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
     /* Positions are on the 800 x 480 design grid; every label has a fixed width, so a text that changes (the heartbeat
-     * every second) does not move or redraw its neighbours. */
-    ui_mk_label(hdr, 8, 12, "PROMETHEUS99", C_TEXT);
-    s_link = ui_mk_label(hdr, 130, 12, "PLC: --", C_MUTED);
-    s_hb = ui_mk_label(hdr, 272, 12, "", C_MUTED);
-    s_alarm_sum = ui_mk_label(hdr, 326, 12, "ALARMS: --", C_MUTED);
-    s_role_lbl = ui_mk_label(hdr, 512, 12, "", C_MUTED);
-    lv_obj_set_width(s_link, ui_x(136));
-    lv_obj_set_width(s_hb, ui_x(54));
-    lv_label_set_long_mode(s_hb, LV_LABEL_LONG_CLIP);
-    lv_obj_set_width(s_alarm_sum, ui_x(180));
-    lv_label_set_long_mode(s_role_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(s_role_lbl, ui_x(196));
-    if (ui_login_enabled()) { /* named users: the user is shown next to a LOGIN / LOGOUT button */
-        lv_obj_set_width(s_role_lbl, ui_x(116));
+     * every second) does not move or redraw its neighbours. The widths hold the longest texts ("PLC: NO RESPONSE",
+     * "ALARMS: none unacked", "LOGGED OUT") at every size from 640 x 400 (make ui-sizes). The text does not shrink with
+     * the grid below 800 pixels, so there the title gives its room to the other labels: link, heartbeat, alarm summary
+     * and role at H[1] instead of H[0] (x and width of each). */
+    static const int16_t H[2][8] = { { 132, 148, 282, 48, 332, 182, 516, 112 }, { 6, 176, 184, 58, 244, 214, 460, 168 } };
+    const int16_t *h = H[ui_w < 800];
+    if (ui_w >= 800) ui_mk_label(hdr, 6, 12, "PROMETHEUS99", C_TEXT);
+    s_link = ui_mk_label(hdr, h[0], 12, "PLC: --", C_MUTED);
+    s_hb = ui_mk_label(hdr, h[2], 12, "", C_MUTED);
+    s_alarm_sum = ui_mk_label(hdr, h[4], 12, "ALARMS: --", C_MUTED);
+    s_role_lbl = ui_mk_label(hdr, h[6], 12, "", C_MUTED);
+    ui_label_box(s_link, LV_LABEL_LONG_WRAP, h[1]);
+    ui_label_box(s_hb, LV_LABEL_LONG_CLIP, h[3]);
+    ui_label_box(s_alarm_sum, LV_LABEL_LONG_WRAP, h[5]);
+    /* one line high, so a long user name ends in dots instead of wrapping out of the header; with named users the
+     * user is shown next to a LOGIN / LOGOUT button */
+    ui_label_box(s_role_lbl, LV_LABEL_LONG_DOT, ui_login_enabled() ? h[7] : 714 - h[6]);
+    lv_obj_set_height(s_role_lbl, lv_font_get_line_height(ui_font()));
+    if (ui_login_enabled()) {
         s_login_btn = ui_mk_button(hdr, 632, 2, 82, 38, "LOGIN", ui_login_button_cb, NULL);
     }
     s_ack_btn = ui_mk_button(hdr, 718, 2, 78, 38, "ACK ALL", ui_ack_all_cb, NULL);
 
     if (!rt) {
-        lv_obj_t *b = ui_mk_label(scr, 20, 80, banner ? banner : "NO CONFIGURATION", C_BAD);
-        lv_label_set_long_mode(b, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(b, ui_x(760));
+        ui_label_box(ui_mk_label(scr, 20, 80, banner ? banner : "NO CONFIGURATION", C_BAD), LV_LABEL_LONG_WRAP, 760);
         ui_mk_label(scr, 20, 140, "No PLC endpoint selected. Writes disabled.", C_MUTED);
     } else {
         ui_nav_build(scr);

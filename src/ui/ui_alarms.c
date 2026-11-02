@@ -101,8 +101,7 @@ static void alarms_build(lv_obj_t *page)
         int y = AL_ROW_Y0 + (int)i * AL_ROW_H;
         r->pri = ui_mk_label(page, 12, y + 6, "", C_TEXT);
         r->name = ui_mk_label(page, 110, y + 6, "", C_TEXT);
-        lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);   /* a long name ends in dots instead of running into the state column */
-        lv_obj_set_width(r->name, ui_x(216));
+        ui_label_box(r->name, LV_LABEL_LONG_DOT, 216);   /* a long name ends in dots instead of running into the state column */
         r->state = ui_mk_label(page, 330, y + 6, "", C_TEXT);
         r->age = ui_mk_label(page, 560, y + 6, "", C_MUTED);
         r->btn = ui_mk_button(page, 676, y, 120, AL_ROW_H - 4, "ACK", ack_cb, (void *)(intptr_t)i);
@@ -113,14 +112,8 @@ static void alarms_build(lv_obj_t *page)
      * the first alarm row when the screen was first drawn while an alarm was active (found in the Windows demo tour). */
     lv_obj_add_flag(s_none, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *pnl = lv_obj_create(page);
-    lv_obj_set_size(pnl, ui_x(800), ui_y(100));
-    lv_obj_set_pos(pnl, ui_x(0), ui_y(300));
+    lv_obj_t *pnl = ui_mk_panel(page, ui_x(0), ui_y(300), ui_x(800), ui_y(100));
     lv_obj_set_style_bg_color(pnl, C_PANEL, 0);
-    lv_obj_set_style_border_width(pnl, 0, 0);
-    lv_obj_set_style_radius(pnl, 0, 0);
-    lv_obj_set_style_pad_all(pnl, 0, 0);
-    lv_obj_remove_flag(pnl, LV_OBJ_FLAG_SCROLLABLE);
     ui_ack_bind(ui_mk_label(pnl, 8, 6, "", C_MUTED));
     s_journal = ui_mk_label(pnl, 8, 30, "no alarm events", C_MUTED);
 }

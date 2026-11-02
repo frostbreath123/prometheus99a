@@ -74,14 +74,8 @@ void ui_nav_build(lv_obj_t *scr)
         lv_obj_set_style_radius(s_tab[i], 0, 0);
     }
     for (size_t i = 0; i < N_SCREENS; i++) {
-        lv_obj_t *p = lv_obj_create(scr);
-        lv_obj_set_size(p, ui_w, ui_h - ui_y(UI_PAGE_Y));
-        lv_obj_set_pos(p, 0, ui_y(UI_PAGE_Y));
+        lv_obj_t *p = ui_mk_panel(scr, 0, ui_y(UI_PAGE_Y), ui_w, ui_h - ui_y(UI_PAGE_Y));
         lv_obj_set_style_bg_opa(p, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(p, 0, 0);
-        lv_obj_set_style_radius(p, 0, 0);
-        lv_obj_set_style_pad_all(p, 0, 0);
-        lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
         s_page[i] = p;
         if (!SCREENS[i]->lazy) {
             SCREENS[i]->build(p);

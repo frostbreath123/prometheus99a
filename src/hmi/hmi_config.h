@@ -51,8 +51,10 @@ typedef struct {
     uint32_t trend_bucket_ms;       /* length of one trend bucket (1000 .. 60000, default 5000) */
     char allowed_hosts[HMI_MAX_ALLOWED][HMI_HOST_LEN]; /* plc.allowed_hosts, optional here */
     size_t n_allowed;
+    bool heartbeat;                /* plc.heartbeat_register present: the PLC heartbeat is on (hmi_comms_cfg_t) */
+    uint16_t heartbeat_register;   /* holding register that receives the heartbeat counter */
 #ifdef HMI_RTU
-    hmi_transport_t transport;     /* plc.transport: "tcp" (default) or "rtu" */
+    hmi_transport_t transport;    /* plc.transport: "tcp" (default) or "rtu" */
     char device[HMI_DEVICE_LEN];   /* rtu: the serial device, a path under /dev/ */
     uint32_t baud;                 /* rtu: 1200 to 115200, default 19200 */
     int parity;                    /* rtu: 'N', 'E' or 'O' ("none", "even", "odd"), default 'E' (the Modbus default) */

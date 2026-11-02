@@ -35,12 +35,21 @@ typedef struct {
     uint32_t link_degraded_ms;
     uint32_t link_no_response_ms;
     uint32_t jitter_seed;
+    /* Optional PLC heartbeat (plc.heartbeat_register): every heartbeat_period_ms (0 = off) the comms thread writes
+     * a counter, incremented by one, to the holding register heartbeat_addr, but only if the UI loop called
+     * hmi_comms_ui_alive since the previous heartbeat. A frozen HMI therefore lets the counter stop, and the PLC
+     * program can go to its safe state. It is a configuration-gated exception to the audited write path: it is
+     * not audited (one line a second would flood the audit file), not role-checked (no operator sends it), and
+     * it writes only the one register the signed configuration names. */
+    uint32_t heartbeat_period_ms;
+    uint16_t heartbeat_addr;
 } hmi_comms_cfg_t;
 
 typedef struct {
     uint32_t polls_ok, polls_failed, exceptions, protocol_errors;
     uint32_t connects_ok, connects_failed, links_lost;
     uint32_t last_poll_latency_ms, max_poll_latency_ms;
+    uint32_t heartbeats_sent;      /* heartbeat writes answered by the PLC (not exceptions) */
 } hmi_comms_stats_t;
 
 typedef struct {
@@ -59,6 +68,12 @@ typedef struct {
     uint32_t link_no_response_ms;
     uint64_t next_attempt_ms;
     uint32_t rng;
+    uint64_t hb_next_ms;           /* heartbeat: next due time */
+    int32_t hb_seen;               /* heartbeat: ui_beat at the last heartbeat */
+    uint16_t hb_value;             /* heartbeat: last value written */
+
+    /* written by the UI thread only (hmi_comms_ui_alive), read by the comms thread */
+    hmi_atomic_flag_t ui_beat;
 
     /* shared (guarded by lock) */
     hmi_mutex_t lock;
@@ -78,6 +93,9 @@ void hmi_comms_set_writes(hmi_comms_t *c, hmi_writes_t *w);
 /* Performs at most one blocking driver operation. Returns the suggested
  * sleep (ms) until the next useful call. */
 uint32_t hmi_comms_step(hmi_comms_t *c);
+
+/* Called once per pass of the UI loop (one thread only): proves to the heartbeat that the UI loop is alive. */
+void hmi_comms_ui_alive(hmi_comms_t *c);
 
 /* Thread-safe queries */
 hmi_conn_state_t hmi_comms_state(hmi_comms_t *c);   /* TCP-level state machine */

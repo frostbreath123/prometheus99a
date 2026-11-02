@@ -450,6 +450,8 @@ static void test_settings_wording(void)
     printf("view: settings wording\n");
     char b[96];
     hmi_view_plc_text("192.168.0.10", 502, 1, b, sizeof(b)); CHECK_STR(b, "PLC 192.168.0.10:502  unit 1");
+    /* a Modbus RTU link names its serial device: it has no host or port (it showed "PLC :0  unit 3" before) */
+    hmi_view_rtu_plc_text("/dev/ttyUSB0", 3, b, sizeof(b)); CHECK_STR(b, "PLC /dev/ttyUSB0 (Modbus RTU)  unit 3");
     hmi_view_writes_text(true, true, b, sizeof(b)); CHECK_STR(b, "Writes: enabled");
     hmi_view_writes_text(false, false, b, sizeof(b)); CHECK(strstr(b, "configuration") != NULL);
     hmi_view_writes_text(true, false, b, sizeof(b)); CHECK(strstr(b, "audit") != NULL);

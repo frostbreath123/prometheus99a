@@ -17,7 +17,7 @@ P=${2:-full}
 EXE=$B/prometheus99
 [ -f "$EXE" ] || { echo "gate: $EXE not found (build the target hmi with STATIC=1)"; exit 2; }
 case "$P" in
-    full) MAX_STRIPPED=322000; MAX_STATIC=440000 ;;   # measured: 297088 and 405640
+    full) MAX_STRIPPED=330000; MAX_STATIC=440000 ;;   # measured: 297088 and 405640; stripped moved from 322000 for RTU (2026-11-02)
     lite) MAX_STRIPPED=290000; MAX_STATIC=350000 ;;   # measured: 268416 and 321760
     *) echo "gate: unknown profile $P"; exit 2 ;;
 esac

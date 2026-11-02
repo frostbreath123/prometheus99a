@@ -306,6 +306,10 @@ bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi
     cc.backoff_min_ms = 500;
     cc.backoff_max_ms = 10000;
     cc.jitter_seed = (uint32_t)hmi_now_ms() | 1u;
+    if (cfg->heartbeat) { /* plc.heartbeat_register: one write a second while the UI loop is alive */
+        cc.heartbeat_period_ms = 1000;
+        cc.heartbeat_addr = cfg->heartbeat_register;
+    }
     if (!hmi_comms_init(&rt->comms, &rt->db, drv, &cc)) {
         hmi_tagdb_destroy(&rt->db);
         return false;

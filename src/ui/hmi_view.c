@@ -345,6 +345,11 @@ void hmi_view_plc_text(const char *host, unsigned port, unsigned unit, char *buf
     snprintf(buf, cap, "PLC %s:%u  unit %u", host, port, unit);
 }
 
+void hmi_view_rtu_plc_text(const char *device, unsigned unit, char *buf, size_t cap)
+{
+    snprintf(buf, cap, "PLC %s (Modbus RTU)  unit %u", device, unit);
+}
+
 void hmi_view_writes_text(bool master, bool effective, char *buf, size_t cap)
 {
     if (effective) snprintf(buf, cap, "Writes: enabled");

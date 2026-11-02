@@ -87,8 +87,9 @@ static void system_build(lv_obj_t *area)
     ui_mk_label(area, 8, 4, "THIS DEVICE", C_MUTED);
     for (size_t i = 0; i < SYS_LINES; i++) {
         s_sys[i] = ui_mk_label(area, 8, 34 + (int)i * 30, "", C_TEXT);
-        lv_label_set_long_mode(s_sys[i], LV_LABEL_LONG_DOT);
-        lv_obj_set_width(s_sys[i], ui_x(UI_SUBPAGE_W - 16));
+        /* the last line (the role, with its "NOT authenticated" warning) has room below it and wraps instead of
+         * losing its end at 640 x 400 */
+        ui_label_box(s_sys[i], i + 1 < SYS_LINES ? LV_LABEL_LONG_DOT : LV_LABEL_LONG_WRAP, UI_SUBPAGE_W - 16);
     }
 }
 
@@ -108,6 +109,10 @@ static void system_update(void)
     char b[UI_TXT * 3];
     const hmi_app_cfg_t *cfg = &ui_rt->cfg;
 
+#ifdef HMI_RTU
+    if (cfg->transport == HMI_TRANSPORT_RTU) hmi_view_rtu_plc_text(cfg->device, cfg->unit, b, sizeof(b));
+    else
+#endif
     hmi_view_plc_text(cfg->host, cfg->port, cfg->unit, b, sizeof(b));
     sys_line(0, b, HMI_TONE_TEXT);
     hmi_view_writes_text(cfg->writes_enabled, ui_rt->writes_effective, b, sizeof(b));
@@ -161,14 +166,8 @@ static void settings_build(lv_obj_t *page)
 {
     for (size_t i = 0; i < N_VIEWS; i++) {
         s_btn[i] = ui_mk_button(page, 12, 8 + (int)i * (BTN_H + 8), BTN_W, BTN_H, VIEWS[i]->title, view_cb, (void *)(intptr_t)i);
-        lv_obj_t *a = lv_obj_create(page);
-        lv_obj_set_size(a, ui_x(UI_SUBPAGE_W), ui_y(UI_PAGE_H));
-        lv_obj_set_pos(a, ui_x(VIEW_X), ui_y(0));
+        lv_obj_t *a = ui_mk_panel(page, ui_x(VIEW_X), ui_y(0), ui_x(UI_SUBPAGE_W), ui_y(UI_PAGE_H));
         lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(a, 0, 0);
-        lv_obj_set_style_radius(a, 0, 0);
-        lv_obj_set_style_pad_all(a, 0, 0);
-        lv_obj_remove_flag(a, LV_OBJ_FLAG_SCROLLABLE);
         s_area[i] = a;
         s_built[i] = false;
         if (!VIEWS[i]->lazy) {

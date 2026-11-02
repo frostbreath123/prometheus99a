@@ -184,17 +184,13 @@ static void overview_build(lv_obj_t *page)
         row_t *r = &s_rows[i];
         /* The columns have fixed widths: a name or a value that is too long ends in dots instead of running into the next column. */
         r->name = ui_mk_label(page, 12, y, "", C_TEXT);
-        lv_label_set_long_mode(r->name, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->name, ui_x(226));
+        ui_label_box(r->name, LV_LABEL_LONG_DOT, 226);
         r->value = ui_mk_label(page, 244, y, "---", C_MUTED);
-        lv_label_set_long_mode(r->value, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->value, ui_x(192));
+        ui_label_box(r->value, LV_LABEL_LONG_DOT, 192);
         r->quality = ui_mk_label(page, 444, y, "NO DATA", C_MUTED);
-        lv_label_set_long_mode(r->quality, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->quality, ui_x(150));
+        ui_label_box(r->quality, LV_LABEL_LONG_DOT, 150);
         r->alarm = ui_mk_label(page, 600, y, "", C_MUTED);
-        lv_label_set_long_mode(r->alarm, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->alarm, ui_x(196));
+        ui_label_box(r->alarm, LV_LABEL_LONG_DOT, 196);
     }
     for (size_t i = 0; i < n; i++) {
         if (hmi_tagdb_cfg(&rt->db, i)->write_allowed) {
@@ -206,33 +202,25 @@ static void overview_build(lv_obj_t *page)
     bind_page();
 
     /* bottom: setpoint + journal */
-    lv_obj_t *pnl = lv_obj_create(page);
-    lv_obj_set_size(pnl, ui_x(800), ui_y(100));
-    lv_obj_set_pos(pnl, ui_x(0), ui_y(300));
+    lv_obj_t *pnl = ui_mk_panel(page, ui_x(0), ui_y(300), ui_x(800), ui_y(100));
     lv_obj_set_style_bg_color(pnl, C_PANEL, 0);
-    lv_obj_set_style_border_width(pnl, 0, 0);
-    lv_obj_set_style_radius(pnl, 0, 0);
-    lv_obj_set_style_pad_all(pnl, 0, 0);
-    lv_obj_remove_flag(pnl, LV_OBJ_FLAG_SCROLLABLE);
     if (s_sp_tag >= 0 && rt->writes_effective) {
         s_sp_label = ui_mk_label(pnl, 8, 6, "SETPOINT", C_TEXT);
         s_sp_btn[0] = ui_mk_button(pnl, 8, 32, 60, 40, "-", sp_step_cb, (void *)(intptr_t)-1);
         s_sp_btn[1] = ui_mk_button(pnl, 76, 32, 60, 40, "+", sp_step_cb, (void *)(intptr_t)1);
         s_sp_btn[2] = ui_mk_button(pnl, 144, 32, 110, 40, "SEND", sp_send_cb, NULL);
-        s_wr_status = ui_mk_label(pnl, 270, 44, "", C_MUTED);
-        lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);   /* two lines at most, clear of the journal on the right */
-        lv_obj_set_width(s_wr_status, ui_x(284));
+        s_wr_status = ui_mk_label(pnl, 270, 46, "", C_MUTED);
+        ui_label_box(s_wr_status, LV_LABEL_LONG_WRAP, 284);   /* two lines at most, clear of the journal on the right */
     } else {
         s_sp_tag = -1;
         s_sp_label = ui_mk_label(pnl, 8, 6, "WRITES DISABLED", C_MUTED);
-        s_wr_status = ui_mk_label(pnl, 8, 40, "", C_MUTED);
-        lv_label_set_long_mode(s_wr_status, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(s_wr_status, ui_x(540));
+        s_wr_status = ui_mk_label(pnl, 8, 46, "", C_MUTED);
+        ui_label_box(s_wr_status, LV_LABEL_LONG_WRAP, 540);
     }
     s_journal = ui_mk_label(pnl, 560, 4, "no alarm events", C_MUTED);
-    lv_obj_t *ack_lbl = ui_mk_label(pnl, 270, 6, "", C_MUTED);
-    lv_label_set_long_mode(ack_lbl, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(ack_lbl, ui_x(284));
+    /* the ACK outcome has its own line under the setpoint line, so a long tag name or value never runs into it */
+    lv_obj_t *ack_lbl = ui_mk_label(pnl, 270, 26, "", C_MUTED);
+    ui_label_box(ack_lbl, LV_LABEL_LONG_DOT, 284);
     ui_ack_bind(ack_lbl);
     s_store_fault = ui_mk_label(pnl, 270, 78, "", C_BAD);
     if (ui_role != HMI_ROLE_VIEWER) { /* a claimed role must never look like a login */

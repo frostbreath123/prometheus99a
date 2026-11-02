@@ -269,6 +269,7 @@ int main(int argc, char **argv)
             ready_sent = true;
         }
         if (runtime_up) {
+            hmi_comms_ui_alive(&g_rt.comms); /* the PLC heartbeat, if configured, runs only while this loop runs */
             hmi_runtime_beats_t b = hmi_runtime_beats(&g_rt);
             beats[0] = b.comms;
             beats[1] = b.supervisor;

@@ -281,6 +281,56 @@ static void test_runtime_with_libmodbus(void)
     }
 }
 
+/* Beats the UI loop every 30 ms (alive) or not at all, for ms milliseconds. */
+static void ui_loop(hmi_runtime_t *rt, uint32_t ms, bool alive)
+{
+    uint64_t end = hmi_now_ms() + ms;
+    while (hmi_now_ms() < end) {
+        if (alive) hmi_comms_ui_alive(&rt->comms);
+        hmi_sleep_ms(30);
+    }
+}
+
+static void test_runtime_heartbeat(void)
+{
+    SECTION("e2e: PLC heartbeat over libmodbus, stops while the UI loop stalls");
+    uint16_t port;
+    fake_modbus_t *srv = fms_start(&port);
+    fms_set_holding(srv, 0, 500);
+    static hmi_app_cfg_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    snprintf(cfg.host, sizeof(cfg.host), "127.0.0.1");
+    cfg.port = port; cfg.unit = 1; cfg.response_timeout_ms = 200; cfg.connect_timeout_ms = 500;
+    cfg.heartbeat = true; cfg.heartbeat_register = 4000;
+    cfg.n_tags = 1;
+    snprintf(cfg.tags[0].name, HMI_NAME_LEN, "LVL");
+    cfg.tags[0].dtype = HMI_DT_U16; cfg.tags[0].scale = 0.1; cfg.tags[0].eng_max = 100; cfg.tags[0].poll_ms = 100;
+    plc_libmodbus_t *plc = plc_libmodbus_create(cfg.host, cfg.port, cfg.unit, cfg.response_timeout_ms);
+    hmi_plc_driver_t d;
+    plc_libmodbus_driver(plc, &d);
+    static hmi_runtime_t rt;
+    CHECK(hmi_runtime_start(&rt, &cfg, &d, NULL, NULL)); /* no audit file: operator writes are off, the heartbeat is not */
+    ui_loop(&rt, 3300, true);
+    uint16_t v = fms_get_holding(srv, 4000);
+    CHECK(v >= 3 && v <= 4);
+    ui_loop(&rt, 1100, false); /* the UI loop stalls */
+    uint16_t frozen = fms_get_holding(srv, 4000);
+    CHECK(frozen == v || frozen == (uint16_t)(v + 1u));
+    ui_loop(&rt, 3000, false);
+    CHECK(fms_get_holding(srv, 4000) == frozen);
+    hmi_tag_value_t t;
+    hmi_tagdb_get(&rt.db, 0, &t);
+    CHECK(t.quality == HMI_Q_GOOD);                      /* polling goes on while the heartbeat waits */
+    ui_loop(&rt, 2200, true);                            /* the UI loop runs again */
+    uint16_t again = fms_get_holding(srv, 4000);
+    CHECK(again >= (uint16_t)(frozen + 2u) && again <= (uint16_t)(frozen + 3u));
+    printf("  heartbeat: %u after 3.3 s, held at %u for 3 s of stall, %u after 2.2 s more\n", (unsigned)v,
+           (unsigned)frozen, (unsigned)again);
+    hmi_runtime_stop(&rt);
+    plc_libmodbus_destroy(plc);
+    fms_stop(srv);
+}
+
 int main(void)
 {
     test_poll_real_modbus();
@@ -292,6 +342,7 @@ int main(void)
     test_write_real();
     test_write_lost_reply_real();
     test_runtime_with_libmodbus();
+    test_runtime_heartbeat();
     printf("\n%d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
 }

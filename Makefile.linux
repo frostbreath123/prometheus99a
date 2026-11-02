@@ -68,9 +68,11 @@ endif
 # EXTRA_CFLAGS adds flags to every compile, for measurement builds, for example the lock counters:
 #   make -f Makefile.linux STATIC=1 CC=musl-gcc BUILD=build-locks EXTRA_CFLAGS=-DHMI_LOCK_STATS hmi-bench
 CFLAGS += $(EXTRA_CFLAGS)
-# RTU=1 builds Modbus RTU into the device program (HMI_RTU: plc.transport "rtu", src/hmi/plc_libmodbus.h). It does not
-# fit the size gate of the full profile (docs/OPTIMIZATION_CHANGELOG.md, C17), so the default device program is TCP only.
-# The test programs and p99_sign are always built with RTU (TCFLAGS), so the RTU code is tested in every run.
+# RTU=1 (the default) builds Modbus RTU into the device program (HMI_RTU: plc.transport "rtu", src/hmi/plc_libmodbus.h).
+# The owner moved the full size gate to 330,000 bytes on 2026-11-02 so that RTU ships (docs/OPTIMIZATION_CHANGELOG.md, C17
+# and C18). RTU=0 builds a TCP-only device program. The test programs and p99_sign are always built with RTU (TCFLAGS),
+# so the RTU code is tested in every run.
+RTU ?= 1
 ifeq ($(RTU),1)
 CFLAGS += -DHMI_RTU
 endif
@@ -202,6 +204,18 @@ e2e: $(BUILD)/test_e2e
 ui-shots: ui-host
 	python3 tests/hmi/shot_tool.py check $(BUILD)/shot_*.ppm
 
+# Layout check at the six screen sizes of docs/MASTER_PROMPT_FINAL.md, phase 3 item 6: every screen, the CONFIG view, its
+# keypad and the login panel are built at each size; no visible object may leave the screen or its parent, no two texts
+# may overlap and no label may be cut; the pictures are checked against the palette. 480x320 and 320x240 are below the
+# smallest layout and must show the safe "screen too small" page.
+UI_SIZES = 640x400 800x480 1024x600 1280x800 1366x768 1920x1080 480x320 320x240
+ui-sizes: $(BUILD)/ui_headless
+	rm -f $(BUILD)/size_*.ppm
+	@for s in $(UI_SIZES); do \
+	  P99_LAYOUT=$$s ./$(BUILD)/ui_headless $(BUILD)/size $(BUILD)/ui_size_audit.log > $(BUILD)/ui_size_$$s.log 2>&1; rc=$$?; \
+	  grep -E '^layout|\[layout\]|FAIL' $(BUILD)/ui_size_$$s.log; [ $$rc -eq 0 ] || exit 1; done
+	python3 tests/hmi/shot_tool.py check $(BUILD)/size_*.ppm
+
 ui-host: $(BUILD)/ui_headless
 	rm -f $(BUILD)/shot_*.ppm
 	./$(BUILD)/ui_headless $(BUILD)/shot $(BUILD)/ui_audit.log
@@ -220,7 +234,7 @@ test-all: check-tagdb-access test test-notify test-view test-config-golden e2e r
 clean:
 	rm -rf $(BUILD) $(BUILD)-asan
 
-.PHONY: test test-fast test-view test-config-golden e2e ui-host ui-shots hmi hmi-sim hmi-run-sim test-all clean
+.PHONY: test test-fast test-view test-config-golden e2e ui-host ui-shots ui-sizes hmi hmi-sim hmi-run-sim test-all clean
 
 # Outside hmi_tags.c (and the white-box core test) nothing may read or write
 # the tag table's members directly; use the hmi_tagdb_* accessors.

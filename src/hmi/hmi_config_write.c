@@ -132,6 +132,7 @@ size_t hmi_config_serialize(const hmi_app_cfg_t *cfg, char *buf, size_t cap)
     put(&o, "\"plc\":{\"host\":\"%s\",\"port\":%u,\"unit\":%u,\"response_timeout_ms\":%u,\"connect_timeout_ms\":%u",
         cfg->host, (unsigned)cfg->port, (unsigned)cfg->unit, (unsigned)cfg->response_timeout_ms,
         (unsigned)cfg->connect_timeout_ms);
+    if (cfg->heartbeat) put(&o, ",\"heartbeat_register\":%u", (unsigned)cfg->heartbeat_register);
     if (cfg->n_allowed > 0) {
         put(&o, ",\"allowed_hosts\":[");
         for (size_t i = 0; i < cfg->n_allowed; i++) {
@@ -205,7 +206,8 @@ bool hmi_config_equal(const hmi_app_cfg_t *a, const hmi_app_cfg_t *b)
         a->response_timeout_ms != b->response_timeout_ms || a->connect_timeout_ms != b->connect_timeout_ms ||
         a->writes_enabled != b->writes_enabled || a->write_min_interval_ms != b->write_min_interval_ms ||
         a->write_max_per_minute != b->write_max_per_minute || a->trend_bucket_ms != b->trend_bucket_ms ||
-        a->n_allowed != b->n_allowed || a->n_tags != b->n_tags || a->n_users != b->n_users)
+        a->n_allowed != b->n_allowed || a->n_tags != b->n_tags || a->n_users != b->n_users ||
+        a->heartbeat != b->heartbeat || (a->heartbeat && a->heartbeat_register != b->heartbeat_register))
         return false;
 #ifdef HMI_RTU
     if (a->transport != b->transport || strcmp(a->device, b->device) != 0 || a->baud != b->baud ||

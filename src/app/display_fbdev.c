@@ -2,7 +2,8 @@
  * @file display_fbdev.c
  * @brief The framebuffer display backend of the device program (/dev/fb0, evdev touch).
  *
- * The screen is the whole framebuffer (at least 640 x 400); the screens lay themselves out from its size. The device file is written with pwrite(),
+ * The screen is the whole framebuffer (at least 320 x 240; below 640 x 400 only a safe "screen too small" page is
+ * shown); the screens lay themselves out from its size. The device file is written with pwrite(),
  * one row of a finished strip at a time, and is not mapped, so the program holds no copy of the screen (the display
  * memory belongs to the kernel and the display driver). Supported: 16 bits per pixel RGB565, and 32 bits per pixel
  * (the channel positions are read from the device). Anything else is refused with a message.
@@ -68,8 +69,9 @@ static bool open_framebuffer(const char *path)
                 strerror(errno));
         return false;
     }
-    if (v.xres < 640 || v.yres < 400 || v.xres > 2048) {
-        fprintf(stderr, "prometheus99: the framebuffer '%s' is %ux%u; the screens need 640x400 up to 2048 pixels wide\n", path,
+    /* From 320 x 240 up the program runs; below 640 x 400 it shows only the safe "screen too small" page (hmi_ui.c). */
+    if (v.xres < 320 || v.yres < 240 || v.xres > 2048) {
+        fprintf(stderr, "prometheus99: the framebuffer '%s' is %ux%u; it must be 320x240 up to 2048 pixels wide\n", path,
                 (unsigned)v.xres, (unsigned)v.yres);
         return false;
     }

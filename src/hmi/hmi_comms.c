@@ -44,7 +44,7 @@ bool hmi_comms_init(hmi_comms_t *c, hmi_tagdb_t *db, const hmi_plc_driver_t *drv
     memset(c, 0, sizeof(*c));
     if (!hmi_tagdb_is_ready(db) || !drv || !drv->connect || !drv->read_regs || !drv->close || !cfg) return false;
     if (cfg->response_timeout_ms == 0 || cfg->miss_limit == 0 || cfg->backoff_min_ms == 0 ||
-        cfg->backoff_max_ms < cfg->backoff_min_ms)
+        cfg->backoff_max_ms < cfg->backoff_min_ms || (cfg->heartbeat_period_ms && !drv->write_regs))
         return false;
     c->db = db;
     c->drv = *drv;
@@ -80,6 +80,11 @@ void hmi_comms_set_clock(hmi_comms_t *c, uint64_t (*clock)(void *), void *ctx)
 void hmi_comms_set_writes(hmi_comms_t *c, hmi_writes_t *w)
 {
     c->writes = w;
+}
+
+void hmi_comms_ui_alive(hmi_comms_t *c)
+{
+    hmi_flag_set(&c->ui_beat, (int32_t)((uint32_t)hmi_flag_get(&c->ui_beat) + 1u)); /* single writer, wraps */
 }
 
 /* ---- queries ---- */
@@ -207,6 +212,31 @@ static void execute_write(hmi_comms_t *c, const hmi_write_job_t *job)
     hmi_writes_finish_verified(c->writes, job, back, now);
 }
 
+/* ---- the heartbeat (hmi_comms_cfg_t.heartbeat_period_ms) ---- */
+
+/* True if a heartbeat write was made (one blocking driver operation). A stalled UI loop skips the write, so the
+ * counter in the PLC stops. A lost reply is a link miss like a lost poll and is not retried: the next heartbeat
+ * carries the next value. */
+static bool execute_heartbeat(hmi_comms_t *c, uint64_t now)
+{
+    if (!c->cfg.heartbeat_period_ms || now < c->hb_next_ms) return false;
+    c->hb_next_ms = now + c->cfg.heartbeat_period_ms;
+    int32_t beat = hmi_flag_get(&c->ui_beat);
+    if (beat == c->hb_seen) return false;
+    c->hb_seen = beat;
+    uint16_t v = (uint16_t)(c->hb_value + 1u);
+    uint8_t exc = 0;
+    hmi_io_status_t st = c->drv.write_regs(c->drv.ctx, c->cfg.heartbeat_addr, 1, &v, &exc);
+    c->hb_value = v;
+    if (st == HMI_IO_OK || st == HMI_IO_EXCEPTION) {
+        if (st == HMI_IO_OK) bump(c, &c->stats.heartbeats_sent);
+        link_ok(c);
+    } else {
+        link_miss(c, now_ms(c));
+    }
+    return true;
+}
+
 /* ---- one poll ---- */
 
 static void execute_poll(hmi_comms_t *c, size_t g)
@@ -289,7 +319,9 @@ static uint32_t step_serve(hmi_comms_t *c, uint64_t now)
         execute_write(c, &job);
         return 0;
     }
-    /* 2. earliest due poll group */
+    /* 2. the heartbeat, when due */
+    if (execute_heartbeat(c, now)) return 0;
+    /* 3. earliest due poll group */
     int best = -1;
     size_t n_groups = hmi_tagdb_group_count(c->db);
     for (size_t g = 0; g < n_groups; g++) {
@@ -301,7 +333,7 @@ static uint32_t step_serve(hmi_comms_t *c, uint64_t now)
         execute_poll(c, (size_t)best);
         return 0;
     }
-    uint64_t soonest = UINT64_MAX;
+    uint64_t soonest = c->cfg.heartbeat_period_ms ? c->hb_next_ms : UINT64_MAX;
     for (size_t g = 0; g < n_groups; g++) {
         uint64_t due = hmi_tagdb_group(c->db, g)->next_due_ms;
         if (due < soonest) soonest = due;

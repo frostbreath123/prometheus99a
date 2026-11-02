@@ -59,6 +59,11 @@ void ui_login_tick(uint64_t now);
 void ui_login_reset(void);
 lv_obj_t *ui_mk_label(lv_obj_t *parent, int x, int y, const char *txt, lv_color_t col);
 lv_obj_t *ui_mk_button(lv_obj_t *parent, int x, int y, int w, int h, const char *txt, lv_event_cb_t cb, void *ud);
+/* A plain rectangle: no border, no rounding, no padding, never scrolls. Position and size in real pixels (not design
+ * units); the caller sets its background. */
+lv_obj_t *ui_mk_panel(lv_obj_t *parent, int x, int y, int w, int h);
+/* A label of a fixed width (design units) and what happens to a longer text: dots, clip or wrap. */
+void ui_label_box(lv_obj_t *l, lv_label_long_mode_t mode, int w);
 
 /* ui_ack.c: acknowledgement requests and the outcome text. The outcome is
  * shown on every bound label (one per screen that has an ACK status line). */

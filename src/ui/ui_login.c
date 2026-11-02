@@ -163,27 +163,28 @@ const char *ui_login_message(void) { return t_msg; }
 static void open_panel(void)
 {
     if (s_panel) return;
-    lv_obj_t *p = lv_obj_create(lv_screen_active());
-    lv_obj_set_pos(p, 0, ui_y(44));
-    lv_obj_set_size(p, ui_w, ui_h - ui_y(44));
+    lv_obj_t *p = ui_mk_panel(lv_screen_active(), 0, ui_y(44), ui_w, ui_h - ui_y(44));
     lv_obj_set_style_bg_color(p, C_BG, 0);
-    lv_obj_set_style_border_width(p, 0, 0);
-    lv_obj_set_style_radius(p, 0, 0);
-    lv_obj_set_style_pad_all(p, 0, 0);
-    lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
     s_panel = p;
-    ui_mk_label(p, 20, 12, "LOG IN: choose your name, enter your PIN", C_TEXT);
-    for (size_t i = 0; i < s_auth.n; i++)
-        ui_mk_button(p, 20 + (int)(i / 4) * 160, 50 + (int)(i % 4) * 66, 150, 56, s_auth.users[i].name, user_cb,
-                     (void *)(intptr_t)i);
+    /* make ui-sizes checks this panel from 640 x 400 up: the title wraps inside its column, a long name wraps inside
+     * its button, and the chosen name ends in dots before the PIN */
+    ui_label_box(ui_mk_label(p, 20, 4, "LOG IN: choose your name, enter your PIN", C_TEXT), LV_LABEL_LONG_WRAP, 330);
+    for (size_t i = 0; i < s_auth.n; i++) {
+        lv_obj_t *b = ui_mk_button(p, 20 + (int)(i / 4) * 160, 50 + (int)(i % 4) * 66, 150, 56, s_auth.users[i].name,
+                                   user_cb, (void *)(intptr_t)i);
+        lv_obj_t *l = lv_obj_get_child(b, 0);
+        ui_label_box(l, LV_LABEL_LONG_WRAP, 142);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    }
     s_user_lbl = ui_mk_label(p, 360, 12, "USER: -", C_MUTED);
+    ui_label_box(s_user_lbl, LV_LABEL_LONG_DOT, 214);
+    lv_obj_set_height(s_user_lbl, lv_font_get_line_height(ui_font()));
     s_pin_lbl = ui_mk_label(p, 580, 12, "PIN: ", C_TEXT);
     for (int k = 0; k < 12; k++)
         ui_mk_button(p, 360 + (k % 3) * 100, 50 + (k / 3) * 66, 92, 56, KEYS[k], key_cb, (void *)(intptr_t)k);
     ui_mk_button(p, 670, 50, 110, 56, "CANCEL", cancel_cb, NULL);
     s_msg_lbl = ui_mk_label(p, 360, 330, "", C_MUTED);
-    lv_label_set_long_mode(s_msg_lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_msg_lbl, ui_x(420));
+    ui_label_box(s_msg_lbl, LV_LABEL_LONG_WRAP, 420);
     s_sel = (size_t)-1;
     if (s_auth.n == 1) select_user(0);
     uint32_t lock = hmi_auth_locked_for(&s_auth, hmi_now_ms());

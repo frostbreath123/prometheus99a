@@ -270,8 +270,32 @@ static void test_trend_fields(void)
     }
 }
 
+static void test_heartbeat_register(void)
+{
+    SECTION("config: plc.heartbeat_register");
+    static hmi_app_cfg_t c, c2;
+    static char out[HMI_CONFIG_MAX_BYTES + 1];
+    char err[128];
+    const char *key = "\"response_timeout_ms\":300";
+    CHECK(parse(GOOD_CFG, &c, err) && !c.heartbeat);                    /* off when absent */
+    CHECK(strstr(hmi_config_serialize(&c, out, sizeof(out)) ? out : "", "heartbeat") == NULL);
+    CHECK(parse(replace(GOOD_CFG, key, "\"heartbeat_register\":0,\"response_timeout_ms\":300"), &c, err));
+    CHECK(c.heartbeat && c.heartbeat_register == 0);                    /* register 0 is a register */
+    CHECK(parse(replace(GOOD_CFG, key, "\"heartbeat_register\":65535,\"response_timeout_ms\":300"), &c, err));
+    CHECK(c.heartbeat && c.heartbeat_register == 65535);
+    /* the round trip keeps it (the on-device editor rewrites the configuration) */
+    size_t n = hmi_config_serialize(&c, out, sizeof(out));
+    CHECK(n > 0 && hmi_config_parse(out, n, &c2, err, sizeof(err)) && hmi_config_equal(&c, &c2));
+    CHECK(c2.heartbeat && c2.heartbeat_register == 65535);
+    CHECK(parse(GOOD_CFG, &c2, err) && !hmi_config_equal(&c, &c2));    /* on and off differ */
+    CHECK(!parse(replace(GOOD_CFG, key, "\"heartbeat_register\":65536,\"response_timeout_ms\":300"), &c, err));
+    CHECK(!parse(replace(GOOD_CFG, key, "\"heartbeat_register\":-1,\"response_timeout_ms\":300"), &c, err));
+    CHECK(!parse(replace(GOOD_CFG, key, "\"heartbeat_register\":\"7\",\"response_timeout_ms\":300"), &c, err));
+}
+
 int main(void)
 {
+    test_heartbeat_register();
     test_trend_fields();
     test_write_limits_and_timeouts();
     test_allowed_hosts();

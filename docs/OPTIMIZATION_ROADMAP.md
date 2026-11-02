@@ -203,6 +203,11 @@ Answers (2026-10-23, in chat; the owner answered the first two questions, the ot
 5. **Raspberry Pi model:** not given. Nothing was measured on a board; aarch64 was only cross-compiled and run under
    an emulator.
 
+Gate change (2026-11-02, owner's decision in chat): the stripped-size budget of the full profile in `bench/gate.sh` moved
+from 322,000 to 330,000 bytes (one 4,096-byte page plus slack) so that Modbus RTU ships in the device program. The tree
+before the move measured 321,712 bytes TCP-only and 329,904 bytes with RTU (`docs/OPTIMIZATION_CHANGELOG.md`, C17 and C18).
+The static-data budget and the lite budgets are unchanged.
+
 Questions the work raised and nobody has answered: is Modbus RTU expected in the first prototype; is a framebuffer
 of 16 bits per pixel acceptable on the target (the build now requires it); is it acceptable that the device has
 no authentication (the requirement of the mentor's document that assumed accounts is unmet).
