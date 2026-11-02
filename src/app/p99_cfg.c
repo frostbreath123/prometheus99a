@@ -220,20 +220,26 @@ static int refuse(ctx_t *c, const char *reason)
 }
 
 /* ------------------------------------------------------------------ audit */
-static bool audit_append(const char *path, uid_t owner, const char *body)
+/* key: the audit-chain key (hmi_auditchain.h) or NULL; with a key the line is sealed after the file's last seal. */
+static bool audit_append(const char *path, uid_t owner, const char *body, const uint8_t *key)
 {
     int fd = open(path, O_WRONLY | O_APPEND | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) return false;
     struct stat st;
     bool ok = fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_nlink == 1 && (st.st_uid == owner || st.st_uid == 0);
     if (ok) {
-        char line[512];
+        char line[512 + HMI_CHAIN_SEAL_LEN];
         hmi_wall_t w;
         hmi_wall_now(&w);
-        int n = snprintf(line, sizeof(line), "%llu %s\n", (unsigned long long)hmi_now_ms(), body);
-        ok = n > 0 && (size_t)n < sizeof(line);
+        int n = snprintf(line, 512, "%llu %s\n", (unsigned long long)hmi_now_ms(), body);
+        ok = n > 0 && (size_t)n < 512;
         if (ok) {
-            size_t m = hmi_audit_stamp_line(line, (size_t)n, sizeof(line), &w);
+            size_t m = hmi_audit_stamp_line(line, (size_t)n, 512, &w);
+            if (m > 0 && key) {
+                char prev[HMI_CHAIN_HEX + 1];
+                hmi_chain_prev_for(path, prev);
+                m = hmi_chain_seal(key, prev, line, m, line, sizeof(line));
+            }
             ok = m > 0 && write_all(fd, line, m) && fsync(fd) == 0;
         }
     }
@@ -394,7 +400,10 @@ static int cmd_apply(const opts_t *o)
     char body[300];
     snprintf(body, sizeof(body), "CONFIG_CHANGED serial=%u from_serial=%u changes=%u by=%s", (unsigned)new_serial,
              (unsigned)info.serial, (unsigned)effective, req.user[0] ? req.user : "-");
-    if (!audit_append(o->audit, owner, body)) {
+    bool audited = audit_append(o->audit, owner, body, info.audit_key_valid ? info.audit_key : NULL);
+    hmi_wipe(info.audit_key, sizeof(info.audit_key));
+    hmi_wipe(info.pin_key, sizeof(info.pin_key));
+    if (!audited) {
         rc = refuse(&c, "the audit record could not be written, so nothing was changed");
         close(dirfd);
         return rc;

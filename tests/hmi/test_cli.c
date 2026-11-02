@@ -6,8 +6,20 @@
 static bool run(hmi_cli_t *o, char *err, size_t cap, int n, const char *a1, const char *a2, const char *a3,
                 const char *a4, const char *a5, const char *a6)
 {
-    char *argv[8] = { (char *)"prometheus99", (char *)a1, (char *)a2, (char *)a3, (char *)a4, (char *)a5,
-                      (char *)a6, NULL };
+    /* hmi_cli_parse takes char ** like main(); the arguments are copied into writable buffers instead of casting
+     * const away (-Wcast-qual). */
+    static char buf[7][256];
+    const char *in[7] = { "prometheus99", a1, a2, a3, a4, a5, a6 };
+    char *argv[8] = { NULL };
+    for (int i = 0; i < 7; i++) {
+        if (!in[i]) continue;
+        if (strlen(in[i]) >= sizeof(buf[i])) { /* a test argument too long for the helper: stop, never truncate */
+            fprintf(stderr, "test_cli: argument longer than %u bytes\n", (unsigned)sizeof(buf[i]) - 1u);
+            abort();
+        }
+        snprintf(buf[i], sizeof(buf[i]), "%s", in[i]);
+        argv[i] = buf[i];
+    }
     return hmi_cli_parse(n, argv, o, err, cap);
 }
 
@@ -111,6 +123,23 @@ static void test_spool_option(void)
     CHECK(o.spool == NULL);                                  /* defaults after a failed parse */
 }
 
+static void test_report_option(void)
+{
+    SECTION("cli: --report");
+    hmi_cli_t o;
+    char err[128];
+    CHECK(run(&o, err, sizeof(err), 1, 0, 0, 0, 0, 0, 0));
+    CHECK(o.report == NULL);                                 /* default: no statistics are written */
+    CHECK(run(&o, err, sizeof(err), 3, "--report", "/tmp/p99.report", 0, 0, 0, 0));
+    CHECK(strcmp(o.report, "/tmp/p99.report") == 0);
+    CHECK(!run(&o, err, sizeof(err), 2, "--report", 0, 0, 0, 0, 0));                        /* no value */
+    CHECK(!run(&o, err, sizeof(err), 3, "--report", "", 0, 0, 0, 0));                       /* empty value */
+    CHECK(!run(&o, err, sizeof(err), 5, "--report", "a", "--report", "b", 0, 0));           /* repeated */
+    CHECK(!run(&o, err, sizeof(err), 3, "--report", "--audit", 0, 0, 0, 0));                /* the next flag is not a value */
+    CHECK(!run(&o, err, sizeof(err), 3, "--reports", "x", 0, 0, 0, 0));                     /* a near miss is not accepted */
+    CHECK(o.report == NULL);
+}
+
 static void test_config_security_options(void)
 {
     SECTION("cli: --config-key, --config-state and --unsigned-config");
@@ -149,6 +178,7 @@ int main(void)
 {
     test_config_security_options();
     test_spool_option();
+    test_report_option();
     test_defaults_and_valid();
     test_rejections();
     test_role_given_and_no_users_option();

@@ -3,10 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Exact powers of ten for 0 to 3 decimals. A table instead of pow(): the values are the same (pow(10, d) is exact for
+ * these d), and pow() was the only user of the libm pow and exp tables in the executable (about 8 KB). */
+static const double POW10[4] = { 1.0, 10.0, 100.0, 1000.0 };
+
 int hmi_view_decimals(double scale)
 {
     for (int d = 0; d <= 3; d++) {
-        double m = scale * pow(10.0, d);
+        double m = scale * POW10[d];
         if (fabs(m - floor(m + 0.5)) < 1e-9) return d;
     }
     return 3;
@@ -153,7 +157,7 @@ hmi_tone_t hmi_view_alarm_summary_tone(size_t unacked)
 double hmi_view_setpoint_step(const hmi_tag_cfg_t *c, double current, int dir)
 {
     double step = (c->write_max - c->write_min) / 100.0;
-    double q = pow(10.0, -hmi_view_decimals(c->scale));
+    double q = 1.0 / POW10[hmi_view_decimals(c->scale)];
     if (step < q) step = q;
     double v = current + (double)dir * step;
     if (v < c->write_min) v = c->write_min;

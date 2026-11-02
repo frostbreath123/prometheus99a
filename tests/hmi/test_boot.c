@@ -88,6 +88,25 @@ static void test_accepted(void)
     CHECK(strcmp(b.info, "Configuration: signed, serial 3") == 0);
     CHECK(cfg.n_tags == 2 && strcmp(cfg.host, "127.0.0.1") == 0);
     CHECK(audit_has("CONFIG_ACCEPTED serial=3"));
+    /* the record is sealed into the audit chain, and the chain key is handed to the caller */
+    uint8_t akey[HMI_CHAIN_KEY_LEN];
+    hmi_chain_derive_key(KEYB, sizeof(KEYB), akey);
+    CHECK(b.audit_key_valid && memcmp(b.audit_key, akey, sizeof(akey)) == 0);
+    char buf[1024];
+    size_t n = 0;
+    CHECK(hmi_fs_read_all(AUDIT, buf, sizeof(buf), &n) == HMI_FS_READ_OK && n > 0);
+    hmi_chain_report_t r;
+    memset(&r, 0, sizeof(r));
+    char prev[HMI_CHAIN_HEX + 1] = "";
+    hmi_chain_verify_text(akey, buf, n, prev, &r);
+    CHECK(r.lines == 1 && r.verified == 1);
+    /* a second start continues the same chain */
+    hmi_boot_config(&cli, &cfg, &b);
+    CHECK(hmi_fs_read_all(AUDIT, buf, sizeof(buf), &n) == HMI_FS_READ_OK);
+    memset(&r, 0, sizeof(r));
+    prev[0] = '\0';
+    hmi_chain_verify_text(akey, buf, n, prev, &r);
+    CHECK(r.lines == 2 && r.verified == 2);
     clean();
 }
 
@@ -104,6 +123,8 @@ static void test_rejections(void)
     hmi_boot_config(&cli, &cfg, &b);
     CHECK(safe_mode(&cfg, &b) && audit_has("CONFIG_REJECTED"));
     CHECK(strcmp(b.info, "Configuration: not loaded") == 0);
+    CHECK(!b.audit_key_valid);                          /* no key leaves boot for a rejected configuration */
+    CHECK(audit_has(" mac="));                          /* but the rejection itself is sealed: the key file was good */
 
     clean();
     setup_signed(1);

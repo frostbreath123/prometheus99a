@@ -16,7 +16,8 @@ APP="$B/prometheus99"
 C="$W/cfg.json"; K="$W/cfg.key"; S="$W/cfg.serial"; A="$W/audit.log"
 mode_of() { stat -c %a "$1" 2>/dev/null; }
 
-# Counts TCP connections made to 127.0.0.1:5502 while it runs (python3 if present).
+# Counts TCP connections made to 127.0.0.1:5502 while it runs (python3 if present). No other test may use this port
+# (cli-exec uses 5503, liveness 5504), or a parallel make counts their connections here.
 HAVE_PY=0; command -v python3 > /dev/null 2>&1 && HAVE_PY=1
 start_listener() {
   [ $HAVE_PY -eq 1 ] || return 0
@@ -110,6 +111,22 @@ c=$(conns); if [ "$c" = "n/a" ]; then ok "(python3 missing: connection count ski
 [ -f "$S" ] && [ "$(stat -c %s "$S")" = 16 ] && ok "serial state file written" || bad "serial state"
 grep -q "the service user can modify the configuration" "$W/app.out" && ok "warns when the service user owns the configuration" || bad "no ownership warning"
 
+echo "== the audit file is a keyed hash chain (p99_sign verify-log)"
+n_sealed=$(grep -c ' mac=[0-9a-f]\{32\}$' "$A")
+n_all=$(wc -l < "$A")
+[ "$n_all" -ge 2 ] && [ "$n_sealed" = "$n_all" ] && ok "every audit line is sealed ($n_all lines: the start-up verdict and the runtime records)" || { bad "unsealed audit lines ($n_sealed of $n_all)"; cat "$A"; }
+"$SIGN" verify-log --key "$K" "$A" > "$W/o" 2>&1; [ $? -eq 0 ] && grep -q "audit chain: INTACT" "$W/o" && ok "verify-log: INTACT" || { bad "verify-log on the untouched file"; cat "$W/o"; }
+cp "$A" "$W/a.keep"
+sed -i '1s/CONFIG_ACCEPTED/CONFIG_ACCEPTEX/' "$A"
+"$SIGN" verify-log --key "$K" "$A" > "$W/o" 2>&1; [ $? -eq 1 ] && grep -q "NOT INTACT" "$W/o" && grep -q "first bad line 1" "$W/o" && ok "verify-log: one changed character is found (exit 1, line 1)" || { bad "verify-log missed an edit"; cat "$W/o"; }
+cp "$W/a.keep" "$A"
+sed -i '1d' "$A"
+"$SIGN" verify-log --key "$K" "$A" > "$W/o" 2>&1; [ $? -eq 1 ] && ok "verify-log: a deleted first line is found" || { bad "verify-log missed a deletion"; cat "$W/o"; }
+head -c 32 /dev/urandom > "$W/other.key"
+cp "$W/a.keep" "$A"
+"$SIGN" verify-log --key "$W/other.key" "$A" > "$W/o" 2>&1; [ $? -eq 1 ] && ok "verify-log: another key fails" || bad "verify-log accepted another key"
+"$SIGN" verify-log "$A" > "$W/o" 2>&1; [ $? -eq 2 ] && ok "verify-log without --key: exit 2" || bad "verify-log usage"
+
 echo "== production executable: every kind of tampering is safe mode"
 # missing signature
 mv "$C.sig" "$W/sig.keep"
@@ -158,6 +175,26 @@ echo "== the signed text is parsed only after the signature verifies"
 echo '{ this is not json' > "$C"
 expect_rejected "unsigned garbage" config_corrupt
 cp "$W/c.keep" "$C" 2>/dev/null || cp "$W/good.json" "$C"
+
+echo "== named users (p99_sign add-user / del-user)"
+"$SIGN" sign --config "$C" --key "$K" > "$W/o" 2>&1 || { bad "re-sign before the user tests"; cat "$W/o"; }
+echo 2468 | "$SIGN" add-user --config "$C" --key "$K" --name op1 --role operator > "$W/o" 2>&1
+[ $? -eq 0 ] && grep -q "added user 'op1'; 1 user(s) now" "$W/o" && grep -q "^signed " "$W/o" && ok "add-user adds the user and signs" || { bad "add-user"; cat "$W/o"; }
+grep -q '"users":\[' "$C" && grep -q '"name":"op1","role":"operator"' "$C" && ok "the user is in the configuration" || bad "user missing from the file"
+grep -q 2468 "$C" && bad "the PIN is in the configuration file" || ok "the PIN itself is not stored"
+echo 12 | "$SIGN" add-user --config "$C" --key "$K" --name op2 --role operator > "$W/o" 2>&1; [ $? -eq 1 ] && ok "add-user refuses a 2-digit PIN" || bad "short PIN accepted"
+echo 1357 | "$SIGN" add-user --config "$C" --key "$K" --name op1 --role admin > "$W/o" 2>&1; [ $? -eq 1 ] && ok "add-user refuses a duplicate name" || bad "duplicate accepted"
+echo 1357 | "$SIGN" add-user --config "$C" --key "$K" --name op3 --role chief > "$W/o" 2>&1; [ $? -eq 2 ] && ok "add-user refuses an unknown role (exit 2)" || bad "unknown role accepted"
+"$SIGN" verify --config "$C" --key "$K" > "$W/o" 2>&1 && ok "the configuration with users verifies" || { bad "verify after add-user"; cat "$W/o"; }
+: > "$A"
+run_app --role admin
+grep -q "1 named users configured: log in on the screen to act" "$W/app.out" && ok "the program starts with login required" || { bad "login not enabled"; cat "$W/app.out"; }
+grep -q -- "--role is ignored when the configuration has users" "$W/app.out" && ok "a claimed --role is announced as ignored" || bad "no note about --role"
+"$SIGN" verify-log --key "$K" "$A" > "$W/o" 2>&1 && ok "the audit file of this run is intact" || { bad "audit chain after add-user"; cat "$W/o"; }
+"$SIGN" del-user --config "$C" --key "$K" --name nobody > "$W/o" 2>&1; [ $? -eq 1 ] && ok "del-user refuses an unknown user" || bad "del-user unknown"
+"$SIGN" del-user --config "$C" --key "$K" --name op1 > "$W/o" 2>&1 && ! grep -q '"users"' "$C" && ok "del-user removes the last user and signs" || { bad "del-user"; cat "$W/o"; }
+run_app
+grep -q "named users configured" "$W/app.out" && bad "login still on without users" || ok "without users the claimed role is used again"
 
 rm -rf "$W"
 [ $fail -eq 0 ] && echo "config exec test: PASS" || echo "config exec test: FAIL"

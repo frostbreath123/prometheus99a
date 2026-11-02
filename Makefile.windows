@@ -45,14 +45,14 @@ $(BUILD)/liblvgl.a: config/lv_conf.h | $(BUILD)
 	   $(CC) -std=gnu99 -Os -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident $(LVGL_INC) -c {} -o $$o'
 	ar rcs $@ $(BUILD)/lvgl/*.o
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit boot
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit boot auditchain auth rtu
 HMI_TEST_EXES = $(patsubst %,$(BUILD)/hmi_tests/test_%.exe,$(HMI_TESTS))
 
 # One program per module; each links the shared fixtures in test_support.c.
 $(BUILD)/hmi_tests/test_%.exe: tests/hmi/test_%.c tests/hmi/test_support.c tests/hmi/test_support.h \
                                $(HMI_CORE) $(HMI_PLAT) $(HMI_HDRS) | $(BUILD)
 	mkdir -p $(BUILD)/hmi_tests
-	$(CC) -std=c99 $(HMI_WARN) -O1 -g -Isrc/hmi $< tests/hmi/test_support.c $(HMI_CORE) $(HMI_PLAT) -o $@ -lm
+	$(CC) -std=c99 $(HMI_WARN) -O1 -g -DHMI_RTU -Isrc/hmi $< tests/hmi/test_support.c $(HMI_CORE) $(HMI_PLAT) -o $@ -lm
 
 $(BUILD)/test_e2e.exe: tests/hmi/test_modbus_e2e.c tests/hmi/fake_modbus_server.c src/hmi/plc_libmodbus.c \
                        $(HMI_CORE) $(HMI_PLAT) $(HMI_HDRS) $(LIBMODBUS_OBJ) | $(BUILD)

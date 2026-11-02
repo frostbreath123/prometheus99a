@@ -1,6 +1,31 @@
+# Authentication
+
+## Named-user PIN login (added 2026-11-02, phase 3 of `docs/MASTER_PROMPT_FINAL.md`)
+
+The product has a login again, of a smaller design than the one removed on 2026-10-23 (below). It is additive: a configuration without users behaves exactly as before (the role claimed with `--role`).
+
+- **Users** live in the signed configuration (`"users"`, at most 8): a name (letters, digits, `.`, `_`, `-`), a role (viewer, operator, engineer, admin), a random 16-byte salt and a 32-byte PIN hash. A user list that is not signed is never used: the configuration as a whole is refused (safe mode) or, in the test build with `--unsigned-config`, login stays off and a warning says so.
+- **PIN hash.** `pin_hash = PBKDF2-HMAC-SHA-512(password = HMAC-SHA-512(pin key, PIN), salt, 10,000 iterations)`, first 32 bytes. PBKDF2 is RFC 8018, implemented on Monocypher's HMAC-SHA-512 and checked against published test vectors (`tests/hmi/test_auth.c`, confirmed with Python's `hashlib`). The pin key is derived from the configuration key (`HMAC-SHA-512(configuration key, "prometheus99 pin hash v1")`, first 32 bytes), so a copy of the configuration alone does not let anyone test PINs offline. One check takes 12 ms on the development PC (x86-64); on a Raspberry Pi it will be slower (not measured).
+- **PIN rules.** 4 to 8 digits. Five wrong PINs in a row lock the login for 60 s; each further lock without a success in between doubles the time, up to 16 minutes; a correct PIN ends it. A logged-in user is logged out after 5 minutes without a touch (LVGL's input inactivity counter). The lock is kept in memory only.
+- **Screen.** With users, the header shows the user and role (for example `op1 OPERATOR`) or `LOGGED OUT`, and a LOGIN / LOGOUT button. LOGIN opens a panel with one button per user and a digit keypad (keys of 92 x 56 design pixels); the PIN is shown as stars. The Settings screen says "Login: named users with a PIN".
+- **Roles.** Nobody logged in means the viewer role. A claimed `--role` is ignored when the configuration has users (the program says so on standard error). The core checks the role on every privileged call, unchanged; the login decides which role and name the screen passes.
+- **Audit.** `LOGIN user=<name> role=<role>`, `LOGIN_FAILED user=<name> reason=wrong_pin`, `LOGIN_LOCKED user=<name> lock_s=<s>`, `LOGOUT user=<name> reason=operator|idle`, all sealed in the audit chain (`docs/STORAGE.md`). Every write and acknowledgement record carries the logged-in user's name in `user=`. A login whose record cannot be made durable is refused ("LOGIN REFUSED: audit unavailable"), as writes are; without an audit file at all there is nothing to record and login works.
+- **Managing users.** `echo 2468 | p99_sign add-user --config FILE --key KEY --name op1 --role operator` (the PIN comes from standard input, never from the command line) and `p99_sign del-user --config FILE --key KEY --name op1`. Both rewrite the configuration in the program's own format and sign it with the next serial. The running program reads users only at start.
+- **Recovery** (a forgotten PIN, everybody locked out): restart the service (the lock is in memory), or as the engineer delete and re-add the user with `p99_sign` and restart. Both need access to the device or its configuration key, which is the intended boundary.
+
+### Limits, stated plainly
+
+- A 4 to 8 digit PIN has at most 10^8 values. Online guessing is slowed by the lock; offline guessing needs the configuration key, and with it the whole PIN space can be searched (10,000 PBKDF2 iterations make that slower, not impossible). The PIN protects against casual use of an unattended panel, not against someone who has the device's files.
+- The lock is lost on a restart, so someone who can restart the program can keep guessing (about 5 PINs per restart).
+- Shared accounts are possible if users share PINs; the program cannot prevent that.
+- There is no encryption on Modbus TCP; the login does not change what can be read on the network.
+- Not run on target hardware: timing of the PIN check, readability and touch size on a real panel.
+
+The rest of this file is the record of the earlier design and its removal.
+
 # Authentication: removed from the product (2026-10-23)
 
-Status: there is no login, no password, no user store and no password hash in the product. This file replaces
+Status at that time: there is no login, no password, no user store and no password hash in the product. This file replaces
 the earlier description of milestone M1 (login, Argon2id, lockout, idle logout, accounts on the device). That
 design is in the Git history (commit `fe165c2` and the M3 and M4 commits that extended it) and was removed on the
 owner's instruction when the size and memory work of `docs/OPTIMIZATION_ROADMAP.md` was carried out.

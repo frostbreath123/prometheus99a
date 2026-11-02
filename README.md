@@ -104,10 +104,11 @@ make -f Makefile.linux killloop KILL_ROUNDS=150
 bash bench/gate.sh build-musl full                       # size and RAM gate
 ```
 
+- `make test` runs the core tests under AddressSanitizer and UBSan (build directory `build-linux-asan`); `make test-fast` runs them without instrumentation. With `STATIC=1` or `SAN=...`, `test` is the plain run in that build. Figures after phases 1 and 2 (2026-11-02, uncommitted work): core 3,307 checks, stripped 313,520 bytes, static data 373,416 bytes, idle 0.33 percent CPU and 81 thread wake-ups per second, write latency median 7.8 ms; see `docs/OPTIMIZATION_CHANGELOG.md`. `make -f Makefile.linux write-latency` measures the write latency. Phase 3 (uncommitted): the audit file is a keyed hash chain (`p99_sign verify-log`, `docs/STORAGE.md`), named-user PIN login (`p99_sign add-user`, `docs/AUTHENTICATION.md`), and Modbus RTU as a build option (`RTU=1`, `make -f Makefile.linux rtu-e2e`; not in the default device program because it does not fit the size gate).
 - Linux: core 3,275 checks (includes `test_boot`), view 208, config golden identical, UI scenario 205 assertions, end-to-end 75, 23 screenshots checked against the palette, the executable tests, the config helper tested through the single-file program (a link named `p99_cfg`), kill-loop 150 rounds.
 - Windows: core 3,253 checks, view 208, golden identical, UI scenario 205, end-to-end 75.
 - Size gate (full profile): stripped 317,616 bytes against a limit of 322,000; static data 438,024 against 440,000. **The margin is thin;** adding code or large static buffers fails the gate.
-- A parallel `make -j` run of the Linux suites once failed `config-exec` (probably a shared port or file). Run them serially. The CI workflow uses `-j4` and has never run, so it may hit this.
+- A parallel `make -j` run of the Linux suites failed `config-exec`: three scripts shared port 5502. Fixed in the uncommitted phase 1 work (each script has its own port); the three CI jobs then passed locally with `-j4`. The CI workflow has still never run on GitHub. `make -f Makefile.linux warnings` checks the own sources with strict warning flags.
 - Not run on the final tree: the sanitizer builds (AddressSanitizer, UBSan, ThreadSanitizer), the lite profile (`LITE=1`) and its gate.
 
 ## 6. Measurements (host and emulator only; details in `docs/FINAL_REPORT.md`)

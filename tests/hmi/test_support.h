@@ -67,6 +67,11 @@ hmi_tag_value_t val(fx_t *f, size_t i);
 
 /* ---- config text used by the config and runtime tests ---- */
 extern const char *GOOD_CFG;
+
+/* The configuration key of the kill-loop test (killloop_child seals its audit file with the key derived from it,
+ * killloop_verify checks the chain with the same). A test value, never a real key. */
+#define KILLLOOP_CFG_KEY { 0x6b, 0x69, 0x6c, 0x6c, 0x6c, 0x6f, 0x6f, 0x70, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x6b, 0x65, \
+                           0x79, 0x2d, 0x6e, 0x6f, 0x74, 0x2d, 0x72, 0x65, 0x61, 0x6c, 0x2d, 0x30, 0x31, 0x32, 0x33, 0x34 }
 bool parse(const char *s, hmi_app_cfg_t *c, char *err);
 
 #endif /* TEST_SUPPORT_H */

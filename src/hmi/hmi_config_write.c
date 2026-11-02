@@ -111,6 +111,24 @@ size_t hmi_config_serialize(const hmi_app_cfg_t *cfg, char *buf, size_t cap)
     put(&o, "{\"version\":1,\"writes_enabled\":%s,\"write_min_interval_ms\":%u,\"write_max_per_minute\":%u,"
             "\"trend_bucket_ms\":%u,\n", cfg->writes_enabled ? "true" : "false", (unsigned)cfg->write_min_interval_ms,
         (unsigned)cfg->write_max_per_minute, (unsigned)cfg->trend_bucket_ms);
+#ifdef HMI_RTU
+    if (cfg->transport == HMI_TRANSPORT_RTU) {
+        if (!string_safe(cfg->device) || (cfg->parity != 'N' && cfg->parity != 'E' && cfg->parity != 'O')) return 0;
+        put(&o, "\"plc\":{\"transport\":\"rtu\",\"device\":\"%s\",\"baud\":%u,\"parity\":\"%s\",\"stop_bits\":%u,\"unit\":%u,"
+                "\"response_timeout_ms\":%u,\"connect_timeout_ms\":%u",
+            cfg->device, (unsigned)cfg->baud, cfg->parity == 'N' ? "none" : cfg->parity == 'E' ? "even" : "odd",
+            (unsigned)cfg->stop_bits, (unsigned)cfg->unit, (unsigned)cfg->response_timeout_ms,
+            (unsigned)cfg->connect_timeout_ms);
+        if (cfg->n_allowed_devices > 0) {
+            put(&o, ",\"allowed_devices\":[");
+            for (size_t i = 0; i < cfg->n_allowed_devices; i++) {
+                if (!string_safe(cfg->allowed_devices[i])) return 0;
+                put(&o, "%s\"%s\"", i ? "," : "", cfg->allowed_devices[i]);
+            }
+            put(&o, "]");
+        }
+    } else
+#endif
     put(&o, "\"plc\":{\"host\":\"%s\",\"port\":%u,\"unit\":%u,\"response_timeout_ms\":%u,\"connect_timeout_ms\":%u",
         cfg->host, (unsigned)cfg->port, (unsigned)cfg->unit, (unsigned)cfg->response_timeout_ms,
         (unsigned)cfg->connect_timeout_ms);
@@ -145,7 +163,23 @@ size_t hmi_config_serialize(const hmi_app_cfg_t *cfg, char *buf, size_t cap)
         put_write(&o, t);
         put(&o, "}");
     }
-    put(&o, "\n]}\n");
+    put(&o, "\n]");
+    /* the users are written back unchanged, so an on-device settings change never drops them */
+    if (cfg->n_users > HMI_MAX_USERS) return 0;
+    if (cfg->n_users > 0) {
+        put(&o, ",\n\"users\":[");
+        for (size_t i = 0; i < cfg->n_users; i++) {
+            const hmi_user_cfg_t *u = &cfg->users[i];
+            if (!string_safe(u->name) || !enum_ok((int)u->role, 4)) return 0;
+            char salt[HMI_SALT_LEN * 2 + 1], hash[HMI_PIN_HASH_LEN * 2 + 1];
+            for (size_t k = 0; k < HMI_SALT_LEN; k++) snprintf(salt + 2 * k, 3, "%02x", u->salt[k]);
+            for (size_t k = 0; k < HMI_PIN_HASH_LEN; k++) snprintf(hash + 2 * k, 3, "%02x", u->pin_hash[k]);
+            put(&o, "%s\n{\"name\":\"%s\",\"role\":\"%s\",\"salt\":\"%s\",\"pin_hash\":\"%s\"}", i ? "," : "", u->name,
+                ROLE[u->role], salt, hash);
+        }
+        put(&o, "]");
+    }
+    put(&o, "}\n");
     if (!o.ok || o.len + 1 > cap) return 0;
     return o.len;
 }
@@ -171,8 +205,20 @@ bool hmi_config_equal(const hmi_app_cfg_t *a, const hmi_app_cfg_t *b)
         a->response_timeout_ms != b->response_timeout_ms || a->connect_timeout_ms != b->connect_timeout_ms ||
         a->writes_enabled != b->writes_enabled || a->write_min_interval_ms != b->write_min_interval_ms ||
         a->write_max_per_minute != b->write_max_per_minute || a->trend_bucket_ms != b->trend_bucket_ms ||
-        a->n_allowed != b->n_allowed || a->n_tags != b->n_tags)
+        a->n_allowed != b->n_allowed || a->n_tags != b->n_tags || a->n_users != b->n_users)
         return false;
+#ifdef HMI_RTU
+    if (a->transport != b->transport || strcmp(a->device, b->device) != 0 || a->baud != b->baud ||
+        a->parity != b->parity || a->stop_bits != b->stop_bits || a->n_allowed_devices != b->n_allowed_devices)
+        return false;
+    for (size_t i = 0; i < a->n_allowed_devices && i < HMI_MAX_ALLOWED; i++)
+        if (strcmp(a->allowed_devices[i], b->allowed_devices[i]) != 0) return false;
+#endif
+    for (size_t i = 0; i < a->n_users && i < HMI_MAX_USERS; i++)
+        if (strcmp(a->users[i].name, b->users[i].name) != 0 || a->users[i].role != b->users[i].role ||
+            memcmp(a->users[i].salt, b->users[i].salt, HMI_SALT_LEN) != 0 ||
+            memcmp(a->users[i].pin_hash, b->users[i].pin_hash, HMI_PIN_HASH_LEN) != 0)
+            return false;
     for (size_t i = 0; i < a->n_allowed; i++)
         if (strcmp(a->allowed_hosts[i], b->allowed_hosts[i]) != 0) return false;
     for (size_t i = 0; i < a->n_tags; i++)

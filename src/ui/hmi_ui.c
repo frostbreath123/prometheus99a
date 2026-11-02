@@ -7,7 +7,7 @@ hmi_ui_stats_t ui_stats;
 static int s_last_role = -1;
 static lv_timer_t *s_timer;
 static lv_obj_t *s_link, *s_alarm_sum, *s_hb;
-static lv_obj_t *s_ack_btn, *s_role_lbl;
+static lv_obj_t *s_ack_btn, *s_role_lbl, *s_login_btn;
 static bool s_hb_on;   /* set before hmi_ui_init; survives re-init */
 static char t_hb[UI_TXT];
 static char t_role[UI_TXT * 2];
@@ -73,19 +73,19 @@ void ui_set_text(lv_obj_t *lbl, char *cache, size_t cap, const char *txt)
 }
 
 /* ---- the role the core is given ---- */
-/* The claimed role the program was started with (hmi_ui_init). There is no login: the core still checks
- * this role on every privileged call. */
+/* With named users (ui_login.c) the logged-in user's role, viewer when nobody is logged in. Without users the claimed
+ * role the program was started with (hmi_ui_init). The core checks this role on every privileged call either way. */
 hmi_role_t ui_current_role(uint64_t now)
 {
     (void)now;
-    return ui_role;
+    return ui_login_enabled() ? ui_login_role() : ui_role;
 }
 
-/* Nobody is identified, so the audit trail gets no name ("-"). */
+/* The logged-in user's name for the audit trail; without users nobody is identified ("-"). */
 const char *ui_current_actor(uint64_t now)
 {
     (void)now;
-    return NULL;
+    return ui_login_enabled() ? ui_login_user() : NULL;
 }
 
 /* Header label and ACK button state follow the role. */
@@ -94,7 +94,19 @@ void ui_refresh_role(bool force)
     uint64_t now = hmi_now_ms();
     hmi_role_t role = ui_current_role(now);
     char buf[UI_TXT * 2];
-    if (s_role_lbl) {
+    if (s_role_lbl && ui_login_enabled()) {
+        const char *who = ui_login_user();
+        if (who) {
+            char r[16];
+            hmi_view_role_label(role, r, sizeof(r));
+            snprintf(buf, sizeof(buf), "%s %s", who, r);
+        } else {
+            snprintf(buf, sizeof(buf), "LOGGED OUT");
+        }
+        ui_set_text(s_role_lbl, t_role, sizeof(t_role), buf);
+        ui_set_color(s_role_lbl, &c_role, ui_tone_color(who ? HMI_TONE_TEXT : HMI_TONE_MUTED));
+        if (s_login_btn) lv_label_set_text(lv_obj_get_child(s_login_btn, 0), who ? "LOGOUT" : "LOGIN");
+    } else if (s_role_lbl) {
         hmi_view_role_label(role, buf, sizeof(buf));
         ui_set_text(s_role_lbl, t_role, sizeof(t_role), buf);
         ui_set_color(s_role_lbl, &c_role, ui_tone_color(role == HMI_ROLE_VIEWER ? HMI_TONE_MUTED : HMI_TONE_WARN));
@@ -122,6 +134,7 @@ static void binder_cb(lv_timer_t *t)
         hmi_view_heartbeat_text((uint32_t)(hmi_now_ms() / 1000u), hb, sizeof(hb));
         ui_set_text(s_hb, t_hb, sizeof(t_hb), hb);
     }
+    ui_login_tick(hmi_now_ms());
     if (s_role_lbl) ui_refresh_role(false);
     if (!ui_rt) return;
     char buf[UI_TXT * 2];
@@ -250,7 +263,8 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
     memset(t_role, 0, sizeof(t_role));
     ui_nav_reset();
     ui_ack_reset();
-    s_ack_btn = s_role_lbl = NULL;
+    s_ack_btn = s_role_lbl = s_login_btn = NULL;
+    ui_login_reset();
     s_last_role = -1;
     ui_rt = rt;
     c_link = c_alarm_sum = c_role = 0;
@@ -290,6 +304,10 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
     lv_obj_set_width(s_alarm_sum, ui_x(180));
     lv_label_set_long_mode(s_role_lbl, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_role_lbl, ui_x(196));
+    if (ui_login_enabled()) { /* named users: the user is shown next to a LOGIN / LOGOUT button */
+        lv_obj_set_width(s_role_lbl, ui_x(116));
+        s_login_btn = ui_mk_button(hdr, 632, 2, 82, 38, "LOGIN", ui_login_button_cb, NULL);
+    }
     s_ack_btn = ui_mk_button(hdr, 718, 2, 78, 38, "ACK ALL", ui_ack_all_cb, NULL);
 
     if (!rt) {
@@ -305,9 +323,20 @@ static void ui_build(hmi_runtime_t *rt, const char *banner)
     s_timer = lv_timer_create(binder_cb, 50, NULL);
 }
 
+void hmi_ui_set_users(const hmi_user_cfg_t *users, size_t n, const uint8_t *pin_key)
+{
+    ui_login_configure(users, n, pin_key);
+}
+
+void hmi_ui_press_login(void) { ui_login_button(); }
+void hmi_ui_login_select(size_t user) { ui_login_select(user); }
+void hmi_ui_login_key(char key) { ui_login_key(key); }
+bool hmi_ui_login_is_open(void) { return ui_login_open(); }
+const char *hmi_ui_login_message(void) { return ui_login_message(); }
+
 void hmi_ui_init(hmi_runtime_t *rt, hmi_role_t role, const char *banner)
 {
-    ui_role = role;
+    ui_role = ui_login_enabled() ? HMI_ROLE_VIEWER : role; /* with named users a claimed role means nothing */
     s_banner_set = banner != NULL;
     if (banner) snprintf(s_banner, sizeof(s_banner), "%s", banner);
     ui_build(rt, banner);

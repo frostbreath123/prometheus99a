@@ -697,9 +697,69 @@ static void test_write_async_capacity_and_expiry(void)
     fx_free(f, false);
 }
 
+/* ---- wake-up hook for the transport (the runtime's comms thread) ---- */
+static int g_notified;
+static void count_notify(void *u)
+{
+    (void)u;
+    g_notified++;
+}
+
+static void test_write_notify(void)
+{
+    SECTION("writes: the notify hook fires once each time a request enters the send queue, and only then");
+    fx_t *f = fx_new(false);
+    settle_connected(f);
+    async_log_t l;
+    memset(&l, 0, sizeof(l));
+    l.ret = true;
+    l.w = &f->w;
+    hmi_writes_set_audit(&f->w, sync_after, &l);
+    hmi_writes_set_notify(&f->w, count_notify, NULL);
+    hmi_write_rec_t r;
+    uint32_t id = 0;
+    g_notified = 0;
+
+    /* synchronous audit: queued inside the submit call */
+    CHECK(submit(f, 0, 41.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_PENDING);
+    CHECK(g_notified == 1);
+    run_until(f, g_now + 300); /* sent; sending does not notify */
+    CHECK(f->m.n_write == 1 && g_notified == 1);
+
+    /* refused by the role check: nothing queued, no wake-up */
+    CHECK(submit(f, 0, 42.0, HMI_ROLE_VIEWER, &id) != HMI_WRS_OK);
+    CHECK(g_notified == 1);
+
+    /* asynchronous audit: no wake-up while RESERVED, one when it becomes durable, none for a repeated report */
+    hmi_writes_set_audit_async(&f->w, async_hook, &l);
+    CHECK(submit(f, 0, 43.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_RESERVED);
+    CHECK(g_notified == 1);
+    hmi_writes_audit_done(&f->w, id, true, g_now);
+    CHECK(g_notified == 2);
+    hmi_writes_audit_done(&f->w, id, true, g_now);
+    CHECK(g_notified == 2);
+    run_until(f, g_now + 300);
+
+    /* a record that could not be made durable is rejected: no wake-up */
+    CHECK(submit(f, 0, 44.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    hmi_writes_audit_done(&f->w, id, false, g_now);
+    CHECK(hmi_writes_status(&f->w, id, &r) && r.state == HMI_WR_REJECTED);
+    CHECK(g_notified == 2);
+
+    /* removed: no more calls */
+    hmi_writes_set_audit_async(&f->w, NULL, NULL);
+    hmi_writes_set_notify(&f->w, NULL, NULL);
+    CHECK(submit(f, 0, 45.0, HMI_ROLE_OPERATOR, &id) == HMI_WRS_OK);
+    CHECK(g_notified == 2);
+    fx_free(f, false);
+}
+
 int main(void)
 {
     test_write_rate_limit();
+    test_write_notify();
     test_write_revalidation();
     test_write_async_audit();
     test_write_async_capacity_and_expiry();

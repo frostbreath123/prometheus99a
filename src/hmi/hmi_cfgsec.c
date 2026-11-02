@@ -3,6 +3,7 @@
 #include "hmi_util.h" /* hmi_crc32, hmi_wipe */
 #include "hmi_platform.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define STATE_SIZE 16u
@@ -122,9 +123,10 @@ static hmi_cfgsec_result_t finish(hmi_cfgsec_info_t *info, hmi_cfgsec_result_t r
     return r;
 }
 
-hmi_cfgsec_result_t hmi_cfgsec_load(const hmi_cfgsec_paths_t *paths, hmi_app_cfg_t *out, hmi_cfgsec_info_t *info)
+/* cfg: a buffer of HMI_CONFIG_MAX_BYTES + 1 bytes for the configuration file (hmi_cfgsec_load). */
+static hmi_cfgsec_result_t load_with(const hmi_cfgsec_paths_t *paths, hmi_app_cfg_t *out, hmi_cfgsec_info_t *info,
+                                     uint8_t *cfg)
 {
-    static uint8_t cfg[HMI_CONFIG_MAX_BYTES + 1];
     hmi_cfgsec_info_t local;
     if (!info) info = &local;
     memset(info, 0, sizeof(*info));
@@ -156,10 +158,13 @@ hmi_cfgsec_result_t hmi_cfgsec_load(const hmi_cfgsec_paths_t *paths, hmi_app_cfg
         return finish(info, HMI_CFGSEC_KEY_MODE, "the configuration key file is accessible to others or writable by the group");
     }
     info->key_writable_by_service = hmi_fs_writable_by_me(paths->key_path);
+    hmi_chain_derive_key(key, HMI_CFGSEC_KEY_LEN, info->audit_key);
+    hmi_auth_derive_key(key, HMI_CFGSEC_KEY_LEN, info->pin_key);
+    info->audit_key_valid = true;
 
     /* --- configuration bytes (not parsed yet) --- */
     size_t cn = 0;
-    hmi_fs_read_t cr = hmi_fs_read_all(paths->config_path, cfg, sizeof(cfg), &cn);
+    hmi_fs_read_t cr = hmi_fs_read_all(paths->config_path, cfg, HMI_CONFIG_MAX_BYTES + 1, &cn);
     if (cr == HMI_FS_READ_TOO_BIG) {
         hmi_wipe(key, sizeof(key));
         return finish(info, HMI_CFGSEC_CONFIG_TOO_BIG, "the configuration file is larger than the limit");
@@ -227,7 +232,7 @@ hmi_cfgsec_result_t hmi_cfgsec_load(const hmi_cfgsec_paths_t *paths, hmi_app_cfg
         snprintf(m, sizeof(m), "the signed configuration is invalid: %s", perr);
         return finish(info, HMI_CFGSEC_CONFIG_INVALID, m);
     }
-    if (out->n_allowed == 0) {
+    if (!hmi_config_has_allow_list(out)) {
         memset(out, 0, sizeof(*out));
         return finish(info, HMI_CFGSEC_HOST_NOT_ALLOWED, "a signed configuration needs plc.allowed_hosts");
     }
@@ -239,4 +244,24 @@ hmi_cfgsec_result_t hmi_cfgsec_load(const hmi_cfgsec_paths_t *paths, hmi_app_cfg
     if (paths->state_path && (!have_state || serial > stored)) info->serial_recorded = hmi_cfgsec_state_save(paths->state_path, serial);
     else if (paths->state_path) info->serial_recorded = true; /* already stored */
     return finish(info, HMI_CFGSEC_OK, "configuration verified");
+}
+
+/* The 32 KB file buffer is needed only during this call (at boot, or once in the tools), so it is taken from the heap
+ * and given back instead of being reserved as static data for the whole run. */
+hmi_cfgsec_result_t hmi_cfgsec_load(const hmi_cfgsec_paths_t *paths, hmi_app_cfg_t *out, hmi_cfgsec_info_t *info)
+{
+    uint8_t *cfg = (uint8_t *)malloc(HMI_CONFIG_MAX_BYTES + 1);
+    if (!cfg) {
+        hmi_cfgsec_info_t local;
+        if (!info) info = &local;
+        memset(info, 0, sizeof(*info));
+        if (out) memset(out, 0, sizeof(*out));
+        return finish(info, HMI_CFGSEC_CONFIG_UNREADABLE, "no memory to read the configuration file");
+    }
+    hmi_cfgsec_info_t local; /* without a caller's info the derived audit key must not stay on the stack */
+    bool own = (info == NULL);
+    hmi_cfgsec_result_t r = load_with(paths, out, own ? &local : info, cfg);
+    if (own) hmi_wipe(&local, sizeof(local));
+    free(cfg);
+    return r;
 }

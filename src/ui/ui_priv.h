@@ -44,6 +44,19 @@ hmi_role_t ui_current_role(uint64_t now);
 const char *ui_current_actor(uint64_t now);
 void ui_refresh_role(bool force);
 void ui_theme_install(void);   /* ui_theme.c: the only styles of the program */
+/* ui_login.c: named-user login (hmi_auth.h); disabled without users, then the claimed role is used. */
+void ui_login_configure(const hmi_user_cfg_t *users, size_t n, const uint8_t *pin_key);
+bool ui_login_enabled(void);
+hmi_role_t ui_login_role(void);
+const char *ui_login_user(void);
+void ui_login_button(void);
+void ui_login_button_cb(lv_event_t *e);
+void ui_login_select(size_t user);
+void ui_login_key(char key);
+bool ui_login_open(void);
+const char *ui_login_message(void);
+void ui_login_tick(uint64_t now);
+void ui_login_reset(void);
 lv_obj_t *ui_mk_label(lv_obj_t *parent, int x, int y, const char *txt, lv_color_t col);
 lv_obj_t *ui_mk_button(lv_obj_t *parent, int x, int y, int w, int h, const char *txt, lv_event_cb_t cb, void *ud);
 

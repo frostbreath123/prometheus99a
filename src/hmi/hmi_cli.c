@@ -22,13 +22,15 @@ static void defaults(hmi_cli_t *o)
     o->config_state = "/var/lib/prometheus99/config.serial";
     o->unsigned_config = false;
     o->spool = NULL;
+    o->report = NULL;
 }
 
 bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_cap)
 {
-    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_CONFIG_KEY, F_CONFIG_STATE, F_UNSIGNED, F_SPOOL, F_COUNT };
+    enum { F_CONFIG, F_AUDIT, F_ALARMS, F_FB, F_TOUCH, F_ROLE, F_CONFIG_KEY, F_CONFIG_STATE, F_UNSIGNED, F_SPOOL, F_REPORT, F_COUNT };
     static const char *const FLAGS[F_COUNT] = { "--config", "--audit", "--alarms", "--fb", "--touch", "--role",
-                                              "--config-key", "--config-state", "--unsigned-config", "--spool" };
+                                              "--config-key", "--config-state", "--unsigned-config", "--spool",
+                                              "--report" };
     bool seen[F_COUNT] = { false };
     hmi_cli_t o;
     defaults(&o);
@@ -63,6 +65,7 @@ bool hmi_cli_parse(int argc, char **argv, hmi_cli_t *out, char *err, size_t err_
             case F_CONFIG_KEY: o.config_key = val; break;
             case F_CONFIG_STATE: o.config_state = val; break;
             case F_SPOOL: o.spool = val; break;
+            case F_REPORT: o.report = val; break;
             case F_ROLE:
                 o.role_given = true;
                 if (!hmi_role_parse(val, &o.role)) {

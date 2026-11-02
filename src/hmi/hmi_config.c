@@ -420,7 +420,7 @@ static bool parse_tag(ctx_t *c, int obj, hmi_tag_cfg_t *t)
 
 /* ---- plc ---- */
 
-enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN, PL_ALLOWED };
+enum { PL_HOST, PL_PORT, PL_UNIT, PL_RESP, PL_CONN, PL_ALLOWED, PL_TRANSPORT, PL_DEVICE, PL_BAUD, PL_PARITY, PL_STOP, PL_DEVICES };
 
 /* "allowed_hosts": the only PLC addresses this device may ever connect to, as
  * dotted-quad literals. Optional for the parser (unsigned test configurations
@@ -443,6 +443,28 @@ static bool plc_allowed_hosts(ctx_t *c, int val, void *base)
     return true;
 }
 
+#ifdef HMI_RTU
+/* "allowed_devices": the only serial devices an RTU configuration may open, as "allowed_hosts" is for TCP. */
+static bool plc_allowed_devices(ctx_t *c, int val, void *base)
+{
+    hmi_app_cfg_t *cfg = (hmi_app_cfg_t *)base;
+    const jsmntok_t *arr = &c->t[val];
+    if (arr->type != JSMN_ARRAY) return fail(c, "allowed_devices must be array", NULL);
+    if (arr->size < 1 || arr->size > HMI_MAX_ALLOWED) return fail(c, "allowed_devices count", NULL);
+    for (int k = 0; k < arr->size; k++) {
+        char *dst = cfg->allowed_devices[k];
+        if (!get_str_ex(c, val + 1 + k, dst, HMI_DEVICE_LEN, "allowed_devices", false)) return false;
+        for (int j = 0; j < k; j++)
+            if (strcmp(cfg->allowed_devices[j], dst) == 0) return fail(c, "duplicate allowed device", dst);
+        cfg->n_allowed_devices = (size_t)k + 1u;
+    }
+    return true;
+}
+static const enum_opt_t TRANSPORT_OPTS[] = { { "tcp", HMI_TRANSPORT_TCP }, { "rtu", HMI_TRANSPORT_RTU }, { NULL, 0 } };
+static const enum_opt_t PARITY_OPTS[] = { { "none", 'N' }, { "even", 'E' }, { "odd", 'O' }, { NULL, 0 } };
+ENUM_IS_INT(hmi_app_cfg_t, transport);
+#endif
+
 static const field_t PLC_FIELDS[] = {
     { "host", K_STR, offsetof(hmi_app_cfg_t, host), HMI_HOST_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "port", K_U16, offsetof(hmi_app_cfg_t, port), 0, 1, 65535, NULL, NULL, NO_FLAG_OFF, 0, NULL },
@@ -450,6 +472,14 @@ static const field_t PLC_FIELDS[] = {
     { "response_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, response_timeout_ms), 0, 50, HMI_RESPONSE_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "connect_timeout_ms", K_U32, offsetof(hmi_app_cfg_t, connect_timeout_ms), 0, 50, HMI_CONNECT_TIMEOUT_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "allowed_hosts", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, plc_allowed_hosts },
+#ifdef HMI_RTU
+    { "transport", K_ENUM, offsetof(hmi_app_cfg_t, transport), 8, 0, 0, TRANSPORT_OPTS, "unknown transport", NO_FLAG_OFF, 0, NULL },
+    { "device", K_STR, offsetof(hmi_app_cfg_t, device), HMI_DEVICE_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "baud", K_U32, offsetof(hmi_app_cfg_t, baud), 0, 1200, 115200, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "parity", K_ENUM, offsetof(hmi_app_cfg_t, parity), 8, 0, 0, PARITY_OPTS, "unknown parity", NO_FLAG_OFF, 0, NULL },
+    { "stop_bits", K_U8, offsetof(hmi_app_cfg_t, stop_bits), 0, 1, 2, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "allowed_devices", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, plc_allowed_devices },
+#endif
 };
 static const section_t PLC_SECTION = { "plc", PLC_FIELDS, sizeof(PLC_FIELDS) / sizeof(PLC_FIELDS[0]), false };
 
@@ -458,6 +488,25 @@ static bool parse_plc(ctx_t *c, int obj, hmi_app_cfg_t *cfg)
     seen_t st;
     if (!expect_object(c, obj, "plc")) return false;
     if (!parse_object(c, obj, &PLC_SECTION, cfg, &st)) return false;
+#ifdef HMI_RTU
+    const unsigned rtu_keys = (1u << PL_DEVICE) | (1u << PL_BAUD) | (1u << PL_PARITY) | (1u << PL_STOP) | (1u << PL_DEVICES);
+    if (cfg->transport == HMI_TRANSPORT_RTU) {
+        /* a serial line: a device instead of host and port; the same unit, timeouts and rules otherwise */
+        if (st.seen & ((1u << PL_HOST) | (1u << PL_PORT) | (1u << PL_ALLOWED)))
+            return fail(c, "transport rtu takes device, not host, port or allowed_hosts", NULL);
+        if (!(st.seen & (1u << PL_DEVICE))) return fail(c, "transport rtu needs device", NULL);
+        if (strncmp(cfg->device, "/dev/", 5) != 0 || strstr(cfg->device, "..") != NULL)
+            return fail(c, "device must be a path under /dev/", cfg->device);
+        if (!(st.seen & (1u << PL_BAUD))) cfg->baud = 19200;
+        if (!(st.seen & (1u << PL_PARITY))) cfg->parity = 'E';
+        if (!(st.seen & (1u << PL_STOP))) cfg->stop_bits = 1;
+        if (!(st.seen & (1u << PL_UNIT))) return fail(c, "plc needs unit", NULL);
+        if (!(st.seen & (1u << PL_RESP))) cfg->response_timeout_ms = 500;
+        if (!(st.seen & (1u << PL_CONN))) cfg->connect_timeout_ms = 1000;
+        return true;
+    }
+    if (st.seen & rtu_keys) return fail(c, "device, baud, parity, stop_bits and allowed_devices need transport rtu", NULL);
+#endif
     if ((st.seen & ((1u << PL_HOST) | (1u << PL_PORT))) != ((1u << PL_HOST) | (1u << PL_PORT)))
         return fail(c, "plc needs host and port", NULL);
     if (!valid_ipv4(cfg->host)) return fail(c, "host must be an IPv4 literal", cfg->host);
@@ -498,7 +547,80 @@ static bool top_tags(ctx_t *c, int val, void *base)
     return true;
 }
 
-enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS, TOP_WMIN, TOP_WMAX, TOP_TREND };
+/* ---- users (hmi_auth.h) ---- */
+
+enum { US_NAME, US_ROLE, US_SALT, US_HASH };
+ENUM_IS_INT(hmi_user_cfg_t, role);
+
+static bool hex_decode(const char *hex, uint8_t *out, size_t n)
+{
+    if (strlen(hex) != 2 * n) return false;
+    for (size_t i = 0; i < 2 * n; i++) {
+        char ch = hex[i];
+        int v = (ch >= '0' && ch <= '9') ? ch - '0' : (ch >= 'a' && ch <= 'f') ? ch - 'a' + 10 : -1;
+        if (v < 0) return false;
+        if (i % 2 == 0) out[i / 2] = (uint8_t)(v << 4);
+        else out[i / 2] |= (uint8_t)v;
+    }
+    return true;
+}
+
+static bool name_safe(const char *s)
+{
+    if (!s[0]) return false;
+    for (; *s; s++) {
+        char ch = *s;
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' ||
+              ch == '-'))
+            return false;
+    }
+    return true;
+}
+
+static bool parse_user(ctx_t *c, int obj, hmi_user_cfg_t *u)
+{
+    if (!expect_object(c, obj, "user")) return false;
+    memset(u, 0, sizeof(*u));
+    /* The name and role go straight into the user; salt and hash are read as text afterwards and decoded. */
+    static const field_t F[] = {
+        { "name", K_STR, offsetof(hmi_user_cfg_t, name), HMI_NAME_LEN, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+        { "role", K_ENUM, offsetof(hmi_user_cfg_t, role), 16, 0, 0, ROLE_OPTS, "unknown role", NO_FLAG_OFF, 0, NULL },
+        { "salt", K_DEFER, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+        { "pin_hash", K_DEFER, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    };
+    static const section_t S = { "user", F, sizeof(F) / sizeof(F[0]), false };
+    seen_t st;
+    if (!parse_object(c, obj, &S, u, &st)) return false;
+    if ((st.seen & 15u) != 15u) return fail(c, "user needs name, role, salt and pin_hash", u->name[0] ? u->name : NULL);
+    if (!name_safe(u->name)) return fail(c, "user name may hold only letters, digits, '.', '_' and '-'", u->name);
+    char hex[HMI_PIN_HASH_LEN * 2 + 2];
+    if (!get_str_ex(c, st.deferred[US_SALT], hex, HMI_SALT_LEN * 2 + 2, "salt", false) ||
+        !hex_decode(hex, u->salt, HMI_SALT_LEN))
+        return fail(c, "user salt must be 32 lower-case hex digits", u->name);
+    if (!get_str_ex(c, st.deferred[US_HASH], hex, sizeof(hex), "pin_hash", false) ||
+        !hex_decode(hex, u->pin_hash, HMI_PIN_HASH_LEN))
+        return fail(c, "user pin_hash must be 64 lower-case hex digits", u->name);
+    return true;
+}
+
+static bool top_users(ctx_t *c, int val, void *base)
+{
+    hmi_app_cfg_t *out = ((top_t *)base)->out;
+    const jsmntok_t *arr = &c->t[val];
+    if (arr->type != JSMN_ARRAY) return fail(c, "users must be array", NULL);
+    if (arr->size < 1 || arr->size > HMI_MAX_USERS) return fail(c, "user count", NULL);
+    int ui = val + 1;
+    for (int k = 0; k < arr->size; k++) {
+        if (!parse_user(c, ui, &out->users[k])) return false;
+        for (int j = 0; j < k; j++)
+            if (strcmp(out->users[j].name, out->users[k].name) == 0) return fail(c, "duplicate user", out->users[k].name);
+        ui = skip(c, ui);
+        out->n_users++;
+    }
+    return true;
+}
+
+enum { TOP_VERSION, TOP_WRITES, TOP_PLC, TOP_TAGS, TOP_WMIN, TOP_WMAX, TOP_TREND, TOP_USERS };
 
 static const field_t TOP_FIELDS[] = {
     { "version", K_U32, offsetof(top_t, version), 0, 1, 1, NULL, NULL, NO_FLAG_OFF, 0, NULL },
@@ -508,6 +630,7 @@ static const field_t TOP_FIELDS[] = {
     { "write_min_interval_ms", K_U32, offsetof(top_t, write_min_interval_ms), 0, 100, 3600000, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "write_max_per_minute", K_U32, offsetof(top_t, write_max_per_minute), 0, 1, 600, NULL, NULL, NO_FLAG_OFF, 0, NULL },
     { "trend_bucket_ms", K_U32, offsetof(top_t, trend_bucket_ms), 0, HMI_TREND_BUCKET_MIN_MS, HMI_TREND_BUCKET_MAX_MS, NULL, NULL, NO_FLAG_OFF, 0, NULL },
+    { "users", K_CUSTOM, 0, 0, 0, 0, NULL, NULL, NO_FLAG_OFF, 0, top_users },
 };
 static const section_t TOP_SECTION = { NULL, TOP_FIELDS, sizeof(TOP_FIELDS) / sizeof(TOP_FIELDS[0]), true };
 
@@ -591,7 +714,16 @@ bool hmi_config_save_text(const char *path, const char *json, size_t len, char *
 
 bool hmi_config_host_allowed(const hmi_app_cfg_t *cfg)
 {
-    if (!cfg || cfg->n_allowed == 0 || cfg->host[0] == '\0') return false;
+    if (!cfg) return false;
+#ifdef HMI_RTU
+    if (cfg->transport == HMI_TRANSPORT_RTU) {
+        if (cfg->n_allowed_devices == 0 || cfg->device[0] == '\0') return false;
+        for (size_t i = 0; i < cfg->n_allowed_devices; i++)
+            if (strcmp(cfg->allowed_devices[i], cfg->device) == 0) return true;
+        return false;
+    }
+#endif
+    if (cfg->n_allowed == 0 || cfg->host[0] == '\0') return false;
     for (size_t i = 0; i < cfg->n_allowed; i++)
         if (strcmp(cfg->allowed_hosts[i], cfg->host) == 0) return true;
     return false;

@@ -1,4 +1,5 @@
 #include "hmi_store.h"
+#include "hmi_util.h" /* hmi_wipe */
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,7 +33,14 @@ bool hmi_store_init(hmi_store_t *s, const hmi_store_cfg_t *cfg)
     if (used == 0) return false;
     if (cfg->max_bytes != 0 && (cfg->generations < 1u || cfg->generations > 9u)) return false;
     s->cfg = *cfg;
-    for (unsigned i = 0; i < HMI_STORE_TARGETS; i++) s->cfg.path[i] = s->path[i];
+    for (unsigned i = 0; i < HMI_STORE_TARGETS; i++) {
+        s->cfg.path[i] = s->path[i];
+        s->cfg.chain_key[i] = NULL; /* the copy below is used, never the caller's buffer */
+        if (cfg->chain_key[i] && s->path[i][0] && cfg->kind[i] == HMI_STORE_APPEND) {
+            memcpy(s->chain_key[i], cfg->chain_key[i], HMI_CHAIN_KEY_LEN);
+            s->chained[i] = true;
+        }
+    }
     s->io = cfg->io ? *cfg->io : s_platform_io;
     if (!s->io.append || !s->io.replace || !s->io.size || !s->io.rename) return false;
     s->cfg.io = &s->io;
@@ -53,6 +61,7 @@ bool hmi_store_init(hmi_store_t *s, const hmi_store_cfg_t *cfg)
 
 void hmi_store_destroy(hmi_store_t *s)
 {
+    hmi_wipe(s->chain_key, sizeof(s->chain_key));
     if (!s->ready) return;
     hmi_event_destroy(&s->done);
     hmi_event_destroy(&s->wake);
@@ -198,7 +207,8 @@ static bool do_append(hmi_store_t *s, const hmi_store_item_t *it)
         s->file_size[t] = sz;
         s->size_known[t] = true;
     }
-    if (s->cfg.max_bytes != 0 && s->file_size[t] > 0 && s->file_size[t] + it->len > s->cfg.max_bytes) {
+    size_t need = it->len + (s->chained[t] ? HMI_CHAIN_SEAL_LEN : 0u);
+    if (s->cfg.max_bytes != 0 && s->file_size[t] > 0 && s->file_size[t] + need > s->cfg.max_bytes) {
         if (!rotate(s, t)) {
             s->size_known[t] = false;
             return false;
@@ -208,9 +218,18 @@ static bool do_append(hmi_store_t *s, const hmi_store_item_t *it)
         s->stats.rotations++;
         hmi_mutex_unlock(&s->lock);
         if (s->cfg.marker[t]) {
-            char line[64];
-            int n = snprintf(line, sizeof(line), "%llu LOG_ROTATED generations=%u\n",
+            char line[64 + 6 + HMI_CHAIN_HEX + HMI_CHAIN_SEAL_LEN];
+            char prev[HMI_CHAIN_HEX + 1] = "";
+            int n;
+            if (s->chained[t]) { /* the new file names the seal it continues from, so it can be checked on its own */
+                hmi_chain_prev_for(p, prev);
+                n = snprintf(line, sizeof(line), "%llu LOG_ROTATED generations=%u prev=%s\n",
+                             (unsigned long long)hmi_now_ms(), (unsigned)s->cfg.generations, prev);
+                if (n > 0) n = (int)hmi_chain_seal(s->chain_key[t], prev, line, (size_t)n, line, sizeof(line));
+            } else {
+                n = snprintf(line, sizeof(line), "%llu LOG_ROTATED generations=%u\n",
                              (unsigned long long)hmi_now_ms(), (unsigned)s->cfg.generations);
+            }
             if (n <= 0 || !s->io.append(p, line, (size_t)n)) {
                 s->size_known[t] = false;
                 return false;
@@ -218,11 +237,23 @@ static bool do_append(hmi_store_t *s, const hmi_store_item_t *it)
             s->file_size[t] = (uint64_t)n;
         }
     }
-    if (!s->io.append(p, it->data, it->len)) {
+    const char *data = it->data;
+    size_t len = it->len;
+    char sealed[HMI_STORE_REC_MAX + HMI_CHAIN_SEAL_LEN];
+    if (s->chained[t]) {
+        /* The previous seal is read from the file itself, not remembered: the start-up record and the root helper
+         * p99_cfg append to the same audit file (hmi_auditchain.h). A record that cannot be sealed is not written. */
+        char prev[HMI_CHAIN_HEX + 1];
+        hmi_chain_prev_for(p, prev);
+        len = hmi_chain_seal(s->chain_key[t], prev, it->data, it->len, sealed, sizeof(sealed));
+        if (len == 0) return false;
+        data = sealed;
+    }
+    if (!s->io.append(p, data, len)) {
         s->size_known[t] = false; /* a failed append may have left a partial record */
         return false;
     }
-    s->file_size[t] += it->len;
+    s->file_size[t] += len;
     return true;
 }
 

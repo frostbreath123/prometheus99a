@@ -47,18 +47,47 @@ MB_OBJS =
 endif
 # LITE=1 builds the lite profile (docs/OPTIMIZATION_ROADMAP.md, phase 5): no trend screen, no CONFIG view, at most
 # 32 tags, no chart widget. Use another BUILD directory for it, for example BUILD=build-musl-lite.
+# The device program also contains the root helper p99_cfg (MULTICALL below). The lite profile leaves it out: it applies
+# only the requests that the CONFIG view leaves, and the lite profile has no CONFIG view.
+MULTICALL_SRC = src/app/p99_cfg.c
+MULTICALL_DEF = -DP99_MULTICALL
 ifeq ($(LITE),1)
 CFLAGS += -DP99_LITE=1
 UI_SRC := $(filter-out src/ui/ui_trends.c src/ui/ui_config.c,$(UI_SRC))
+MULTICALL_SRC =
+MULTICALL_DEF =
 endif
 # SAN=address (AddressSanitizer and UBSan) or SAN=thread (ThreadSanitizer) builds the test programs instrumented:
 #   make -f Makefile.linux SAN=address BUILD=build-asan test
 ifneq ($(SAN),)
 , := ,
-SAN_FLAGS = $(if $(filter address,$(SAN)),-fsanitize=address$(,)undefined,-fsanitize=$(SAN)) -fno-omit-frame-pointer -g -O1
+SAN_FLAGS = $(if $(filter address,$(SAN)),-fsanitize=address$(,)undefined -fno-sanitize-recover=all,-fsanitize=$(SAN)) -fno-omit-frame-pointer -g -O1
 CFLAGS += $(SAN_FLAGS)
 LDFLAGS += $(SAN_FLAGS)
 endif
+# EXTRA_CFLAGS adds flags to every compile, for measurement builds, for example the lock counters:
+#   make -f Makefile.linux STATIC=1 CC=musl-gcc BUILD=build-locks EXTRA_CFLAGS=-DHMI_LOCK_STATS hmi-bench
+CFLAGS += $(EXTRA_CFLAGS)
+# RTU=1 builds Modbus RTU into the device program (HMI_RTU: plc.transport "rtu", src/hmi/plc_libmodbus.h). It does not
+# fit the size gate of the full profile (docs/OPTIMIZATION_CHANGELOG.md, C17), so the default device program is TCP only.
+# The test programs and p99_sign are always built with RTU (TCFLAGS), so the RTU code is tested in every run.
+ifeq ($(RTU),1)
+CFLAGS += -DHMI_RTU
+endif
+TCFLAGS = $(CFLAGS) -DHMI_RTU
+ifeq ($(STATIC),1)
+MB_RTU_OBJ = $(BUILD)/libmodbus/modbus-rtu.o
+$(MB_RTU_OBJ): third_party/libmodbus/src/modbus-rtu.c
+	@mkdir -p $(dir $@)
+	$(CC) -std=gnu99 -Os -flto -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables \
+	  -fPIE $(MB_CFLAGS) -c $< -o $@
+ifeq ($(RTU),1)
+MB_OBJS += $(MB_RTU_OBJ)
+MB_LIBS = $(MB_OBJS)
+endif
+endif
+# The RTU object for test programs that link plc_libmodbus.c, unless the build already links it.
+TEST_RTU = $(if $(filter $(MB_RTU_OBJ),$(MB_LIBS)),,$(MB_RTU_OBJ))
 # -fwrapv: LVGL's chart multiplies a "no value" point (INT32_MAX) by the height before it tests for it; UBSan reports the overflow
 # (third_party/lvgl/src/widgets/chart/lv_chart.c, line 847). With -fwrapv the result is defined and is not used for such a point.
 LVGL_CFLAGS = -fwrapv -DLV_CONF_INCLUDE_SIMPLE -Iconfig -I$(LVGL)
@@ -81,18 +110,28 @@ $(BUILD)/lvgl-linux/%.o: $(LVGL)/%.c config/lv_conf.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) -c $< -o $@
 
-HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit boot
+HMI_TESTS = decode tags comms link_health writes alarm config runtime watchdog authz cli platform mac cfgsec store auditfmt trend cfgedit boot auditchain auth rtu
 HMI_TEST_BINS = $(patsubst %,$(BUILD)/hmi_tests/test_%,$(HMI_TESTS))
 
-# One program per module; each links the shared fixtures in test_support.c.
-$(BUILD)/hmi_tests/test_%: tests/hmi/test_%.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
-	@mkdir -p $(BUILD)/hmi_tests
-	$(CC) $(CFLAGS) -Isrc/hmi $< tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+# The core compiled once per build directory for the test programs. Before, each of the 19 core test programs and the
+# other test programs compiled all 22 core files again (slow under the sanitizers). -MMD records the headers each object
+# includes, so an object is rebuilt when one of them changes. The device programs below still compile the sources
+# themselves (one link-time-optimised unit).
+HMI_CORE_OBJS = $(patsubst %.c,$(BUILD)/core/%.o,$(HMI_CORE))
+$(BUILD)/core/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(TCFLAGS) -Isrc/hmi -MMD -MP -c $< -o $@
+-include $(HMI_CORE_OBJS:.o=.d)
 
-$(BUILD)/test_e2e: tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus.c $(HMI_CORE) $(MB_OBJS)
+# One program per module; each links the shared fixtures in test_support.c.
+$(BUILD)/hmi_tests/test_%: tests/hmi/test_%.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE_OBJS)
+	@mkdir -p $(BUILD)/hmi_tests
+	$(CC) $(TCFLAGS) -Isrc/hmi $< tests/hmi/test_support.c $(HMI_CORE_OBJS) -o $@ -lm -lpthread
+
+$(BUILD)/test_e2e: tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus.c $(HMI_CORE_OBJS) $(MB_OBJS) $(TEST_RTU)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(MB_CFLAGS) -Isrc/hmi tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus.c \
-	  $(HMI_CORE) -o $@ $(MB_LIBS) -lm -lpthread
+	$(CC) $(TCFLAGS) $(MB_CFLAGS) -Isrc/hmi tests/hmi/test_modbus_e2e.c $(FAKE_PLC) src/hmi/plc_libmodbus.c \
+	  $(HMI_CORE_OBJS) -o $@ $(MB_LIBS) $(TEST_RTU) -lm -lpthread
 
 $(BUILD)/ui_headless: tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC) $(UI_SRC) src/ui/hmi_view.c \
                       src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_H) $(MB_OBJS)
@@ -103,9 +142,9 @@ $(BUILD)/ui_headless: tests/hmi/ui_headless.c tests/hmi/alloc_count.c $(FAKE_PLC
 
 # The device program also contains the root helper: started under the name p99_cfg (a link to this file) it applies a
 # configuration request (P99_MULTICALL), so the device needs one file instead of two.
-$(BUILD)/prometheus99: src/app/main_linux.c src/app/display_fbdev.c src/app/p99_cfg.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
+$(BUILD)/prometheus99: src/app/main_linux.c src/app/display_fbdev.c $(MULTICALL_SRC) $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DP99_MULTICALL $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_fbdev.c src/app/p99_cfg.c $(UI_SRC) src/ui/hmi_view.c \
+	$(CC) $(CFLAGS) $(MULTICALL_DEF) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_fbdev.c $(MULTICALL_SRC) $(UI_SRC) src/ui/hmi_view.c \
 	  src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) -lm -lpthread
 
 # Test build: also accepts --unsigned-config (no signature check). NEVER deploy it.
@@ -117,16 +156,16 @@ $(BUILD)/prometheus99-sim: src/app/main_linux.c src/app/display_fbdev.c $(UI_SRC
 # Configuration signing tool (see src/app/p99_sign.c).
 $(BUILD)/p99_sign: src/app/p99_sign.c $(HMI_CORE)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) src/app/p99_sign.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
+	$(CC) $(TCFLAGS) src/app/p99_sign.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
 
 # Root helper that applies a configuration change requested from the screen (see src/app/p99_cfg.c).
 $(BUILD)/p99_cfg: src/app/p99_cfg.c $(HMI_CORE)
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) src/app/p99_cfg.c $(HMI_CORE) -o $@ $(LDFLAGS) -lm -lpthread
 
-$(BUILD)/test_view: tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE)
+$(BUILD)/test_view: tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE) -o $@ -lm -lpthread
+	$(CC) $(TCFLAGS) -Isrc/hmi tests/hmi/test_hmi_view.c src/ui/hmi_view.c $(HMI_CORE_OBJS) -o $@ -lm -lpthread
 
 $(BUILD)/config_golden: tests/hmi/config_golden.c src/hmi/hmi_config.c src/hmi/hmi_config_write.c src/hmi/hmi_tags.c src/hmi/hmi_decode.c \
                         src/hmi/hmi_platform_posix.c
@@ -140,7 +179,17 @@ test-config-golden: $(BUILD)/config_golden
 	./$(BUILD)/config_golden > $(BUILD)/config_golden.out
 	diff -u tests/hmi/config_golden.txt $(BUILD)/config_golden.out && echo "config golden: identical"
 
-test: $(HMI_TEST_BINS)
+# `test` runs the core tests under AddressSanitizer and UBSan (any finding stops the run), in the build directory
+# $(BUILD)-asan; `test-fast` runs them uninstrumented in $(BUILD). With SAN=... given, `test` is the run in that build.
+# The static musl build (STATIC=1) has no sanitizer runtime, so there `test` is `test-fast`.
+ifeq ($(SAN)$(STATIC),)
+test:
+	$(MAKE) -f Makefile.linux SAN=address BUILD=$(BUILD)-asan test-fast
+else
+test: test-fast
+endif
+
+test-fast: $(HMI_TEST_BINS)
 	sh tests/hmi/run_core_tests.sh $(BUILD)/hmi_tests $(HMI_TESTS)
 
 test-view: $(BUILD)/test_view
@@ -166,12 +215,12 @@ hmi-sim: $(BUILD)/prometheus99-sim
 hmi-run-sim: $(BUILD)/prometheus99-sim
 	./$(BUILD)/prometheus99-sim --config config/hmi.example.json --audit $(BUILD)/audit.log --alarms $(BUILD)/alarms.bin --role operator
 
-test-all: check-tagdb-access test test-notify test-view test-config-golden e2e ui-host ui-shots liveness cli-exec config-exec cfgedit-exec
+test-all: check-tagdb-access test test-notify test-view test-config-golden e2e rtu-e2e ui-host ui-shots liveness cli-exec config-exec cfgedit-exec
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) $(BUILD)-asan
 
-.PHONY: test test-view test-config-golden e2e ui-host ui-shots hmi hmi-sim hmi-run-sim test-all clean
+.PHONY: test test-fast test-view test-config-golden e2e ui-host ui-shots hmi hmi-sim hmi-run-sim test-all clean
 
 # Outside hmi_tags.c (and the white-box core test) nothing may read or write
 # the tag table's members directly; use the hmi_tagdb_* accessors.
@@ -184,10 +233,27 @@ check-tagdb-access:
 
 .PHONY: check-tagdb-access
 
-# ---- liveness supervision (sd_notify heartbeat) ----
-$(BUILD)/test_notify: tests/hmi/test_notify_posix.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
+# Strict warnings on the project's own sources (roadmap P4-2): every own file is checked with -fsyntax-only, so the
+# flags of the real builds do not change. Warnings located in third-party headers (LVGL, jsmn) are counted but do not
+# fail; any warning or error in an own file fails the target. display_sdl.c is checked only where SDL2 is installed.
+STRICT_WARN = -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wcast-qual -Wformat=2
+SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+OWN_SRC = $(filter-out $(if $(SDL_CFLAGS),,src/app/display_sdl.c),$(wildcard src/hmi/*.c src/ui/*.c src/ui/font/*.c src/app/*.c tests/hmi/*.c))
+warnings:
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/test_notify_posix.c tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+	@for f in $(OWN_SRC); do $(CC) -std=gnu99 $(STRICT_WARN) -fsyntax-only $(LVGL_CFLAGS) $(LVGL_LINUX) -DP99_MULTICALL -DHMI_RTU \
+	  $(MB_CFLAGS) $(SDL_CFLAGS) -Isrc/hmi -Itests/hmi $$f 2>&1; done > $(BUILD)/warnings.log; \
+	own=$$(grep -E '^(src|tests)/[^:]*:[0-9]+:[0-9]+: (warning|error)' $(BUILD)/warnings.log | grep -vc '/third_party/'); \
+	all=$$(grep -cE ': (warning|error):' $(BUILD)/warnings.log); \
+	echo "strict warnings: $$own in own files, $$all in total (the rest in third-party headers); log: $(BUILD)/warnings.log"; \
+	test "$$own" -eq 0
+
+.PHONY: warnings
+
+# ---- liveness supervision (sd_notify heartbeat) ----
+$(BUILD)/test_notify: tests/hmi/test_notify_posix.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE_OBJS)
+	@mkdir -p $(BUILD)
+	$(CC) $(TCFLAGS) -Isrc/hmi tests/hmi/test_notify_posix.c tests/hmi/test_support.c $(HMI_CORE_OBJS) -o $@ -lm -lpthread
 
 test-notify: $(BUILD)/test_notify
 	./$(BUILD)/test_notify
@@ -227,13 +293,13 @@ cfgedit-exec: $(BUILD)/p99_cfg $(BUILD)/p99_sign
 # The runtime is killed with SIGKILL at random moments while it writes the
 # audit file, the alarm journal and the alarm state; the files must be valid
 # every time and every PLC write must have its SENT record (see the script).
-$(BUILD)/killloop_child: tests/hmi/killloop_child.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
+$(BUILD)/killloop_child: tests/hmi/killloop_child.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/killloop_child.c tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+	$(CC) $(TCFLAGS) -Isrc/hmi tests/hmi/killloop_child.c tests/hmi/test_support.c $(HMI_CORE_OBJS) -o $@ -lm -lpthread
 
-$(BUILD)/killloop_verify: tests/hmi/killloop_verify.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE)
+$(BUILD)/killloop_verify: tests/hmi/killloop_verify.c tests/hmi/test_support.c tests/hmi/test_support.h $(HMI_CORE_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc/hmi tests/hmi/killloop_verify.c tests/hmi/test_support.c $(HMI_CORE) -o $@ -lm -lpthread
+	$(CC) $(TCFLAGS) -Isrc/hmi tests/hmi/killloop_verify.c tests/hmi/test_support.c $(HMI_CORE_OBJS) -o $@ -lm -lpthread
 
 # KILL_ROUNDS=<n> sets the number of rounds (default 30)
 killloop: $(BUILD)/killloop_child $(BUILD)/killloop_verify
@@ -247,13 +313,37 @@ killloop: $(BUILD)/killloop_child $(BUILD)/killloop_verify
 # the simulation role handling and a linker map, so PSS, threads and sizes can be measured without a display.
 $(BUILD)/prometheus99-bench: src/app/main_linux.c src/app/display_file.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_file.c $(UI_SRC) \
+	$(CC) $(CFLAGS) -DHMI_TEST_ROLE=1 -DP99_REPORT $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) src/app/main_linux.c src/app/display_file.c $(UI_SRC) \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) -Wl,-Map=$(BUILD)/prometheus99-bench.map \
 	  $(MB_LIBS) -lm -lpthread
 
 $(BUILD)/fake_plc: tests/hmi/fake_plc_main.c $(FAKE_PLC) tests/hmi/fake_modbus_server.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Itests/hmi tests/hmi/fake_plc_main.c $(FAKE_PLC) -o $@ -lm -lpthread
+
+# Modbus RTU end to end on a pseudo-terminal pair (HMI_RTU): make -f Makefile.linux rtu-e2e
+$(BUILD)/test_rtu_e2e: tests/hmi/test_rtu_e2e.c tests/hmi/test_support.c tests/hmi/test_support.h src/hmi/plc_libmodbus.c \
+                       $(HMI_CORE_OBJS) $(MB_OBJS) $(TEST_RTU)
+	@mkdir -p $(BUILD)
+	$(CC) $(TCFLAGS) $(MB_CFLAGS) -Isrc/hmi tests/hmi/test_rtu_e2e.c tests/hmi/test_support.c src/hmi/plc_libmodbus.c \
+	  $(HMI_CORE_OBJS) -o $@ $(MB_LIBS) $(TEST_RTU) -lm -lpthread
+
+rtu-e2e: $(BUILD)/test_rtu_e2e
+	./$(BUILD)/test_rtu_e2e
+
+.PHONY: rtu-e2e
+
+# Write latency of the real runtime against the in-process fake PLC (measurement, no pass or fail):
+#   make -f Makefile.linux write-latency
+$(BUILD)/bench_write_latency: tests/hmi/bench_write_latency.c $(FAKE_PLC) src/hmi/plc_libmodbus.c $(HMI_CORE_OBJS) $(MB_OBJS) $(TEST_RTU)
+	@mkdir -p $(BUILD)
+	$(CC) $(TCFLAGS) $(MB_CFLAGS) -Isrc/hmi tests/hmi/bench_write_latency.c $(FAKE_PLC) src/hmi/plc_libmodbus.c \
+	  $(HMI_CORE_OBJS) -o $@ $(MB_LIBS) $(TEST_RTU) -lm -lpthread
+
+write-latency: $(BUILD)/bench_write_latency
+	./$(BUILD)/bench_write_latency
+
+.PHONY: write-latency
 
 hmi-bench: $(BUILD)/prometheus99-bench $(BUILD)/fake_plc $(BUILD)/p99_sign
 
@@ -264,7 +354,7 @@ hmi-bench: $(BUILD)/prometheus99-bench $(BUILD)/fake_plc $(BUILD)/p99_sign
 #   make -f Makefile.linux BUILD=build-sdl hmi-sdl
 $(BUILD)/prometheus99-sdl: src/app/main_linux.c src/app/display_sdl.c $(UI_SRC) src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) $(MB_OBJS)
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) $(shell sdl2-config --cflags) src/app/main_linux.c src/app/display_sdl.c $(UI_SRC) \
+	$(CC) $(CFLAGS) -DP99_REPORT $(LVGL_CFLAGS) $(LVGL_LINUX) $(MB_CFLAGS) $(shell sdl2-config --cflags) src/app/main_linux.c src/app/display_sdl.c $(UI_SRC) \
 	  src/ui/hmi_view.c src/hmi/plc_libmodbus.c $(HMI_CORE) $(LVGL_OBJS_L) -o $@ $(LDFLAGS) $(MB_LIBS) $(shell sdl2-config --libs) -lm -lpthread
 
 hmi-sdl: $(BUILD)/prometheus99-sdl $(BUILD)/fake_plc $(BUILD)/p99_sign

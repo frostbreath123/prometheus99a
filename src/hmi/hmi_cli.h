@@ -30,6 +30,8 @@ typedef struct {
     const char *config_state; /* --config-state (default /var/lib/prometheus99/config.serial) */
     const char *spool;    /* --spool DIR (default none: settings cannot be changed from the screen). The directory
                              where requests for p99_cfg are left (hmi_cfgedit.h). */
+    const char *report;   /* --report PATH (default none): run statistics written to PATH when the process exits
+                             (loop, UI handler, polls, writes, storage); nothing is collected or written without it */
     bool unsigned_config; /* --unsigned-config (takes no value): test builds only, skips the
                              signature check. The production executable refuses it. */
 } hmi_cli_t;

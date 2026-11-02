@@ -6,6 +6,7 @@
 #include "../../src/ui/hmi_ui.h"
 #include "../../src/hmi/plc_libmodbus.h"
 #include "../../src/hmi/hmi_auditfmt.h"
+#include "../../src/hmi/hmi_auth.h"
 #include "fake_modbus_server.h"
 #ifdef _WIN32
 #include <direct.h>
@@ -69,13 +70,18 @@ static double now_us(void)
 }
 #endif
 
+/* P99_HEAP_PROBE=WxH: build the UI at that screen size, visit every screen, print the LVGL heap use and exit, instead
+ * of running the scenario (which checks pixels and positions at 800x480 only). */
+static bool s_probe;
+
 static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
 {
     double t0 = now_us();
     s_last_flush_us = t0;
     int w = a->x2 - a->x1 + 1, h = a->y2 - a->y1 + 1;
     const uint16_t *src = (const uint16_t *)px;
-    for (int y = 0; y < h; y++) memcpy(&s_fb[(a->y1 + y) * W + a->x1], &src[y * w], (size_t)w * 2);
+    if (!s_probe) /* the probe draws at other sizes; the copy is only for the 800x480 picture */
+        for (int y = 0; y < h; y++) memcpy(&s_fb[(a->y1 + y) * W + a->x1], &src[y * w], (size_t)w * 2);
     s_flushes++;
     s_flush_px += (uint32_t)(w * h);
     s_flush_us_total += now_us() - t0;
@@ -252,9 +258,14 @@ int main(int argc, char **argv)
     }
     printf("writes_effective=%d\n", (int)rt.writes_effective);
 
+    int pw = W, ph = H;
+    const char *probe = getenv("P99_HEAP_PROBE");
+    if (probe && sscanf(probe, "%dx%d", &pw, &ph) == 2 && pw >= 320 && ph >= 240 && pw <= 4096 && ph <= 4096) s_probe = true;
+    else pw = W, ph = H;
+
     lv_init();
     lv_tick_set_cb(tick_cb);
-    lv_display_t *disp = lv_display_create(W, H);
+    lv_display_t *disp = lv_display_create(pw, ph);
     lv_display_set_color_format(disp, LV_COLOR_FORMAT_RGB565);
     lv_display_set_buffers(disp, s_buf, NULL, sizeof(s_buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, flush_cb);
@@ -262,6 +273,25 @@ int main(int argc, char **argv)
 
     lv_mem_monitor_t mon;
     lv_mem_monitor(&mon);
+    if (s_probe) {
+        size_t used_build = (mon.total_size - mon.free_size) / 1024, pn = 0, pcap = 1000;
+        double *ps = (double *)malloc(pcap * sizeof(double));
+        static const size_t screens[] = { HMI_UI_SCREEN_ALARMS, HMI_UI_SCREEN_TRENDS, HMI_UI_SCREEN_SETTINGS,
+                                          HMI_UI_SCREEN_OVERVIEW };
+        pump(1.0, &ps, &pn, pcap);
+        for (size_t i = 0; i < sizeof(screens) / sizeof(screens[0]); i++) {
+            hmi_ui_press_tab(screens[i]);
+            pump(0.5, &ps, &pn, pcap);
+        }
+        lv_mem_monitor(&mon);
+        printf("[heap-probe] %dx%d: LVGL heap used after build=%u KB, after every screen=%u KB, max_used=%u KB of %u KB\n",
+               pw, ph, (unsigned)used_build, (unsigned)((mon.total_size - mon.free_size) / 1024),
+               (unsigned)(mon.max_used / 1024), (unsigned)(mon.total_size / 1024));
+        free(ps);
+        hmi_runtime_stop(&rt);
+        fms_stop(srv);
+        return 0;
+    }
     printf("LVGL heap after UI build: total=%u free=%u used=%u KB\n", (unsigned)mon.total_size,
            (unsigned)mon.free_size, (unsigned)((mon.total_size - mon.free_size) / 1024));
     /* RAM gate (docs/OPTIMIZATION_ROADMAP.md, phase 6): the pool in use after the UI is built, and its peak at the end of
@@ -1146,13 +1176,115 @@ int main(int argc, char **argv)
         pump(1.0, &samples, &n, cap);
     }
 
+    /* ---- named users: login, wrong PIN, logout, lock (hmi_auth.h, ui_login.c) ---- */
+    {
+        static const uint8_t cfg_key[32] = { 0x50, 0x39, 0x39, 0x2d, 0x75, 0x69, 0x2d, 0x6c, 0x6f, 0x67, 0x69,
+                                             0x6e, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x6b, 0x65, 0x79, 0x2d,
+                                             0x6e, 0x6f, 0x74, 0x2d, 0x72, 0x65, 0x61, 0x6c, 0x21, 0x21 };
+        static uint8_t pin_key[32];
+        static hmi_user_cfg_t users[2];
+        hmi_auth_derive_key(cfg_key, sizeof(cfg_key), pin_key);
+        snprintf(users[0].name, sizeof(users[0].name), "op1");
+        users[0].role = HMI_ROLE_OPERATOR;
+        memset(users[0].salt, 0x41, sizeof(users[0].salt));
+        hmi_auth_hash(pin_key, users[0].salt, "2468", users[0].pin_hash);
+        snprintf(users[1].name, sizeof(users[1].name), "eng1");
+        users[1].role = HMI_ROLE_ENGINEER;
+        memset(users[1].salt, 0x42, sizeof(users[1].salt));
+        hmi_auth_hash(pin_key, users[1].salt, "13579", users[1].pin_hash);
+
+        hmi_ui_set_users(users, 2, pin_key);
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_ADMIN, NULL); /* a claimed role means nothing once users exist */
+        hmi_ui_press_tab(HMI_UI_SCREEN_OVERVIEW);
+        pump(0.5, &samples, &n, cap);
+        printf("[login] header '%s', send enabled %d\n", hmi_ui_role_text(), (int)hmi_ui_send_enabled());
+        CHECK(strcmp(hmi_ui_role_text(), "LOGGED OUT") == 0);
+        CHECK(!hmi_ui_send_enabled());                          /* nobody logged in: viewer, cannot write */
+        hmi_ui_press_ack_all();
+        CHECK(strcmp(hmi_ui_ack_status_text(), "ACK DENIED: role not permitted") == 0);
+
+        hmi_ui_press_login();
+        CHECK(hmi_ui_login_is_open());
+        pump(0.3, &samples, &n, cap);
+        save_ppm((snprintf(err, sizeof(err), "%s_27_login.ppm", prefix), err));
+        hmi_ui_login_select(0);
+        for (const char *k = "1111"; *k; k++) hmi_ui_login_key(*k);
+        hmi_ui_login_key('K');
+        printf("[login] wrong PIN: '%s'\n", hmi_ui_login_message());
+        CHECK(strcmp(hmi_ui_login_message(), "WRONG PIN") == 0 && hmi_ui_login_is_open());
+        CHECK(strcmp(hmi_ui_role_text(), "LOGGED OUT") == 0);
+        for (const char *k = "24689"; *k; k++) hmi_ui_login_key(*k);
+        hmi_ui_login_key('D');                                  /* delete the extra digit */
+        hmi_ui_login_key('K');
+        pump(0.3, &samples, &n, cap);
+        printf("[login] after the right PIN: header '%s', send enabled %d\n", hmi_ui_role_text(), (int)hmi_ui_send_enabled());
+        CHECK(!hmi_ui_login_is_open());
+        CHECK(strcmp(hmi_ui_role_text(), "op1 OPERATOR") == 0);
+        CHECK(hmi_ui_send_enabled());                           /* the operator may write the setpoint tag */
+        hmi_ui_press_setpoint_send();                           /* a write while logged in carries the user's name */
+        pump(1.0, &samples, &n, cap);
+        printf("[login] write as op1: '%s'\n", hmi_ui_write_status_text());
+
+        hmi_ui_press_login();                                   /* LOGOUT */
+        pump(0.3, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "LOGGED OUT") == 0 && !hmi_ui_send_enabled());
+
+        /* five wrong PINs lock the login; the right one is then refused too */
+        hmi_ui_press_login();
+        hmi_ui_login_select(1);
+        for (int i = 0; i < 5; i++) {
+            for (const char *k = "0000"; *k; k++) hmi_ui_login_key(*k);
+            hmi_ui_login_key('K');
+        }
+        printf("[login] after five wrong PINs: '%s'\n", hmi_ui_login_message());
+        CHECK(strstr(hmi_ui_login_message(), "LOCKED FOR 60 s") != NULL);
+        for (const char *k = "13579"; *k; k++) hmi_ui_login_key(*k);
+        hmi_ui_login_key('K');
+        CHECK(strncmp(hmi_ui_login_message(), "LOCKED: wait", 12) == 0);
+        CHECK(strcmp(hmi_ui_role_text(), "LOGGED OUT") == 0);
+        hmi_ui_login_key('C');
+        CHECK(!hmi_ui_login_is_open());
+
+        /* every step is in the audit file, with the user's name */
+        static char ab[1 << 16];
+        FILE *af = fopen(audit_path, "rb");
+        size_t an = af ? fread(ab, 1, sizeof(ab) - 1, af) : 0;
+        if (af) fclose(af);
+        ab[an] = '\0';
+        CHECK(strstr(ab, " LOGIN_FAILED user=op1 reason=wrong_pin") != NULL);
+        CHECK(strstr(ab, " LOGIN user=op1 role=operator") != NULL);
+        CHECK(strstr(ab, " LOGOUT user=op1 reason=operator") != NULL);
+        CHECK(strstr(ab, " LOGIN_LOCKED user=eng1 lock_s=60") != NULL);
+        {
+            /* the write record (RESERVED, written before anything is sent) names the logged-in user */
+            const char *w = strstr(ab, " RESERVED id=");
+            bool found = false;
+            while (w && !found) {
+                const char *eol = strchr(w, '\n');
+                const char *u = strstr(w, " user=op1 ");
+                found = u && (!eol || u < eol);
+                w = strstr(w + 1, " RESERVED id=");
+            }
+            CHECK(found);
+        }
+
+        /* back to the claimed role for anything that follows */
+        hmi_ui_set_users(NULL, 0, NULL);
+        lv_obj_clean(lv_screen_active());
+        hmi_ui_init(&rt, HMI_ROLE_OPERATOR, NULL);
+        hmi_ui_press_tab(HMI_UI_SCREEN_OVERVIEW);
+        pump(0.5, &samples, &n, cap);
+        CHECK(strcmp(hmi_ui_role_text(), "OPERATOR") == 0);
+    }
+
     /* raw results */
     qsort(samples, n, sizeof(double), cmp_d);
     double sum = 0;
     for (size_t i = 0; i < n; i++) sum += samples[i];
     printf("lv_timer_handler (render+binder) samples=%u: mean=%.0f us p50=%.0f p95=%.0f p99=%.0f max=%.0f us\n",
-           (unsigned)n, sum / (double)n, samples[n / 2], samples[(size_t)(n * 0.95)],
-           samples[(size_t)(n * 0.99)], samples[n - 1]);
+           (unsigned)n, sum / (double)n, samples[n / 2], samples[(size_t)((double)n * 0.95)],
+           samples[(size_t)((double)n * 0.99)], samples[n - 1]);
     printf("flush: calls=%u pixels=%u total_flush_time=%.0f us\n", s_flushes, s_flush_px, s_flush_us_total);
     hmi_ui_stats_t us = hmi_ui_stats();
     printf("binder ticks=%u labels_updated=%u labels_skipped_unchanged=%u\n", us.binder_ticks, us.labels_updated,

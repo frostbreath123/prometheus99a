@@ -9,7 +9,10 @@ set -u
 B=${1:-build-linux}
 TPL=${2:-config/hmi.example.json}
 W=$(mktemp -d /tmp/p99_live.XXXXXX)
-sed -e 's/192\.168\.0\.10/127.0.0.1/' -e 's/"port": 502,/"port": 5502,/' "$TPL" > "$W/cfg.json"
+# Port 5504: each executable test has its own port (config-exec 5502, cli-exec 5503), because config-exec counts every
+# connection to its port and a parallel make (-j) runs the scripts at the same time.
+PORT=5504
+sed -e 's/192\.168\.0\.10/127.0.0.1/' -e "s/\"port\": 502,/\"port\": $PORT,/" "$TPL" > "$W/cfg.json"
 . "$(dirname "$0")/sign_fixture.sh"
 sign_config "$B" "$W" || { echo "cannot sign the test configuration"; exit 1; }
 fail=0
@@ -47,7 +50,7 @@ sleep 0.3; k0=$(count); sleep 2; k1=$(count)
 wait $LP 2>/dev/null
 
 # ---- scenario 2: PLC that accepts and never answers must NOT stop the pings ----
-"$B/hang_server" 5502 12 > "$W/hang.log" 2>&1 &
+"$B/hang_server" $PORT 12 > "$W/hang.log" 2>&1 &
 HP=$!
 sleep 0.5
 "$B/notify_listener" "$W/notify2.sock" 9 > "$W/notify2.log" 2>&1 &

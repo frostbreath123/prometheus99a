@@ -119,7 +119,7 @@ static void test_only_good_data(void)
     CHECK(hmi_trend_copy(t, 0, b, 8) == 3);
     for (int k = 0; k < 3; k++) CHECK(!hmi_trend_bucket_valid(&b[k]));      /* never the 123 */
     CHECK(hmi_trend_copy(t, 1, b, 8) == 3);
-    for (int k = 0; k < 3; k++) CHECK(hmi_trend_bucket_valid(&b[k]) && b[k].lo == 10.0f + k && b[k].hi == 10.0f + k);
+    for (int k = 0; k < 3; k++) CHECK(hmi_trend_bucket_valid(&b[k]) && b[k].lo == 10.0f + (float)k && b[k].hi == 10.0f + (float)k);
 
     /* a bucket with bad data in the middle keeps only the good samples around it */
     set(&v[0], 4.0, HMI_Q_GOOD); hmi_trend_step(t, T0 + 3100, v, 4);

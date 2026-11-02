@@ -10,7 +10,9 @@
 B=${1:-build-linux}
 TPL=${2:-config/hmi.example.json}
 W=$(mktemp -d /tmp/p99_cli.XXXXXX)
-sed -e 's/192\.168\.0\.10/127.0.0.1/' -e 's/"port": 502,/"port": 5502,/' "$TPL" > "$W/cfg.json"
+# Port 5503: each executable test has its own port (config-exec 5502, liveness 5504), because config-exec counts every
+# connection to its port and a parallel make (-j) runs the scripts at the same time.
+sed -e 's/192\.168\.0\.10/127.0.0.1/' -e 's/"port": 502,/"port": 5503,/' "$TPL" > "$W/cfg.json"
 . "$(dirname "$0")/sign_fixture.sh"
 sign_config "$B" "$W" || { echo "cannot sign the test configuration"; exit 1; }
 fail=0
@@ -88,6 +90,8 @@ expect_silent "$PROD" "production: no user-store text" "user store\|login" "${CO
 # Production build: an unsigned configuration cannot be allowed by a flag.
 expect_exit2_msg "$PROD" "production: --unsigned-config" "--unsigned-config is not available" "${COMMON[@]}" --unsigned-config
 expect_exit2 "$PROD" "production: --unsigned-config with a value" "${COMMON[@]}" --unsigned-config yes
+# --report is compiled into the measurement builds only; the device program refuses it before touching anything.
+expect_exit2_msg "$PROD" "production: --report" "available only in the measurement builds" "${COMMON[@]}" --report "$W/run.report"
 expect_exit2 "$SIM" "simulation: repeated --unsigned-config" "${COMMON[@]}" --unsigned-config --unsigned-config
 expect_exit2 "$SIM" "simulation: repeated --config-key" "${COMMON[@]}" --config-key "$W/other.key"
 

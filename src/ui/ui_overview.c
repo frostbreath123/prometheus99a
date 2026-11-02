@@ -31,6 +31,9 @@ static double s_sp_value;
 static bool s_sp_inited;
 static uint32_t s_last_write_id;
 static uint32_t s_last_gv = 0xFFFFFFFFu;
+/* The journal text is rebuilt only when the alarm revision moved (every journal entry raises it, hmi_alarm.c). */
+static uint32_t s_journal_rev;
+static bool s_journal_valid;
 
 static void overview_reset(void)
 {
@@ -52,6 +55,7 @@ static void overview_reset(void)
     s_sp_inited = false;
     s_last_write_id = 0;
     s_last_gv = 0xFFFFFFFFu;
+    s_journal_valid = false;
 }
 
 /* ---- event handlers (UI thread) ---- */
@@ -319,7 +323,11 @@ static void overview_update(void)
         }
     }
 
-    /* journal: last 4 events */
+    /* journal: last 4 events, rebuilt only when the alarm revision changed */
+    uint32_t jrev = hmi_alarm_state_rev(&ui_rt->alarms);
+    if (s_journal_valid && jrev == s_journal_rev) return;
+    s_journal_rev = jrev;
+    s_journal_valid = true;
     hmi_alarm_log_t j[4];
     size_t n = hmi_alarm_journal_copy(&ui_rt->alarms, j, 4);
     char jb[sizeof(t_journal)];

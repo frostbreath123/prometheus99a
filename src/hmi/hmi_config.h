@@ -20,6 +20,25 @@
 #define HMI_RESPONSE_TIMEOUT_MAX_MS 2000u
 #define HMI_CONNECT_TIMEOUT_MAX_MS  3000u
 
+#ifdef HMI_RTU
+/* Modbus RTU (built with HMI_RTU: `make RTU=1`; the default device program has only TCP and refuses these keys). */
+#define HMI_DEVICE_LEN 64
+typedef enum { HMI_TRANSPORT_TCP = 0, HMI_TRANSPORT_RTU } hmi_transport_t;
+#endif
+
+/* Named users (optional, "users" in the configuration; hmi_auth.h). Without users the program uses the role claimed
+ * with --role, as before. The PIN itself is never stored: only a random salt and a keyed, iterated hash of it. */
+#define HMI_MAX_USERS     8
+#define HMI_SALT_LEN      16   /* bytes; 32 hex digits in the configuration */
+#define HMI_PIN_HASH_LEN  32   /* bytes; 64 hex digits in the configuration */
+
+typedef struct {
+    char name[HMI_NAME_LEN];       /* letters, digits, '.', '_' and '-' only: it appears in the audit file */
+    hmi_role_t role;
+    uint8_t salt[HMI_SALT_LEN];
+    uint8_t pin_hash[HMI_PIN_HASH_LEN];
+} hmi_user_cfg_t;
+
 typedef struct {
     char host[HMI_HOST_LEN];      /* dotted-quad IPv4 literal only (no DNS) */
     uint16_t port;
@@ -32,9 +51,30 @@ typedef struct {
     uint32_t trend_bucket_ms;       /* length of one trend bucket (1000 .. 60000, default 5000) */
     char allowed_hosts[HMI_MAX_ALLOWED][HMI_HOST_LEN]; /* plc.allowed_hosts, optional here */
     size_t n_allowed;
+#ifdef HMI_RTU
+    hmi_transport_t transport;     /* plc.transport: "tcp" (default) or "rtu" */
+    char device[HMI_DEVICE_LEN];   /* rtu: the serial device, a path under /dev/ */
+    uint32_t baud;                 /* rtu: 1200 to 115200, default 19200 */
+    int parity;                    /* rtu: 'N', 'E' or 'O' ("none", "even", "odd"), default 'E' (the Modbus default) */
+    uint8_t stop_bits;             /* rtu: 1 or 2, default 1 */
+    char allowed_devices[HMI_MAX_ALLOWED][HMI_DEVICE_LEN]; /* rtu: the only devices this configuration may open */
+    size_t n_allowed_devices;
+#endif
     hmi_tag_cfg_t tags[HMI_MAX_TAGS];
     size_t n_tags;
+    hmi_user_cfg_t users[HMI_MAX_USERS];
+    size_t n_users;                /* 0: no login, the claimed --role is used */
 } hmi_app_cfg_t;
+
+/* True if the configuration carries the allow-list a signed configuration needs: plc.allowed_hosts for TCP,
+ * plc.allowed_devices for RTU. */
+static inline bool hmi_config_has_allow_list(const hmi_app_cfg_t *c)
+{
+#ifdef HMI_RTU
+    if (c->transport == HMI_TRANSPORT_RTU) return c->n_allowed_devices > 0;
+#endif
+    return c->n_allowed > 0;
+}
 
 /* Returns true on success. On failure *out is zeroed (writes_enabled=false,
  * n_tags=0, empty host) and err holds a short reason. */

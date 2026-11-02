@@ -29,6 +29,27 @@ plc_libmodbus_t *plc_libmodbus_create(const char *host, uint16_t port, uint8_t u
     return p;
 }
 
+#ifdef HMI_RTU
+plc_libmodbus_t *plc_libmodbus_create_rtu(const char *device, uint32_t baud, char parity, uint8_t stop_bits, uint8_t unit,
+                                          uint32_t response_timeout_ms)
+{
+    plc_libmodbus_t *p = (plc_libmodbus_t *)calloc(1, sizeof(*p));
+    if (!p) return NULL;
+    p->mb = modbus_new_rtu(device, (int)baud, parity, 8, stop_bits);
+    if (!p->mb) {
+        free(p);
+        return NULL;
+    }
+    p->response_timeout_ms = response_timeout_ms;
+    if (modbus_set_slave(p->mb, unit) != 0) {
+        modbus_free(p->mb);
+        free(p);
+        return NULL;
+    }
+    return p;
+}
+#endif
+
 void plc_libmodbus_destroy(plc_libmodbus_t *p)
 {
     if (!p) return;

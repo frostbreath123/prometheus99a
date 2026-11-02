@@ -38,6 +38,10 @@
  * the largest timeouts the configuration allows) the whole stop stays under the
  * 15 s TimeoutStopSec of the service unit. */
 #define HMI_STORE_STOP_MS    3000u
+/* Longest the comms thread waits between two passes when nothing is due. It is woken at once when a write is queued
+ * and when the runtime stops; otherwise it sleeps until the next poll group or the end of the back-off, but never
+ * longer than this, so a queued write that can no longer be sent (5 s time to live) is expired at most this late. */
+#define HMI_COMMS_IDLE_MAX_MS 250u
 
 typedef struct {
     const char *audit_path;          /* NULL: no audit trail, writes are forced off */
@@ -47,6 +51,8 @@ typedef struct {
     const hmi_store_io_t *io;        /* NULL = platform; tests inject failures here */
     uint32_t state_min_interval_ms;  /* 0 = HMI_STATE_MIN_INTERVAL_MS */
     uint32_t state_saves_per_hour;   /* 0 = HMI_STATE_SAVES_PER_HOUR */
+    const uint8_t *audit_key;        /* NULL: the audit file is not chained; else HMI_CHAIN_KEY_LEN bytes
+                                        (hmi_auditchain.h), copied at start */
 } hmi_runtime_storage_t;
 
 typedef struct {
@@ -67,6 +73,8 @@ typedef struct {
     hmi_trend_t trend;       /* history for the trend screen; written by the supervisor thread */
     hmi_thread_t th_comms, th_super;
     hmi_atomic_flag_t stop;
+    hmi_event_t comms_wake;  /* wakes the comms thread: a write was queued, or stop */
+    bool comms_wake_ready;
     /* Incremented once per loop iteration by the owning thread only. */
     hmi_atomic_flag_t beat_comms, beat_super;
     char audit_path[256];
@@ -90,7 +98,9 @@ typedef struct {
 } hmi_runtime_t;
 
 /* paths may be NULL. Without audit_path, writes are forced off (fail closed).
- * The driver must outlive the runtime. Returns false if nothing could start. */
+ * The driver must outlive the runtime. Returns false if nothing could start.
+ * cfg may point at rt->cfg: the configuration is then used where it was loaded instead of being copied, so a program
+ * does not need a second hmi_app_cfg_t (about 12 KB) just to hold it until the start. */
 bool hmi_runtime_start(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_plc_driver_t *drv,
                        const char *audit_path, const char *alarm_state_path);
 bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_plc_driver_t *drv,

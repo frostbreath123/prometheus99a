@@ -47,7 +47,19 @@ void hmi_ui_press_ack_all(void);
 /* Test seam: runs exactly what pressing the setpoint SEND button runs. */
 void hmi_ui_press_setpoint_send(void);
 
-const char *hmi_ui_role_text(void);              /* header label, e.g. "OPERATOR" */
+const char *hmi_ui_role_text(void);              /* header label, e.g. "OPERATOR", or "op1 OPERATOR" / "LOGGED OUT" */
+
+/* Named users (hmi_auth.h). Call before hmi_ui_init; users must outlive the UI and pin_key may be NULL (login then
+ * stays off). With users and a key the header gets a LOGIN / LOGOUT button, the role is the logged-in user's (viewer
+ * when nobody is) and the claimed role given to hmi_ui_init is ignored. */
+void hmi_ui_set_users(const hmi_user_cfg_t *users, size_t n, const uint8_t *pin_key);
+/* Test seams: exactly what the header button, a user button and a keypad key run. key: '0'..'9', 'D' delete,
+ * 'K' OK, 'C' cancel. */
+void hmi_ui_press_login(void);
+void hmi_ui_login_select(size_t user);
+void hmi_ui_login_key(char key);
+bool hmi_ui_login_is_open(void);
+const char *hmi_ui_login_message(void);
 
 /* Test seams for the screens. Screen numbers are the tab order: 0 overview,
  * 1 alarms. Each press runs exactly what the matching on-screen control runs.

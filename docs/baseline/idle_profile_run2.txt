@@ -1,0 +1,14 @@
+label: phase0_idle_run2
+binary: build-musl/prometheus99-bench (347752 bytes unstripped)
+date: 2026-11-01T17:45:43Z   kernel: 6.18.54.1-microsoft-standard-WSL2   cpus: 12   clk_tck: 100
+workload: fake PLC on loopback, example configuration, overview screen, no input, 30 s after 3 s settling
+memory: rss_kb=1332 pss_kb=1328 private_kb=1328 vmhwm_kb=1332 pss_fb_mapping_kb=752 pss_excl_fb_kb=576 threads=4
+cpu_process_pct_of_one_core: 0.40
+per thread over 30 s (ticks of 1/100 s; switches per second):
+  main   cpu_ticks=4    voluntary=1197   (39.9/s) involuntary=0    (0.0/s)
+  store  cpu_ticks=0    voluntary=171    (5.7/s) involuntary=0    (0.0/s)
+  comms  cpu_ticks=5    voluntary=1798   (59.9/s) involuntary=10   (0.3/s)
+  super  cpu_ticks=1    voluntary=599    (19.9/s) involuntary=0    (0.0/s)
+  all    switches=3775 (125.7/s)
+exit_status_on_SIGTERM: 0
+fake_plc: fake_plc: requests=334 writes=0

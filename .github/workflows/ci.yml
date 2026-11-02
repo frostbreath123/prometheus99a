@@ -24,7 +24,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libmodbus-dev python3 rsync
       - name: Build and run the tests
         run: |
-          make -f Makefile.linux -j4 check-tagdb-access test test-notify test-view test-config-golden ui-host ui-shots e2e \
+          make -f Makefile.linux -j4 check-tagdb-access warnings test test-notify test-view test-config-golden ui-host ui-shots e2e \
             cli-exec config-exec cfgedit-exec liveness
       - name: Lite profile headless UI
         run: make -f Makefile.linux -j4 LITE=1 BUILD=build-lite ui-host

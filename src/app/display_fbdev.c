@@ -44,7 +44,7 @@ static void flush_cb(lv_display_t *d, const lv_area_t *a, uint8_t *px)
     const uint16_t *src = (const uint16_t *)px;
     uint32_t row32[2048];   /* one converted row, on the stack so it adds no static data; the screen is at most 2048 pixels wide */
     for (int32_t y = a->y1; y <= a->y2 && s_fd >= 0; y++, src += w) {
-        off_t off = (off_t)(y + s_yoff) * s_stride + (off_t)(a->x1 + s_xoff) * (s_bpp / 8u);
+        off_t off = ((off_t)y + (off_t)s_yoff) * (off_t)s_stride + ((off_t)a->x1 + (off_t)s_xoff) * (off_t)(s_bpp / 8u);
         if (s_bpp == 16) {
             put_row(src, (size_t)w * 2u, off);
             continue;

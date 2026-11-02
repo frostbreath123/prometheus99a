@@ -26,6 +26,33 @@ static void test_runtime_lifecycle(void)
     }
 }
 
+/* ---- configuration loaded in place (main_linux.c loads it into rt.cfg) ---- */
+static void test_runtime_cfg_in_place(void)
+{
+    SECTION("runtime: start with the configuration already in rt.cfg keeps it and runs");
+    static hmi_app_cfg_t ref;
+    char err[128];
+    CHECK(parse(GOOD_CFG, &ref, err));
+    static mock_t m;
+    mock_init(&m);
+    m.hold[0] = 500;
+    m.timeout_cost = 0;
+    hmi_plc_driver_t d = mock_drv(&m);
+    static hmi_runtime_t rt;
+    memset(&rt, 0xA5, sizeof(rt)); /* stale bytes everywhere except the configuration */
+    CHECK(parse(GOOD_CFG, &rt.cfg, err));
+    CHECK(hmi_runtime_start(&rt, &rt.cfg, &d, NULL, NULL));
+    CHECK(memcmp(&rt.cfg, &ref, sizeof(ref)) == 0); /* not wiped, not changed */
+    CHECK(hmi_tagdb_count(&rt.db) == ref.n_tags);
+    CHECK(!rt.writes_effective);
+    hmi_runtime_beats_t a = hmi_runtime_beats(&rt);
+    hmi_sleep_ms(2 * HMI_COMMS_IDLE_MAX_MS + 100); /* an idle comms thread passes at least once per HMI_COMMS_IDLE_MAX_MS */
+    hmi_runtime_beats_t b = hmi_runtime_beats(&rt);
+    CHECK(b.comms != a.comms && b.supervisor != a.supervisor);
+    hmi_runtime_stop(&rt);
+    CHECK(!rt.started);
+}
+
 /* ---- worker liveness counters ---- */
 static void test_runtime_beats(void)
 {
@@ -706,6 +733,57 @@ static void test_runtime_sent_before_send(void)
     remove(path);
 }
 
+/* ---- a queued write wakes the idle comms thread ---- */
+static void test_runtime_write_wakes_comms(void)
+{
+    SECTION("runtime: a queued write is sent at once, not after the comms thread's idle sleep");
+    static hmi_app_cfg_t cfg;
+    char err[128];
+    CHECK(parse(GOOD_CFG, &cfg, err));
+    cfg.write_min_interval_ms = 0;
+    cfg.write_max_per_minute = 0;
+    for (size_t i = 0; i < cfg.n_tags; i++) cfg.tags[i].poll_ms = 1000; /* idle between polls: sleeps of up to 250 ms */
+    static mock_t m;
+    static hmi_runtime_t rt;
+    static probe_ctx_t pc; /* counts the writes the PLC receives, atomically (the mock's own counter is not) */
+    const char *path = "p99_wake_test.log";
+    remove(path);
+    mock_init(&m);
+    m.timeout_cost = 0;
+    pc.inner = mock_drv(&m);
+    pc.audit_path = path;
+    pc.writes = 0;
+    pc.sent_visible = 0;
+    hmi_plc_driver_t d = { &pc, pr_connect, pr_read, pr_write, pr_close };
+    CHECK(hmi_runtime_start(&rt, &cfg, &d, path, NULL));
+    CHECK(rt.writes_effective);
+    hmi_sleep_ms(1200); /* connected, first polls done */
+    uint32_t worst = 0;
+    int sent = 0;
+    for (int i = 0; i < 10; i++) {
+        hmi_sleep_ms((uint32_t)(130 + 37 * i)); /* different phases of the idle sleep */
+        int32_t before = __atomic_load_n(&pc.writes, __ATOMIC_SEQ_CST);
+        uint32_t id = 0;
+        uint64_t t0 = hmi_now_ms();
+        if (hmi_writes_submit_as(&rt.writes, 0, 20.0 + i, HMI_ROLE_OPERATOR, "op1", hmi_comms_link_health(&rt.comms),
+                                 t0, &id) != HMI_WRS_OK)
+            continue;
+        while (__atomic_load_n(&pc.writes, __ATOMIC_SEQ_CST) == before && hmi_now_ms() - t0 < 2000) hmi_sleep_ms(1);
+        if (__atomic_load_n(&pc.writes, __ATOMIC_SEQ_CST) == before) continue;
+        uint32_t dt = (uint32_t)(hmi_now_ms() - t0);
+        if (dt > worst) worst = dt;
+        sent++;
+    }
+    printf("  writes sent %d of 10, slowest submit to send %u ms (idle sleep up to %u ms)\n", sent, (unsigned)worst,
+           (unsigned)HMI_COMMS_IDLE_MAX_MS);
+    CHECK(sent == 10);
+    /* Without the wake-up a write would wait for the rest of the idle sleep (up to 250 ms); with it, only for the
+     * durable audit record. 150 ms leaves room for a slow disk or a sanitizer build. */
+    CHECK(worst < 150);
+    CHECK(hmi_runtime_stop(&rt));
+    remove(path);
+}
+
 /* ---- concurrent consumers while runtime is live ---- */
 static hmi_runtime_t g_rt;
 static hmi_atomic_flag_t g_rd_stop;
@@ -811,6 +889,7 @@ int main(void)
 {
     test_runtime_trend();
     test_runtime_lifecycle();
+    test_runtime_cfg_in_place();
     test_runtime_beats();
     test_runtime_ack_audit();
     test_runtime_journal_and_state();
@@ -819,6 +898,7 @@ int main(void)
     test_runtime_stop_during_write();
     test_runtime_final_state_with_full_queue();
     test_runtime_sent_before_send();
+    test_runtime_write_wakes_comms();
     test_concurrent_consumers();
     return test_finish();
 }

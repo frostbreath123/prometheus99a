@@ -131,6 +131,23 @@ and ends with a wall-clock stamp and the clock state:
   clock as an argument, and are tested against fixed dates (1970, leap days
   2000 and 2024, 2038, 2100).
 
+### Keyed hash chain (added 2026-11-02, phase 3 of `docs/MASTER_PROMPT_FINAL.md`)
+
+When the configuration is signed and verified, every line of the audit file ends with a seal:
+
+    <the record as above> mac=<32 hex digits>
+
+The seal is the first 128 bits of HMAC-SHA-512 with the audit key over the previous seal (32 hex digits) followed by the line up to " mac=". The audit key is derived from the configuration key (`HMAC-SHA-512(configuration key, "prometheus99 audit chain v1")`, first 32 bytes), so no second key file exists. The code is `src/hmi/hmi_auditchain.*`, adapted from the friend's `alarm_log.h` (keyed chain, the rotated file names the value it continues from, the chain resumes after a restart) but using the HMAC already in the product.
+
+- **Writers.** Three writers seal lines the same way, each reading the last seal from the end of the file just before it appends: the storage worker (every runtime record), the start-up verdict (`CONFIG_ACCEPTED` or `CONFIG_REJECTED`, `hmi_boot.c`; a rejection is sealed whenever the key file itself was readable) and the root helper `p99_cfg` (`CONFIG_CHANGED`). Reading the previous seal from the file, rather than remembering it, keeps the chain right when the helper appends between two records of the running program.
+- **Rotation.** The first line of a rotated file is `<ms> LOG_ROTATED generations=N prev=<32 hex>`, sealed after that value, so a single file can be checked on its own.
+- **Torn lines.** A line cut by a power failure has no complete seal; the next record is sealed after the last line that has one, so the torn line is reported alone and the chain continues.
+- **Checking.** `p99_sign verify-log --key /etc/prometheus99/config.key audit.log.3 audit.log.2 audit.log.1 audit.log` (oldest first) prints per file the lines, the valid seals, the wrong seals and the unsealed lines, and ends with `audit chain: INTACT` (exit 0) or `NOT INTACT` (exit 1).
+- **What it shows.** An edited, inserted, deleted or reordered line, a removed seal, and a line written with another key.
+- **What it cannot show.** Lines cut off the end of the newest file, or whole files removed from the end. Whoever holds the configuration key can also forge the chain (it is a MAC, not a signature). Two writers appending at the same instant (the running program and `p99_cfg`) could both continue from the same seal; the later line then fails verification, which is visible, never silent. Copy the audit file off the device if these limits matter.
+- **Without a key.** The test build with `--unsigned-config` and any program that starts the runtime without an audit key write the audit file exactly as before, without seals.
+- **Cost.** About 1.8 KB of code in the device program (inside the existing page padding: the stripped size did not change), one read of at most 1 KB from the end of the audit file per audit record, and 37 bytes per line.
+
 ### Alarm journal line
 
 ```

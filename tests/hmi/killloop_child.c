@@ -15,6 +15,7 @@
  *   usage: killloop_child DIR
  */
 #include "test_support.h"
+#include "../../src/hmi/hmi_auditchain.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
@@ -85,6 +86,11 @@ int main(int argc, char **argv)
     st.log_max_bytes = 32768; /* small, so that rotation happens while we run; the 8 kept files hold more than a run writes */
     st.log_generations = 8;
     st.state_min_interval_ms = 100;
+    /* the audit file is sealed as on the device (hmi_auditchain.h); killloop_verify checks the chain */
+    static const uint8_t cfg_key[32] = KILLLOOP_CFG_KEY;
+    static uint8_t audit_key[HMI_CHAIN_KEY_LEN];
+    hmi_chain_derive_key(cfg_key, sizeof(cfg_key), audit_key);
+    st.audit_key = audit_key;
     static hmi_runtime_t rt;
     if (!hmi_runtime_start_ex(&rt, &cfg, &drv, &st)) {
         fprintf(stderr, "killloop_child: runtime did not start\n");

@@ -67,6 +67,10 @@ echo "garbage in the middle" >> "$W/audit.log"
 echo "7 ALARM_ACK role=operator action=ACK_ALL result=GRANTED n=0 points= user=killer wall=- sync=no" >> "$W/audit.log"
 expect_refused "a damaged line followed by an ordinary record" "followed by an ordinary record" 1
 
+# a sealed record changed in place so that it is still a valid record: only the keyed hash chain shows it
+sed -i '2s/^\([0-9]\)/9\1/' "$W/audit.log"
+expect_refused "a sealed record edited in place" "audit chain"
+
 # a record without the wall-clock stamp
 echo "5 BOOT" >> "$W/audit.log"
 expect_refused "a record without a stamp" "damaged"

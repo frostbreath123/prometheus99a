@@ -34,6 +34,7 @@
 #define HMI_STORE_H
 
 #include "hmi_platform.h"
+#include "hmi_auditchain.h"
 
 #define HMI_STORE_QUEUE_LEN 64
 #define HMI_STORE_REC_MAX   704  /* longest record in bytes; the acknowledgement line is the longest at 640 */
@@ -62,6 +63,9 @@ typedef struct {
     uint64_t max_bytes;                    /* size cap of an append target, 0 = never rotate */
     uint32_t generations;                  /* rotated files kept (name.1 .. name.N), 1 to 9 */
     const hmi_store_io_t *io;              /* NULL = platform */
+    /* An append target with a key gets the keyed hash chain (hmi_auditchain.h): every record and rotation marker is
+     * sealed with " mac=<32 hex>". NULL: written as before. The store keeps its own copy of the key. */
+    const uint8_t *chain_key[HMI_STORE_TARGETS];
 } hmi_store_cfg_t;
 
 typedef enum {
@@ -109,6 +113,8 @@ typedef struct {
     hmi_store_stats_t stats;
     uint64_t file_size[HMI_STORE_TARGETS];
     bool size_known[HMI_STORE_TARGETS];
+    uint8_t chain_key[HMI_STORE_TARGETS][HMI_CHAIN_KEY_LEN]; /* copies of cfg.chain_key, wiped by hmi_store_destroy */
+    bool chained[HMI_STORE_TARGETS];
 
     hmi_event_t wake;                /* worker: something queued, or stop */
     hmi_event_t done;                /* waiter: an item finished */

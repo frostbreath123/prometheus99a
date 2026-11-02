@@ -20,6 +20,9 @@ typedef struct {
     uint32_t serial;       /* serial of the signature in use (the base of a change request); 0 when not ok or unsigned */
     char banner[240];      /* "CONFIG REJECTED: <reason>" when not ok, otherwise empty */
     char info[96];         /* one line for the settings screen, e.g. "Configuration: signed, serial 3" */
+    bool audit_key_valid;  /* the audit-chain key (hmi_auditchain.h), derived from the configuration key; the caller */
+    uint8_t audit_key[32]; /* passes it to the runtime and wipes it (hmi_wipe) */
+    uint8_t pin_key[32];   /* the key of the PIN hashes (hmi_auth.h), valid with audit_key; the caller wipes it */
 } hmi_boot_t;
 
 /* Verifies and loads the configuration named by cli (--config, --config-key, --config-state) into *cfg, appends the

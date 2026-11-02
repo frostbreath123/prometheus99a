@@ -39,6 +39,8 @@
 #define HMI_CFGSEC_H
 
 #include "hmi_config.h"
+#include "hmi_auditchain.h"
+#include "hmi_auth.h"
 
 #define HMI_CFGSEC_SIG_SIZE 88u
 #define HMI_CFGSEC_KEY_LEN 32u
@@ -74,6 +76,12 @@ typedef struct {
     bool state_damaged;           /* the state file existed but could not be read: treated as absent */
     bool config_writable_by_service; /* the running user could modify the configuration */
     bool key_writable_by_service;
+    /* The audit-chain key derived from the configuration key (hmi_chain_derive_key), set as soon as the key file has
+     * passed its checks, whatever the verdict on the configuration, so that a rejection is recorded sealed too. The
+     * caller wipes it (hmi_wipe) when done. */
+    bool audit_key_valid;
+    uint8_t audit_key[HMI_CHAIN_KEY_LEN];
+    uint8_t pin_key[HMI_AUTH_KEY_LEN];  /* the key of the PIN hashes (hmi_auth.h), set with audit_key */
     char message[200];            /* for the on-screen banner and standard error */
 } hmi_cfgsec_info_t;
 

@@ -2,6 +2,7 @@
 #include "hmi_auditfmt.h"
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum { TGT_AUDIT = 0, TGT_JOURNAL = 1, TGT_STATE = 2 };
@@ -94,14 +95,16 @@ static bool journal_sink(void *user, const hmi_alarm_log_t *e)
 /* Read the end of the journal file back into the in-memory journal so the
  * screen shows the recent events after a restart. Lines that are torn, damaged
  * or name a tag that no longer exists are skipped. */
-static void journal_collect(const char *path, const char *const *names, size_t nt, hmi_alarm_log_t *ev, size_t *n_ev)
+/* Room for the newest HMI_JOURNAL_LEN lines at their longest (320 bytes each, see journal_sink); older lines would be
+ * dropped by the ring anyway. */
+#define JOURNAL_TAIL_BYTES (HMI_JOURNAL_LEN * 320)
+
+static void journal_collect(const char *path, const char *const *names, size_t nt, hmi_alarm_log_t *ev, size_t *n_ev,
+                            char *tail)
 {
-    /* Room for the newest HMI_JOURNAL_LEN lines at their longest (320 bytes each, see journal_sink); older lines would be
-     * dropped by the ring anyway. */
-    static char tail[HMI_JOURNAL_LEN * 320];
     size_t len = 0, pos = 0;
     bool cut = false;
-    if (hmi_fs_read_tail(path, tail, sizeof(tail), &len, &cut) != HMI_FS_READ_OK || len == 0) return;
+    if (hmi_fs_read_tail(path, tail, JOURNAL_TAIL_BYTES, &len, &cut) != HMI_FS_READ_OK || len == 0) return;
     if (cut) { /* the buffer starts in the middle of a line: drop that piece */
         while (pos < len && tail[pos] != '\n') pos++;
         if (pos < len) pos++;
@@ -134,8 +137,13 @@ static void journal_reload(hmi_runtime_t *rt)
     size_t n = 0;
     char older[sizeof(rt->journal_path) + 4];
     snprintf(older, sizeof(older), "%s.1", rt->journal_path);
-    journal_collect(older, names, nt, ev, &n);
-    journal_collect(rt->journal_path, names, nt, ev, &n);
+    /* The read buffer is needed only here, once at start, so it comes from the heap instead of 20 KB of static data.
+     * Without memory the journal is not shown again (as when the file is absent); the file itself is not touched. */
+    char *tail = (char *)malloc(JOURNAL_TAIL_BYTES);
+    if (!tail) return;
+    journal_collect(older, names, nt, ev, &n, tail);
+    journal_collect(rt->journal_path, names, nt, ev, &n, tail);
+    free(tail);
     if (n > 0) {
         hmi_alarm_journal_restore(&rt->alarms, ev, n);
         rt->journal_restored = (uint32_t)n;
@@ -213,8 +221,18 @@ static void comms_thread(void *arg)
     while (!hmi_flag_get(&rt->stop)) {
         uint32_t hint = hmi_comms_step(&rt->comms);
         hmi_flag_set(&rt->beat_comms, (int32_t)((uint32_t)hmi_flag_get(&rt->beat_comms) + 1u)); /* single writer, wraps */
-        if (hint > 0) hmi_sleep_ms(hint > 20u ? 20u : hint);
+        /* Sleep until the next poll or the end of the back-off (the hint), cut short by a queued write or stop
+         * (comms_notify, hmi_runtime_stop). Before, the sleep was capped at 20 ms so a queued write was found on the
+         * next pass; that woke the thread 50 times a second while idle. */
+        if (hint > 0) hmi_event_wait(&rt->comms_wake, hint > HMI_COMMS_IDLE_MAX_MS ? HMI_COMMS_IDLE_MAX_MS : hint);
     }
+}
+
+/* hmi_writes notify hook: a write entered the send queue (from the UI thread or the storage worker). */
+static void comms_notify(void *user)
+{
+    hmi_runtime_t *rt = (hmi_runtime_t *)user;
+    hmi_event_signal(&rt->comms_wake);
 }
 
 static void supervisor_thread(void *arg)
@@ -246,11 +264,14 @@ bool hmi_runtime_start(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_pl
     return hmi_runtime_start_ex(rt, cfg, drv, &st);
 }
 
-/* Clear the whole runtime except the 64 slots of the storage queue (hmi_store_zero says why). */
-static void runtime_zero(hmi_runtime_t *rt)
+/* Clear the whole runtime except the 64 slots of the storage queue (hmi_store_zero says why). With keep_cfg the
+ * configuration (the first member) is kept too: the caller loaded it in place (hmi_runtime_start_ex). */
+typedef char runtime_cfg_is_first[offsetof(hmi_runtime_t, cfg) == 0 ? 1 : -1];
+static void runtime_zero(hmi_runtime_t *rt, bool keep_cfg)
 {
     size_t from = offsetof(hmi_runtime_t, store), to = from + sizeof(rt->store);
-    memset(rt, 0, from);
+    size_t first = keep_cfg ? sizeof(rt->cfg) : 0;
+    memset((char *)rt + first, 0, from - first);
     hmi_store_zero(&rt->store);
     memset((char *)rt + to, 0, sizeof(*rt) - to);
 }
@@ -258,9 +279,10 @@ static void runtime_zero(hmi_runtime_t *rt)
 bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi_plc_driver_t *drv,
                           const hmi_runtime_storage_t *storage)
 {
-    runtime_zero(rt);
+    bool in_place = (cfg == &rt->cfg);
+    runtime_zero(rt, in_place);
     if (!cfg || cfg->n_tags == 0 || !drv || !storage) return false;
-    rt->cfg = *cfg;
+    if (!in_place) rt->cfg = *cfg;
     if (storage->audit_path) snprintf(rt->audit_path, sizeof(rt->audit_path), "%s", storage->audit_path);
     if (storage->alarm_state_path) {
         snprintf(rt->alarm_state_path, sizeof(rt->alarm_state_path), "%s", storage->alarm_state_path);
@@ -326,6 +348,7 @@ bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi
             sc.path[TGT_AUDIT] = rt->audit_path;
             sc.kind[TGT_AUDIT] = HMI_STORE_APPEND;
             sc.marker[TGT_AUDIT] = true;
+            sc.chain_key[TGT_AUDIT] = storage->audit_key;
         }
         if (rt->alarm_state_path[0]) {
             sc.path[TGT_JOURNAL] = rt->journal_path;
@@ -363,6 +386,9 @@ bool hmi_runtime_start_ex(hmi_runtime_t *rt, const hmi_app_cfg_t *cfg, const hmi
     }
 
     hmi_flag_set(&rt->stop, 0);
+    if (!hmi_event_init(&rt->comms_wake)) goto fail;
+    rt->comms_wake_ready = true;
+    hmi_writes_set_notify(&rt->writes, comms_notify, rt);
     if (!hmi_thread_start(&rt->th_comms, comms_thread, rt)) goto fail;
     if (!hmi_thread_start(&rt->th_super, supervisor_thread, rt)) {
         hmi_flag_set(&rt->stop, 1);
@@ -377,6 +403,10 @@ fail:
         hmi_store_destroy(&rt->store);
         rt->store_ready = false;
         rt->store_started = false;
+    }
+    if (rt->comms_wake_ready) { /* after the storage worker: its callbacks can signal it */
+        hmi_event_destroy(&rt->comms_wake);
+        rt->comms_wake_ready = false;
     }
     hmi_trend_destroy(&rt->trend);
     hmi_alarm_destroy(&rt->alarms);
@@ -408,6 +438,7 @@ bool hmi_runtime_stop(hmi_runtime_t *rt)
 {
     if (!rt->started) return true;
     hmi_flag_set(&rt->stop, 1);
+    hmi_event_signal(&rt->comms_wake); /* do not wait out the comms thread's idle sleep */
     /* Worst case a worker is inside the longest blocking iteration (see
      * hmi_runtime_worst_stall_ms); wait for that. */
     uint32_t wait = hmi_runtime_worst_stall_ms(rt);
@@ -433,6 +464,8 @@ bool hmi_runtime_stop(hmi_runtime_t *rt)
     rt->started = false;
     if (a && b && s) {
         hmi_store_destroy(&rt->store);
+        hmi_event_destroy(&rt->comms_wake);
+        rt->comms_wake_ready = false;
         hmi_trend_destroy(&rt->trend);
         hmi_alarm_destroy(&rt->alarms);
         hmi_writes_destroy(&rt->writes);

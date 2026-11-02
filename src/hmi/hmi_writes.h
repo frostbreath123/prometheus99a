@@ -71,6 +71,10 @@ typedef bool (*hmi_audit_fn)(void *user, const hmi_write_rec_t *rec, const char 
  * and cannot be transmitted. */
 typedef bool (*hmi_audit_submit_fn)(void *user, const hmi_write_rec_t *rec, const char *event);
 
+/* Called, outside the module's lock and from the thread that queued it, each time a request enters the send queue
+ * (it became PENDING), so the transport can wake up at once instead of finding it on its next pass. Must not block. */
+typedef void (*hmi_writes_notify_fn)(void *user);
+
 /* A transmit job handed to the transport. Registers are in wire order. */
 typedef struct {
     uint8_t slot;       /* opaque to the transport */
@@ -97,6 +101,8 @@ typedef struct {
     void *audit_user;
     hmi_audit_submit_fn audit_submit;
     void *audit_submit_user;
+    hmi_writes_notify_fn notify;   /* optional: a write entered the send queue (hmi_writes_set_notify) */
+    void *notify_user;
 
     hmi_mutex_t lock;
     hmi_write_rec_t ring[HMI_AUDIT_LEN];
@@ -121,6 +127,8 @@ void hmi_writes_set_audit(hmi_writes_t *w, hmi_audit_fn fn, void *user);
  * synchronous hook is used only for the later records (SENT and the final
  * state). Without one, the synchronous hook records RESERVED too. */
 void hmi_writes_set_audit_async(hmi_writes_t *w, hmi_audit_submit_fn fn, void *user);
+/* Optional wake-up hook for the transport (see hmi_writes_notify_fn). NULL removes it. */
+void hmi_writes_set_notify(hmi_writes_t *w, hmi_writes_notify_fn fn, void *user);
 /* The outcome of a RESERVED record handed to the asynchronous hook, from any
  * thread. ok: the request becomes PENDING and is queued. !ok: it becomes
  * REJECTED and is never transmitted (fail closed). A request that already

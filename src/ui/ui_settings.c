@@ -135,6 +135,11 @@ static void system_update(void)
     sys_line(5, b, HMI_TONE_TEXT);
 
     char rb[UI_TXT * 3];
+    if (ui_login_enabled()) { /* named users: the role comes from the login, not from the command line */
+        snprintf(rb, sizeof(rb), "Login: named users with a PIN, logged out after 5 min without input");
+        sys_line(6, rb, HMI_TONE_TEXT);
+        return;
+    }
     hmi_view_claimed_role_text(ui_role, rb, sizeof(rb));
     sys_line(6, rb, ui_role == HMI_ROLE_VIEWER ? HMI_TONE_TEXT : HMI_TONE_WARN);
 }

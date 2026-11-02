@@ -37,14 +37,71 @@ void hmi_sleep_ms(uint32_t ms)
     }
 }
 
+#ifdef HMI_LOCK_STATS
+/* Measurement builds: two counters after the pthread mutex in the opaque storage (40 of 64 bytes used by it), and a
+ * table of the mutexes in creation order. Both counters change only while the mutex is held. */
+typedef char hmi_lock_stats_room[(sizeof(pthread_mutex_t) + 2 * sizeof(uint64_t) <= sizeof(hmi_mutex_t)) ? 1 : -1];
+#define LS_TAKEN(m) (&(m)->opaque[6])
+#define LS_WAITED(m) (&(m)->opaque[7])
+static hmi_mutex_t *s_ls_table[64];
+static int s_ls_n;
+static pthread_mutex_t s_ls_mx = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 bool hmi_mutex_init(hmi_mutex_t *m)
 {
     memset(m, 0, sizeof(*m));
+#ifdef HMI_LOCK_STATS
+    pthread_mutex_lock(&s_ls_mx);
+    int k = 0;
+    while (k < s_ls_n && s_ls_table[k] != m) k++;
+    if (k == s_ls_n && s_ls_n < 64) s_ls_table[s_ls_n++] = m;
+    pthread_mutex_unlock(&s_ls_mx);
+#endif
     return pthread_mutex_init((pthread_mutex_t *)m, NULL) == 0;
 }
+#ifdef HMI_LOCK_STATS
+void hmi_mutex_lock(hmi_mutex_t *m)
+{
+    bool waited = pthread_mutex_trylock((pthread_mutex_t *)m) != 0;
+    if (waited) pthread_mutex_lock((pthread_mutex_t *)m);
+    __atomic_fetch_add(LS_TAKEN(m), 1, __ATOMIC_RELAXED);
+    if (waited) __atomic_fetch_add(LS_WAITED(m), 1, __ATOMIC_RELAXED);
+}
+
+size_t hmi_lock_stats_text(char *buf, size_t cap)
+{
+    size_t off = 0;
+    if (cap) buf[0] = '\0';
+    pthread_mutex_lock(&s_ls_mx);
+    for (int i = 0; i < s_ls_n && off < cap; i++) {
+        unsigned long long t = __atomic_load_n(LS_TAKEN(s_ls_table[i]), __ATOMIC_RELAXED);
+        unsigned long long w = __atomic_load_n(LS_WAITED(s_ls_table[i]), __ATOMIC_RELAXED);
+        int n = snprintf(buf + off, cap - off, "lock_%02d_taken=%llu lock_%02d_contended=%llu\n", i, t, i, w);
+        if (n < 0) break;
+        off += (size_t)n;
+    }
+    pthread_mutex_unlock(&s_ls_mx);
+    return off < cap ? off : cap;
+}
+#else
 void hmi_mutex_lock(hmi_mutex_t *m) { pthread_mutex_lock((pthread_mutex_t *)m); }
+#endif
 void hmi_mutex_unlock(hmi_mutex_t *m) { pthread_mutex_unlock((pthread_mutex_t *)m); }
-void hmi_mutex_destroy(hmi_mutex_t *m) { pthread_mutex_destroy((pthread_mutex_t *)m); }
+void hmi_mutex_destroy(hmi_mutex_t *m)
+{
+#ifdef HMI_LOCK_STATS
+    pthread_mutex_lock(&s_ls_mx);
+    for (int k = 0; k < s_ls_n; k++) {
+        if (s_ls_table[k] != m) continue;
+        for (int j = k; j + 1 < s_ls_n; j++) s_ls_table[j] = s_ls_table[j + 1];
+        s_ls_n--;
+        break;
+    }
+    pthread_mutex_unlock(&s_ls_mx);
+#endif
+    pthread_mutex_destroy((pthread_mutex_t *)m);
+}
 
 typedef struct {
     hmi_thread_fn fn;

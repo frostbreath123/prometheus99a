@@ -2,19 +2,28 @@
 #include "hmi_auditfmt.h"
 #include "hmi_cfgsec.h"
 #include "hmi_platform.h"
+#include "hmi_util.h" /* hmi_wipe */
 #include <stdio.h>
 #include <string.h>
 
-/* One line to the audit file, best effort: nothing depends on it. */
+/* One line to the audit file, best effort: nothing depends on it. Sealed into the audit chain when the configuration
+ * key could be read (hmi_auditchain.h). */
 static void audit_verdict(const char *audit_path, const hmi_cfgsec_info_t *si)
 {
-    char line[200];
-    size_t len = audit_path ? hmi_cfgsec_format_audit(hmi_now_ms(), si, line, sizeof(line)) : 0;
+    char line[200 + HMI_CHAIN_SEAL_LEN];
+    size_t len = audit_path ? hmi_cfgsec_format_audit(hmi_now_ms(), si, line, 200) : 0;
     if (len == 0) return;
     hmi_wall_t wall;
     hmi_wall_now(&wall);
-    size_t stamped = hmi_audit_stamp_line(line, strlen(line), sizeof(line), &wall);
-    hmi_fs_append_sync(audit_path, line, stamped ? stamped : strlen(line));
+    size_t stamped = hmi_audit_stamp_line(line, strlen(line), 200, &wall);
+    len = stamped ? stamped : strlen(line);
+    if (si->audit_key_valid) {
+        char prev[HMI_CHAIN_HEX + 1];
+        hmi_chain_prev_for(audit_path, prev);
+        size_t sealed = hmi_chain_seal(si->audit_key, prev, line, len, line, sizeof(line));
+        if (sealed) len = sealed;
+    }
+    hmi_fs_append_sync(audit_path, line, len);
 }
 
 static void warn_about_files(const hmi_cli_t *cli, const hmi_cfgsec_info_t *si)
@@ -54,6 +63,13 @@ void hmi_boot_config(const hmi_cli_t *cli, hmi_app_cfg_t *cfg, hmi_boot_t *out)
     out->ok = (result == HMI_CFGSEC_OK);
     out->serial = si.serial;
     audit_verdict(cli->audit, &si);
+    if (out->ok && si.audit_key_valid) {
+        memcpy(out->audit_key, si.audit_key, sizeof(out->audit_key));
+        memcpy(out->pin_key, si.pin_key, sizeof(out->pin_key));
+        out->audit_key_valid = true;
+    }
+    hmi_wipe(si.audit_key, sizeof(si.audit_key));
+    hmi_wipe(si.pin_key, sizeof(si.pin_key));
     if (out->ok) {
         snprintf(out->info, sizeof(out->info), "Configuration: signed, serial %u", (unsigned)si.serial);
         fprintf(stderr, "prometheus99: configuration verified (signature serial %u)\n", (unsigned)si.serial);

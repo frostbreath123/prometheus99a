@@ -26,6 +26,11 @@ bool hmi_mutex_init(hmi_mutex_t *m);
 void hmi_mutex_lock(hmi_mutex_t *m);
 void hmi_mutex_unlock(hmi_mutex_t *m);
 void hmi_mutex_destroy(hmi_mutex_t *m);
+#ifdef HMI_LOCK_STATS
+/* Measurement builds only (POSIX): every lock counts as taken, and as contended when it was already held by another
+ * thread. Writes one line per mutex, in the order the mutexes were created, into buf; returns the length. */
+size_t hmi_lock_stats_text(char *buf, size_t cap);
+#endif
 
 /* Threads */
 typedef struct {

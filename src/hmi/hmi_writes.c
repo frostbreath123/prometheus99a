@@ -64,8 +64,18 @@ void hmi_writes_set_audit_async(hmi_writes_t *w, hmi_audit_submit_fn fn, void *u
     hmi_mutex_unlock(&w->lock);
 }
 
+void hmi_writes_set_notify(hmi_writes_t *w, hmi_writes_notify_fn fn, void *user)
+{
+    hmi_mutex_lock(&w->lock);
+    w->notify = fn;
+    w->notify_user = user;
+    hmi_mutex_unlock(&w->lock);
+}
+
 void hmi_writes_audit_done(hmi_writes_t *w, uint32_t id, bool ok, uint64_t now_ms)
 {
+    hmi_writes_notify_fn notify = NULL;
+    void *notify_user = NULL;
     hmi_mutex_lock(&w->lock);
     for (int i = 0; i < HMI_AUDIT_LEN; i++) {
         hmi_write_rec_t *r = &w->ring[i];
@@ -75,6 +85,8 @@ void hmi_writes_audit_done(hmi_writes_t *w, uint32_t id, bool ok, uint64_t now_m
             w->queue[(w->q_head + w->q_len) % HMI_WRITE_QUEUE_LEN] = (uint8_t)i;
             w->q_len++;
             w->stats.submitted++;
+            notify = w->notify;
+            notify_user = w->notify_user;
         } else {
             r->state = HMI_WR_REJECTED; /* the record of intent is not durable: never transmit */
             r->t_final_ms = now_ms;
@@ -84,6 +96,7 @@ void hmi_writes_audit_done(hmi_writes_t *w, uint32_t id, bool ok, uint64_t now_m
         break;
     }
     hmi_mutex_unlock(&w->lock);
+    if (notify) notify(notify_user);
 }
 
 void hmi_writes_set_enabled(hmi_writes_t *w, bool enabled)

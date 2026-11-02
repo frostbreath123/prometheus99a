@@ -15,6 +15,9 @@
  *  - for every write id of a run (between two BOOT lines): RESERVED once,
  *    SENT once and only after RESERVED, one final record at most and only after
  *    the record it depends on;
+ *  - the keyed hash chain of the audit file (hmi_auditchain.h), all generations in order: no line with a wrong
+ *    seal, and at most MAX_TORN lines without one (the unfinished ends of runs); the record checks above are made
+ *    on each line without its seal;
  *  - the alarm journal: every line parses (CRC and fields), at most MAX_TORN do
  *    not, and the sequence numbers increase;
  *  - the alarm state file is absent or valid for the configuration;
@@ -23,6 +26,7 @@
  */
 #include "test_support.h"
 #include "../../src/hmi/hmi_auditfmt.h"
+#include "../../src/hmi/hmi_auditchain.h"
 
 #define MAX_FILE (2 * 1024 * 1024)
 #define MAX_IDS 100000
@@ -134,6 +138,12 @@ int main(int argc, char **argv)
     bool in_run = false; /* a BOOT line has been seen, so the ids below belong to a run we saw from its start */
     int audit_lines = 0, audit_bad = 0, files_seen = 0, n_boot = 0, n_rot = 0, n_sent = 0;
     bool prev_bad = false;
+    static const uint8_t cfg_key[32] = KILLLOOP_CFG_KEY;
+    uint8_t audit_key[HMI_CHAIN_KEY_LEN];
+    hmi_chain_derive_key(cfg_key, sizeof(cfg_key), audit_key);
+    char chain_prev[HMI_CHAIN_HEX + 1] = "";
+    hmi_chain_report_t chain;
+    memset(&chain, 0, sizeof(chain));
     for (int gen = 8; gen >= 0; gen--) {
         if (gen == 0) snprintf(path, sizeof(path), "%s/audit.log", dir);
         else snprintf(path, sizeof(path), "%s/audit.log.%d", dir, gen);
@@ -141,6 +151,7 @@ int main(int argc, char **argv)
         char *buf = slurp_file(path, &len);
         if (!buf) continue;
         files_seen++;
+        hmi_chain_verify_text(audit_key, buf, len, chain_prev, &chain);
         size_t pos = 0;
         while (pos < len) {
             size_t s = pos;
@@ -148,6 +159,8 @@ int main(int argc, char **argv)
             bool complete = pos < len;
             size_t ll = pos - s;
             pos++;
+            size_t body;
+            if (complete && hmi_chain_has_seal(buf + s, ll, &body)) ll = body; /* the record checks ignore the seal */
             uint32_t id, raw;
             audit_kind_t k = ll ? classify(buf + s, ll, &id, &raw) : E_BAD;
             if (!complete) k = E_BAD; /* no line break: unfinished */
@@ -209,6 +222,12 @@ int main(int argc, char **argv)
         char d[80];
         snprintf(d, sizeof(d), "%d damaged lines, at most %d expected", audit_bad, max_torn);
         return fail("audit file", d);
+    }
+    if (chain.failed != 0 || chain.unsealed > (uint32_t)max_torn) {
+        char d[120];
+        snprintf(d, sizeof(d), "%u lines with a wrong seal, %u without a seal (at most %d torn expected), first bad line %u",
+                 (unsigned)chain.failed, (unsigned)chain.unsealed, max_torn, (unsigned)chain.first_bad_line);
+        return fail("audit chain", d);
     }
 
     /* ---- alarm journal ---- */
@@ -322,8 +341,8 @@ int main(int argc, char **argv)
         }
     }
 
-    printf("VERIFY ok audit_lines=%d audit_damaged=%d runs=%d rotations=%d sent=%d journal_lines=%d journal_damaged=%d "
+    printf("VERIFY ok chain_valid=%u chain_unsealed=%u audit_lines=%d audit_damaged=%d runs=%d rotations=%d sent=%d journal_lines=%d journal_damaged=%d "
            "plc_writes=%d state=%s files=%d\n",
-           audit_lines, audit_bad, n_boot, n_rot, n_sent, j_lines, j_bad, plc_writes, state_txt, files_seen);
+           (unsigned)chain.verified, (unsigned)chain.unsealed, audit_lines, audit_bad, n_boot, n_rot, n_sent, j_lines, j_bad, plc_writes, state_txt, files_seen);
     return 0;
 }
